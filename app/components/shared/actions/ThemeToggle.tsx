@@ -1,0 +1,56 @@
+// "use client";
+
+// import { useEffect, useState } from "react";
+// import { useTheme } from "next-themes";
+// import { FiMoon, FiSun } from "react-icons/fi";
+
+// export default function ThemeToggle() {
+//   const { theme, setTheme, resolvedTheme } = useTheme();
+//   const [mounted, setMounted] = useState(false);
+
+//   useEffect(() => {
+//     setMounted(true);
+//   }, []);
+
+//   if (!mounted) return null;
+
+//   const currentTheme = theme === "system" ? resolvedTheme : theme;
+
+//   const isDark = currentTheme === "dark";
+
+//   return (
+//     <button
+//       onClick={() => setTheme(isDark ? "light" : "dark")}
+//       className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition text-muted hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+//     >
+//       {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
+//     </button>
+//   );
+// }
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
+import { FiMoon, FiSun } from "react-icons/fi";
+import IconLabelButton from "../../ui/button/IconLabelButton";
+
+export default function ThemeToggle({ className }: { className?: string }) {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  const currentTheme = theme === "system" ? resolvedTheme : theme;
+  const isDark = currentTheme === "dark";
+
+  return (
+    <IconLabelButton
+      icon={isDark ? <FiSun size={20} /> : <FiMoon size={20} />}
+      label={isDark ? "Light" : "Dark"}
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className={className}
+    />
+  );
+}
