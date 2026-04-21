@@ -118,11 +118,11 @@ body {
 
 /* =========== LAYOUT ============ */
 .container {
-  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  @apply mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8;
 }
 
 .section {
-  @apply py-12 sm:py-16 lg:py-32;
+  @apply py-14 sm:py-20 lg:py-28;
 }
 
 /* =========== CARDS ============ */
@@ -130,8 +130,10 @@ body {
   background: var(--surface);
   color: var(--foreground);
   border: 1px solid var(--border);
-  @apply rounded-md;
-  box-shadow: 0 10px 30px rgba(var(--shadow-color), 0.08);
+  @apply rounded-lg;
+  box-shadow:
+    0 1px 1px rgba(var(--shadow-color), 0.02),
+    0 10px 30px rgba(var(--shadow-color), 0.07);
 }
 
 /* 🔥 INVERSE CARDS */
@@ -198,27 +200,27 @@ body {
 /* =========== TYPOGRAPHY ============ */
 .title-xl {
   color: var(--title);
-  @apply text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl;
+  @apply text-4xl font-semibold tracking-[-0.03em] sm:text-5xl lg:text-6xl;
 }
 
 .title-lg {
   color: var(--title);
-  @apply text-2xl font-semibold tracking-tight sm:text-3xl;
+  @apply text-3xl font-semibold tracking-[-0.025em] sm:text-4xl;
 }
 
 .title-md {
   color: var(--title);
-  @apply text-xl font-semibold tracking-tight sm:text-2xl;
+  @apply text-2xl font-semibold tracking-[-0.02em] sm:text-3xl;
 }
 
 .paragraph-lg {
   color: var(--paragraph);
-  @apply text-base leading-8 sm:text-lg;
+  @apply text-base leading-7 sm:text-lg sm:leading-8;
 }
 
 .paragraph {
   color: var(--paragraph);
-  @apply text-sm leading-7 sm:text-base;
+  @apply text-sm leading-6 sm:text-base sm:leading-7;
 }
 
 .text-muted {
@@ -239,14 +241,14 @@ body {
 
 /* =========== BUTTONS ============ */
 .btn-primary {
-  @apply inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600 active:scale-[0.99];
+  @apply inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(55,125,255,0.25)] transition duration-200 hover:-translate-y-0.5 hover:bg-brand-600 hover:shadow-[0_12px_28px_rgba(55,125,255,0.32)] active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40;
 }
 
 .btn-secondary {
   background: var(--surface);
   color: var(--foreground);
   border: 1px solid var(--border);
-  @apply inline-flex items-center justify-center rounded-md px-4 py-2.5 text-sm font-medium transition;
+  @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium shadow-[0_1px_1px_rgba(15,23,42,0.03)] transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20;
 }
 
 .btn-secondary:hover {
