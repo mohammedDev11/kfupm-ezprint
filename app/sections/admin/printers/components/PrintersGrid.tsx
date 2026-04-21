@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Plus, SlidersHorizontal } from "lucide-react";
 //import MainButton from "@/app/Mohammed/components/MainButton";
 import SegmentToggle from "@/app/components/shared/actions/SegmentToggle";
@@ -23,12 +23,14 @@ import {
   type PrinterFilterValue,
   type PrinterItem,
 } from "@/Data/Admin/printers";
+import { apiGet } from "@/app/lib/api/client";
 import PrinterCard from "./PrinterCard";
 import AddPrinterModal from "./PrinterDetailsModal";
 import PrinterDetailsModal from "./AddPrinterModal";
 import Button from "@/app/components/ui/button/Button";
 
 const PrintersGrid = () => {
+  const [printers, setPrinters] = useState<PrinterItem[]>(printersData);
   const [search, setSearch] = useState("");
   const [columns, setColumns] = useState<"2" | "3">("2");
   const [filter, setFilter] = useState<PrinterFilterValue>("all");
@@ -37,10 +39,22 @@ const PrintersGrid = () => {
     null
   );
 
+  useEffect(() => {
+    apiGet<{ printers: PrinterItem[] }>("/admin/printers", "admin")
+      .then((data) => {
+        if (data?.printers?.length) {
+          setPrinters(data.printers);
+        }
+      })
+      .catch(() => {
+        // keep fallback
+      });
+  }, []);
+
   const filteredPrinters = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    return printersData.filter((printer) => {
+    return printers.filter((printer) => {
       const haystack = [
         printer.name,
         printer.model,
@@ -77,7 +91,7 @@ const PrintersGrid = () => {
 
       return matchesSearch && matchesFilter;
     });
-  }, [search, filter]);
+  }, [printers, search, filter]);
 
   const gridClassName =
     columns === "2"

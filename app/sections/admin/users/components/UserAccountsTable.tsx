@@ -53,6 +53,7 @@ import {
   userRestrictedSortOrder,
   userTableColumns,
 } from "@/Data/Admin/users";
+import { apiGet } from "@/app/lib/api/client";
 
 type SortDir = "asc" | "desc";
 type ActionValue =
@@ -187,6 +188,23 @@ const UserAccountsTable = () => {
   const [exportMethod, setExportMethod] = useState<ExportMethod>("PDF");
   const [quotaToAssign, setQuotaToAssign] = useState("");
   const [quotaComment, setQuotaComment] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{ users: UserAccountItem[] }>("/admin/users", "admin")
+      .then((data) => {
+        if (!mounted || !data?.users?.length) return;
+        setUsers(data.users);
+      })
+      .catch(() => {
+        // Keep fallback.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (openUserModal) {

@@ -4,8 +4,47 @@ import React from "react";
 import Link from "next/link";
 import Card from "@/app/components/ui/card/Card";
 import { userQuickActions } from "@/Data/User/dashboard";
+import { apiGet } from "@/app/lib/api/client";
+import { Clock3, CreditCard, Upload } from "lucide-react";
 
 const UserQuickActions = () => {
+  const [actions, setActions] = React.useState(userQuickActions);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const iconMap: Record<string, any> = {
+      upload: Upload,
+      "credit-card": CreditCard,
+      "clock-3": Clock3,
+    };
+
+    apiGet<{
+      quickActions: Array<{
+        id: number;
+        label: string;
+        href: string;
+        variant?: "primary" | "secondary";
+        iconKey?: string;
+      }>;
+    }>("/user/dashboard", "user")
+      .then((data) => {
+        if (!mounted || !data?.quickActions?.length) return;
+        setActions(
+          data.quickActions.map((item) => ({
+            ...item,
+            icon: iconMap[item.iconKey || ""] || Upload,
+          }))
+        );
+      })
+      .catch(() => {
+        // Keep fallback.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <Card className="p-5 sm:p-6">
       <div className="mb-5">
@@ -13,7 +52,7 @@ const UserQuickActions = () => {
       </div>
 
       <div className="space-y-4">
-        {userQuickActions.map((action) => {
+        {actions.map((action) => {
           const Icon = action.icon;
           const isPrimary = action.variant === "primary";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Wallet,
   ArrowDownLeft,
@@ -8,51 +8,58 @@ import {
   CreditCard,
   TrendingUp,
 } from "lucide-react";
-import {
-  Table,
-  TableTop,
-  TableTitleBlock,
-  TableControls,
-  TableSearch,
-  TableMain,
-  TableEmptyState,
-} from "@/app/components/shared/table/Table";
-import {
-  walletSummaryCards,
-  walletTransactions,
-  type WalletTransaction,
-} from "@/Data/User/wallet";
+import { walletSummaryCards } from "@/Data/User/wallet";
 import Card from "@/app/components/ui/card/Card";
 import Button from "@/app/components/ui/button/Button";
-import StatusBadge from "@/app/components/ui/badge/StatusBadge";
-import { cn } from "@/Data/Common/utils";
 import GeneralLineChart from "@/app/components/shared/charts/GeneralLineChart";
 import WalletTransactionsTable from "./WalletTransactionsTable";
+import { apiGet } from "@/app/lib/api/client";
 // import GeneralLineChart from "@/app/components/ui/card/GeneralLineChart";
 
 const WalletOverview = () => {
-  const [search, setSearch] = useState("");
+  const [summaryCards, setSummaryCards] = useState(walletSummaryCards);
+  const [quotaBalance, setQuotaBalance] = useState(245.5);
 
-  const filteredTransactions = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) return walletTransactions;
-
-    return walletTransactions.filter((item) => {
-      return (
-        item.id.toLowerCase().includes(query) ||
-        item.type.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        item.status.toLowerCase().includes(query) ||
-        item.date.toLowerCase().includes(query)
-      );
-    });
-  }, [search]);
-
-  const balance = 245.5;
+  const balance = quotaBalance;
   const totalSpent = 128.75;
   const totalRedeemed = 80;
   const pendingAmount = 36.75;
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{
+      quota: number;
+      walletSummaryCards: Array<{
+        title: string;
+        value: string;
+        helperText: string;
+      }>;
+    }>("/user/quota/overview", "user")
+      .then((data) => {
+        if (!mounted) return;
+        if (typeof data?.quota === "number") {
+          setQuotaBalance(data.quota);
+        }
+        if (data?.walletSummaryCards?.length) {
+          setSummaryCards((prev) =>
+            prev.map((card, index) => ({
+              ...card,
+              value: data.walletSummaryCards[index]?.value ?? card.value,
+              helperText:
+                data.walletSummaryCards[index]?.helperText ?? card.helperText,
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        // Keep local fallback if API is unavailable.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const walletActivityData = [
     { day: "M", spent: 18, redeemed: 8 },
@@ -78,7 +85,7 @@ const WalletOverview = () => {
   return (
     <section className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {walletSummaryCards.map((card) => {
+        {summaryCards.map((card) => {
           const Icon = card.icon;
 
           return (
@@ -223,70 +230,5 @@ const WalletOverview = () => {
     </section>
   );
 };
-
-function WalletTransactionRow({ item }: { item: WalletTransaction }) {
-  const isPositive = item.direction === "in";
-
-  return (
-    <tr className="rounded-md bg-[var(--surface)] shadow-sm">
-      <td className="rounded-l-md border-y border-l border-[var(--border)] px-4 py-4">
-        <div className="space-y-1">
-          <p style={{ color: "var(--title)" }} className="font-medium">
-            {item.description}
-          </p>
-          <p style={{ color: "var(--muted)" }} className="text-sm">
-            #{item.id}
-          </p>
-        </div>
-      </td>
-
-      <td
-        style={{ color: "var(--paragraph)" }}
-        className="border-y border-[var(--border)] px-4 py-4 text-sm"
-      >
-        {item.type}
-      </td>
-
-      <td className="border-y border-[var(--border)] px-4 py-4">
-        <span
-          className={cn(
-            "text-sm font-semibold",
-            isPositive ? "text-emerald-600" : "text-rose-600"
-          )}
-        >
-          {isPositive ? "+" : "-"}
-          {item.amount.toFixed(2)} SAR
-        </span>
-      </td>
-
-      <td
-        style={{ color: "var(--paragraph)" }}
-        className="border-y border-[var(--border)] px-4 py-4 text-sm"
-      >
-        {item.date}
-      </td>
-
-      <td className="rounded-r-md border-y border-r border-[var(--border)] px-4 py-4">
-        <WalletStatusBadge status={item.status} />
-      </td>
-    </tr>
-  );
-}
-
-function WalletStatusBadge({
-  status,
-}: {
-  status: WalletTransaction["status"];
-}) {
-  if (status === "Completed") {
-    return <StatusBadge label={status} tone="success" />;
-  }
-
-  if (status === "Pending") {
-    return <StatusBadge label={status} tone="warning" />;
-  }
-
-  return <StatusBadge label={status} tone="danger" />;
-}
 
 export default WalletOverview;

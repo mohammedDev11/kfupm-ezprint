@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Sparkles } from "lucide-react";
 import { User2, IdCard } from "lucide-react";
 import Card from "@/app/components/ui/card/Card";
+import { apiGet } from "@/app/lib/api/client";
 
 type UserInfoItem = {
   id: number;
@@ -44,16 +45,46 @@ const maskSensitiveValue = (value: string) => {
 
 const UserInformationCard = () => {
   const [showSensitive, setShowSensitive] = useState(false);
+  const [userInfo, setUserInfo] = useState(userInformationData);
 
   const data = useMemo(() => {
-    return userInformationData.map((item) => ({
+    return userInfo.map((item) => ({
       ...item,
       displayValue:
         item.isSensitive && !showSensitive
           ? maskSensitiveValue(item.value)
           : item.value,
     }));
-  }, [showSensitive]);
+  }, [showSensitive, userInfo]);
+
+  useEffect(() => {
+    let mounted = true;
+    const iconMap: Record<string, any> = {
+      "user-2": User2,
+      "id-card": IdCard,
+    };
+
+    apiGet<{
+      userInformation: Array<{ id: number; label: string; value: string; iconKey?: string }>;
+    }>("/user/dashboard", "user")
+      .then((payload) => {
+        if (!mounted || !payload?.userInformation?.length) return;
+        setUserInfo(
+          payload.userInformation.map((item) => ({
+            ...item,
+            icon: iconMap[item.iconKey || ""] || User2,
+            isSensitive: item.label.toLowerCase().includes("id"),
+          }))
+        );
+      })
+      .catch(() => {
+        // Keep fallback.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <Card className="group relative overflow-hidden p-0">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Table,
   TableTop,
@@ -22,6 +22,7 @@ import Modal from "@/app/components/ui/modal/Modal";
 import Button from "@/app/components/ui/button/Button";
 
 import { walletTransactions, WalletTransaction } from "@/Data/User/wallet";
+import { apiGet } from "@/app/lib/api/client";
 
 import { cn } from "@/app/components/lib/cn";
 
@@ -35,6 +36,8 @@ type SortDir = "asc" | "desc";
 const columnsClass = "[grid-template-columns:70px_1fr_140px_140px_140px_140px]";
 
 const WalletTransactionsTable = () => {
+  const [transactions, setTransactions] =
+    useState<WalletTransaction[]>(walletTransactions);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("date");
@@ -52,7 +55,7 @@ const WalletTransactionsTable = () => {
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
 
-    return [...walletTransactions]
+    return [...transactions]
       .filter((item) => {
         return (
           item.description.toLowerCase().includes(term) ||
@@ -91,7 +94,27 @@ const WalletTransactionsTable = () => {
           ? String(valA).localeCompare(String(valB))
           : String(valB).localeCompare(String(valA));
       });
-  }, [search, sortKey, sortDir]);
+  }, [transactions, search, sortKey, sortDir]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{ transactions: WalletTransaction[] }>(
+      "/user/quota/transactions",
+      "user"
+    )
+      .then((data) => {
+        if (!mounted || !data?.transactions?.length) return;
+        setTransactions(data.transactions);
+      })
+      .catch(() => {
+        // Keep local fallback if API fails.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const allIds = filtered.map((i) => i.id);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CreditCard,
   Eye,
@@ -12,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { informationSections } from "@/Data/User/profile";
+import { apiGet } from "@/app/lib/api/client";
 
 const iconMap: Record<string, React.ReactNode> = {
   "personal-information": <UserRound className="h-5 w-5" />,
@@ -29,6 +30,7 @@ const Information = () => {
   const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>(
     {}
   );
+  const [sections, setSections] = useState(informationSections);
 
   const toggleVisibility = (fieldId: string) => {
     setVisibleFields((prev) => ({
@@ -37,9 +39,29 @@ const Information = () => {
     }));
   };
 
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{ informationSections: typeof informationSections }>(
+      "/user/profile",
+      "user"
+    )
+      .then((data) => {
+        if (!mounted || !data?.informationSections?.length) return;
+        setSections(data.informationSections);
+      })
+      .catch(() => {
+        // Keep mock fallback for resilience.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
-      {informationSections.map((section) => (
+      {sections.map((section) => (
         <section key={section.id} className="card rounded-md p-6 sm:p-7">
           <div className="mb-6 flex items-start gap-4">
             <div

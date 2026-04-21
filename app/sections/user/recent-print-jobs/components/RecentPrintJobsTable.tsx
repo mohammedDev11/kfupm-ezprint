@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Check,
   Download,
@@ -45,6 +45,7 @@ import {
   type RecentPrintJobSortKey,
   type RecentPrintJobStatus,
 } from "@/Data/User/recent-print-jobs";
+import { apiGet } from "@/app/lib/api/client";
 
 type SortDir = "asc" | "desc";
 type FilterValue = "all" | RecentPrintJobStatus;
@@ -75,7 +76,7 @@ function PrintJobStatusBadge({ status }: { status: RecentPrintJobStatus }) {
 }
 
 const RecentPrintJobsTable = () => {
-  const [jobs] = useState<RecentPrintJobItem[]>(recentPrintJobsData);
+  const [jobs, setJobs] = useState<RecentPrintJobItem[]>(recentPrintJobsData);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<RecentPrintJobSortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -95,6 +96,23 @@ const RecentPrintJobsTable = () => {
     setSortKey(key);
     setSortDir(key === "date" ? "desc" : "asc");
   };
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{ jobs: RecentPrintJobItem[] }>("/user/jobs/recent", "user")
+      .then((data) => {
+        if (!mounted || !data?.jobs?.length) return;
+        setJobs(data.jobs);
+      })
+      .catch(() => {
+        // Keep local fallback if API fails.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const toggleRowSelection = (id: string) => {
     setSelectedIds((prev) =>

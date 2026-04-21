@@ -1061,6 +1061,7 @@ import {
   type QueueTableItem,
   type QueueType,
 } from "@/Data/Admin/queues";
+import { apiGet } from "@/app/lib/api/client";
 
 type SortDir = "asc" | "desc";
 
@@ -1666,6 +1667,22 @@ const PrintQueuesTable = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addQueueTab, setAddQueueTab] = useState<QueueModalTab>("basic-info");
   const [newQueue, setNewQueue] = useState<QueueTableItem | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    apiGet<{ queues: QueueTableItem[] }>("/admin/queues", "admin")
+      .then((data) => {
+        if (!mounted || !data?.queues?.length) return;
+        setQueues(data.queues);
+      })
+      .catch(() => {
+        // Keep fallback.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSort = (key: QueueSortKey) => {
     if (sortKey === key) {

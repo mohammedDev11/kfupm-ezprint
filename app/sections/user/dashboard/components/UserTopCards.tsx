@@ -221,6 +221,7 @@ import {
   userDashboardPeriods,
   type UserDashboardPeriod,
 } from "@/Data/User/dashboard";
+import { apiGet } from "@/app/lib/api/client";
 import Card from "@/app/components/ui/card/Card";
 import {
   Dropdown,
@@ -228,10 +229,20 @@ import {
   DropdownItem,
   DropdownTrigger,
 } from "@/app/components/ui/dropdown/Dropdown";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  DollarSign,
+  FileText,
+  Layers3,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const UserTopCards = () => {
+  const [apiCards, setApiCards] = useState<
+    Array<{ id: number; title: string; value: string; change: string; icon: any }>
+  >([]);
   const [selectedPeriod, setSelectedPeriod] =
     useState<UserDashboardPeriod>("This Week");
 
@@ -240,8 +251,40 @@ const UserTopCards = () => {
   const [canScrollRight, setCanScrollRight] = useState(true);
 
   const cards = useMemo(() => {
+    if (apiCards.length > 0) return apiCards;
     return userDashboardCardsByPeriod[selectedPeriod];
-  }, [selectedPeriod]);
+  }, [apiCards, selectedPeriod]);
+
+  useEffect(() => {
+    let mounted = true;
+    const iconMap: Record<string, any> = {
+      "dollar-sign": DollarSign,
+      "file-text": FileText,
+      "layers-3": Layers3,
+      "clock-3": Clock3,
+    };
+
+    apiGet<{ cards: Array<{ id: number; title: string; value: string; change: string; iconKey?: string }> }>(
+      "/user/dashboard",
+      "user"
+    )
+      .then((data) => {
+        if (!mounted || !data?.cards?.length) return;
+        setApiCards(
+          data.cards.map((card) => ({
+            ...card,
+            icon: iconMap[card.iconKey || ""] || FileText,
+          }))
+        );
+      })
+      .catch(() => {
+        // keep local fallback
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const updateScrollState = () => {
     const el = scrollRef.current;

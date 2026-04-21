@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FileText, Play, Trash2 } from "lucide-react";
 import Modal from "@/app/components/ui/modal/Modal";
 import Button from "@/app/components/ui/button/Button";
@@ -26,6 +26,7 @@ import {
   pendingReleaseQuota,
 } from "@/Data/User/pending-jobs";
 import { FaMoneyCheck } from "react-icons/fa";
+import { apiGet } from "@/app/lib/api/client";
 
 type SortDir = "asc" | "desc";
 
@@ -33,6 +34,8 @@ const columnsClassName =
   "[grid-template-columns:72px_minmax(300px,1.7fr)_minmax(220px,1fr)_110px_120px_minmax(180px,0.9fr)_160px]";
 
 const JobsPendingReleaseTable = () => {
+  const [jobs, setJobs] = useState<PendingReleaseJob[]>(pendingReleaseJobs);
+  const [quota, setQuota] = useState(pendingReleaseQuota);
   const [sortKey, setSortKey] = useState<PendingReleaseSortKey>("documentName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -57,7 +60,7 @@ const JobsPendingReleaseTable = () => {
   };
 
   const filteredJobs = useMemo(() => {
-    return [...pendingReleaseJobs].sort((a, b) => {
+    return [...jobs].sort((a, b) => {
       const getSortValue = (item: PendingReleaseJob) => {
         switch (sortKey) {
           case "documentName":
@@ -88,7 +91,30 @@ const JobsPendingReleaseTable = () => {
         ? String(aValue).localeCompare(String(bValue))
         : String(bValue).localeCompare(String(aValue));
     });
-  }, [sortDir, sortKey]);
+  }, [jobs, sortDir, sortKey]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiGet<{ jobs: PendingReleaseJob[]; pendingReleaseQuota: number }>(
+      "/user/jobs/pending-release",
+      "user"
+    )
+      .then((data) => {
+        if (!mounted) return;
+        if (data?.jobs?.length) setJobs(data.jobs);
+        if (typeof data?.pendingReleaseQuota === "number") {
+          setQuota(data.pendingReleaseQuota);
+        }
+      })
+      .catch(() => {
+        // Keep fallback.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const selectedJobs = useMemo(() => {
     return filteredJobs.filter((job) => selectedIds.includes(job.id));
@@ -132,7 +158,7 @@ const JobsPendingReleaseTable = () => {
             <div>
               <p className="paragraph text-sm">Quota</p>
               <p className="title-md leading-none">
-                {pendingReleaseQuota.toFixed(2)}
+                {quota.toFixed(2)}
               </p>
             </div>
           </div>
