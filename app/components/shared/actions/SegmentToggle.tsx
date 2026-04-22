@@ -28,7 +28,7 @@ const SegmentToggle = ({
     <div
       className={cn(
         "inline-flex items-center gap-2 rounded-2xl border p-2",
-        className
+        className,
       )}
       style={{
         background: "var(--surface)",
@@ -48,7 +48,7 @@ const SegmentToggle = ({
               active
                 ? "bg-brand-500 text-white shadow-sm"
                 : "text-[var(--paragraph)] hover:bg-[var(--surface-2)]",
-              buttonClassName
+              buttonClassName,
             )}
             aria-pressed={active}
           >
