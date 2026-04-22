@@ -1,85 +1,63 @@
 const mongoose = require("mongoose");
 
-const queueSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+const queueSchema = new Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true,
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    type: {
-      type: String,
-      default: "Secure Release Queue",
-    },
+    name: { type: String, required: true, unique: true, trim: true },
+    description: { type: String, default: "" },
+    type: { type: String, enum: ["Secure Release Queue", "Direct Print", "Managed Queue"], default: "Managed Queue" },
     status: {
-      type: String,
-      default: "Active",
-      index: true,
+      current: { type: String, enum: ["Active", "Paused", "Maintenance"], default: "Active", index: true },
+      pausedAt: { type: Date, default: null },
+      pauseReason: { type: String, default: "" },
     },
-    assignedPrinters: {
-      type: [String],
-      default: [],
+    printers: {
+      assigned: [{ type: Schema.Types.ObjectId, ref: "Printer" }],
+      default: { type: Schema.Types.ObjectId, ref: "Printer", default: null },
+      totalAssigned: { type: Number, default: 0 },
+      onlineCount: { type: Number, default: 0 },
     },
-    defaultPrinter: {
-      type: String,
-      default: "",
+    access: {
+      allowedRoles: { type: [String], default: ["User", "SubAdmin", "Admin"] },
+      allowedGroups: [{ type: Schema.Types.ObjectId, ref: "Group" }],
+      allowedDepartments: { type: [String], default: [] },
+      restrictedUsers: [{ type: Schema.Types.ObjectId, ref: "User" }],
+      requiresApproval: { type: Boolean, default: false },
+      approverIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     },
-    allowedRoles: {
-      type: [String],
-      default: ["User", "SubAdmin", "Admin"],
+    security: {
+      secureRelease: { type: Boolean, default: true },
+      manualReleaseRequired: { type: Boolean, default: true },
+      allowReleaseAllJobs: { type: Boolean, default: false },
+      requirePrinterAuthentication: { type: Boolean, default: true },
+      releaseMethod: { type: String, enum: ["PIN", "Card", "Biometric", "Manual"], default: "PIN" },
     },
-    allowedGroups: {
-      type: [String],
-      default: [],
+    jobManagement: {
+      retentionHours: { type: Number, default: 24 },
+      autoDeleteExpired: { type: Boolean, default: true },
+      maxConcurrentJobs: { type: Number, default: 0 },
+      jobQueueTimeout: { type: Number, default: 0 },
     },
-    allowedDepartments: {
-      type: [String],
-      default: [],
+    statistics: {
+      totalJobs: { type: Number, default: 0 },
+      pendingJobs: { type: Number, default: 0 },
+      printedToday: { type: Number, default: 0 },
+      printedThisMonth: { type: Number, default: 0 },
+      averageWaitTime: { type: Number, default: 0 },
+      totalPagesPrinted: { type: Number, default: 0 },
     },
-    restrictedUsers: {
-      type: [String],
-      default: [],
+    notifications: {
+      enabled: { type: Boolean, default: false },
+      alertOnPendingJobs: { type: Boolean, default: false },
+      alertThreshold: { type: Number, default: 0 },
+      emailNotifications: { type: Boolean, default: false },
+      emailRecipients: { type: [String], default: [] },
     },
-    pendingJobs: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    retentionHours: {
-      type: Number,
-      default: 24,
-      min: 1,
-    },
-    secureRelease: {
-      type: Boolean,
-      default: true,
-    },
-    manualReleaseRequired: {
-      type: Boolean,
-      default: true,
-    },
-    allowReleaseAllJobs: {
-      type: Boolean,
-      default: true,
-    },
-    requirePrinterAuthentication: {
-      type: Boolean,
-      default: true,
-    },
-    autoDeleteExpiredJobs: {
-      type: Boolean,
-      default: true,
-    },
+    notes: { type: String, default: "" },
+    isActive: { type: Boolean, default: true },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true },
 );
 
-module.exports = mongoose.model("Queue", queueSchema);
+module.exports = mongoose.models.Queue || mongoose.model("Queue", queueSchema);

@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const env = require("../../config/env");
-const { User } = require("../../models/User");
+const User = require("../../models/User");
 
 const signAccessToken = (user) => {
   return jwt.sign(
@@ -38,6 +38,7 @@ const registerLocalUser = async ({
     fullName,
     email,
     role: role || "User",
+    userType: role && role !== "User" ? "Staff" : "Student",
   });
 
   await user.setPassword(password);
@@ -67,6 +68,7 @@ const loginLocalUser = async ({ emailOrUsername, password }) => {
     throw error;
   }
 
+  user.auth.lastLoginAt = new Date();
   user.lastActivity = new Date();
   await user.save();
 

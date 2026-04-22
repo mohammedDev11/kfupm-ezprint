@@ -1,85 +1,125 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+const { Schema } = mongoose;
+
 const USER_ROLES = ["Admin", "SubAdmin", "User"];
 
-const userSchema = new mongoose.Schema(
+const userSchema = new Schema(
   {
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      lowercase: true,
-    },
-    fullName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      lowercase: true,
-    },
-    passwordHash: {
-      type: String,
-      required: true,
-      select: false,
-    },
-    role: {
-      type: String,
-      enum: USER_ROLES,
-      default: "User",
-      index: true,
-    },
-    department: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    phone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    restricted: {
-      type: Boolean,
-      default: false,
+    username: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    fullName: { type: String, required: true, trim: true },
+    email: { type: String, unique: true, trim: true, lowercase: true },
+    phone: { type: String, default: "", trim: true },
+    passwordHash: { type: String, required: true, select: false },
+    systemRole: { type: String, enum: USER_ROLES, default: "User", index: true },
+    userType: { type: String, enum: ["Student", "Faculty", "Staff"], default: "Student" },
+    department: { type: String, default: "", trim: true },
+    standing: { type: String, default: "Active", trim: true },
+    groupId: { type: Schema.Types.ObjectId, ref: "Group", default: null },
+    auth: {
+      ssoProvider: { type: String, default: "" },
+      externalId: { type: String, default: "", index: true },
+      lastLoginAt: { type: Date, default: null },
     },
     printing: {
+      enabled: { type: Boolean, default: true },
+      restricted: { type: Boolean, default: false },
       quota: {
-        remaining: {
-          type: Number,
-          default: 0,
-          min: 0,
-        },
+        remaining: { type: Number, default: 0, min: 0 },
+        lastResetAt: { type: Date, default: null },
+        resetPeriod: { type: String, default: "" },
+        maxAccumulation: { type: Number, default: 0 },
       },
+      primaryCardId: { type: String, default: "" },
+      printerPinHash: { type: String, default: "", select: false },
+      defaultQueueId: { type: Schema.Types.ObjectId, ref: "Queue", default: null },
+      pinLoginEnabled: { type: Boolean, default: false },
+      failedPinAttempts: { type: Number, default: 0 },
+      pinLockedUntil: { type: Date, default: null },
     },
-    standing: {
-      type: String,
-      default: "Active",
+    statistics: {
+      totalPagesPrinted: { type: Number, default: 0 },
+      totalJobsSubmitted: { type: Number, default: 0 },
+      lastActivityAt: { type: Date, default: null },
     },
-    ssoProvider: {
-      type: String,
-      default: "",
-    },
-    ssoExternalId: {
-      type: String,
-      default: "",
-      index: true,
-    },
-    lastActivity: {
-      type: Date,
-      default: null,
-    },
+    notes: { type: String, default: "" },
+    isActive: { type: Boolean, default: true },
   },
   {
     timestamps: true,
-  }
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
+
+userSchema.virtual("role")
+  .get(function getRole() {
+    return this.systemRole;
+  })
+  .set(function setRole(value) {
+    this.systemRole = value;
+  });
+
+userSchema.virtual("restricted")
+  .get(function getRestricted() {
+    return this.printing?.restricted ?? false;
+  })
+  .set(function setRestricted(value) {
+    if (!this.printing) {
+      this.printing = {};
+    }
+
+    this.printing.restricted = value;
+  });
+
+userSchema.virtual("lastActivity")
+  .get(function getLastActivity() {
+    return this.statistics?.lastActivityAt ?? null;
+  })
+  .set(function setLastActivity(value) {
+    if (!this.statistics) {
+      this.statistics = {};
+    }
+
+    this.statistics.lastActivityAt = value;
+  });
+
+userSchema.virtual("ssoProvider")
+  .get(function getSsoProvider() {
+    return this.auth?.ssoProvider ?? "";
+  })
+  .set(function setSsoProvider(value) {
+    if (!this.auth) {
+      this.auth = {};
+    }
+
+    this.auth.ssoProvider = value;
+  });
+
+userSchema.virtual("ssoExternalId")
+  .get(function getSsoExternalId() {
+    return this.auth?.externalId ?? "";
+  })
+  .set(function setSsoExternalId(value) {
+    if (!this.auth) {
+      this.auth = {};
+    }
+
+    this.auth.externalId = value;
+  });
+
+userSchema.pre("save", function normalizeIdentity(next) {
+  if (this.username) {
+    this.username = this.username.trim().toLowerCase();
+  }
+
+  if (this.email) {
+    this.email = this.email.trim().toLowerCase();
+  }
+
+  next();
+});
 
 userSchema.methods.setPassword = async function setPassword(password) {
   const saltRounds = 10;
@@ -98,21 +138,26 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     username: this.username,
     fullName: this.fullName,
     email: this.email,
-    role: this.role,
-    department: this.department,
     phone: this.phone,
+    role: this.role,
+    userType: this.userType,
+    standing: this.standing,
+    department: this.department,
     restricted: this.restricted,
     printing: this.printing,
     quota,
     balance: quota,
-    standing: this.standing,
+    groupId: this.groupId,
+    notes: this.notes,
+    isActive: this.isActive,
     lastActivity: this.lastActivity,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   };
 };
 
-module.exports = {
-  User: mongoose.model("User", userSchema),
-  USER_ROLES,
-};
+const User = mongoose.models.User || mongoose.model("User", userSchema);
+
+module.exports = User;
+module.exports.User = User;
+module.exports.USER_ROLES = USER_ROLES;

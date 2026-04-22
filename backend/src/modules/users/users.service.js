@@ -1,10 +1,32 @@
-const { User } = require("../../models/User");
+const User = require("../../models/User");
+const Queue = require("../../models/Queue");
 const QuotaTransaction = require("../../models/QuotaTransaction");
 const PrintJob = require("../../models/PrintJob");
 const {
   formatDate,
   formatDateTimeLabel,
 } = require("../../utils/formatters");
+
+const isPrintingRestricted = (user) =>
+  user.printing?.enabled === false || user.printing?.restricted === true;
+
+const getTransactionAmount = (transaction) => transaction.transaction?.amount ?? 0;
+
+const getTransactionType = (transaction) => transaction.transaction?.type || "";
+
+const getJobStatus = (job) => job.status?.current || "";
+
+const getJobPages = (job) => job.document?.pages || 0;
+
+const getDefaultQueueLabel = async (user) => {
+  // TODO: Replace this fallback once user-level default queue assignments are migrated.
+  if (!user.printing?.defaultQueueId) {
+    return "Secure Release Queue";
+  }
+
+  const queue = await Queue.findById(user.printing.defaultQueueId).select("name");
+  return queue?.name || "Configured queue";
+};
 
 const getRequiredUser = async (userId) => {
   const user = await User.findById(userId);
@@ -21,6 +43,7 @@ const getRequiredUser = async (userId) => {
 const getProfileData = async (userId) => {
   const user = await getRequiredUser(userId);
   const quota = user.printing?.quota?.remaining ?? 0;
+  const defaultQueueLabel = await getDefaultQueueLabel(user);
 
   return {
     user: user.toSafeObject(),
@@ -59,19 +82,19 @@ const getProfileData = async (userId) => {
           {
             id: "primary-card-id",
             label: "Primary Card ID",
-            value: "Not configured",
+            value: user.printing?.primaryCardId || "Not configured",
             sensitive: true,
           },
           { id: "account-quota", label: "Account Quota", value: quota.toFixed(2) },
           {
             id: "printing-status",
             label: "Printing Status",
-            value: user.restricted ? "Restricted" : "Enabled",
+            value: isPrintingRestricted(user) ? "Restricted" : "Enabled",
           },
           {
             id: "default-queue",
             label: "Default Queue",
-            value: "Secure Release Queue",
+            value: defaultQueueLabel,
           },
         ],
       },
@@ -81,18 +104,20 @@ const getProfileData = async (userId) => {
 
 const getQuotaOverviewData = async (userId) => {
   const user = await getRequiredUser(userId);
-  const transactions = await QuotaTransaction.find({ userId: user._id });
+  const transactions = await QuotaTransaction.find({ "user.userId": user._id });
   const quota = user.printing?.quota?.remaining ?? 0;
   const added = transactions
     .filter(
       (item) =>
-        ["Credit addition", "Refund", "Adjustment"].includes(item.type) &&
-        item.amount > 0,
+        ["Credit Addition", "Refund", "Adjustment", "Manual Override", "Group Allocation"].includes(
+          getTransactionType(item),
+        ) &&
+        getTransactionAmount(item) > 0,
     )
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + getTransactionAmount(item), 0);
   const spent = transactions
-    .filter((item) => item.type === "Print deduction")
-    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+    .filter((item) => getTransactionType(item) === "Print Deduction")
+    .reduce((sum, item) => sum + Math.abs(getTransactionAmount(item)), 0);
 
   return {
     quota,
@@ -127,28 +152,30 @@ const getQuotaOverviewData = async (userId) => {
 };
 
 const getQuotaTransactionsData = async (userId) => {
-  const transactions = await QuotaTransaction.find({ userId }).sort({
+  const transactions = await QuotaTransaction.find({ "user.userId": userId }).sort({
     createdAt: -1,
   });
 
   return {
     transactions: transactions.map((item) => {
-      const direction = item.amount >= 0 ? "in" : "out";
+      const amount = getTransactionAmount(item);
+      const type = getTransactionType(item);
+      const direction = amount >= 0 ? "in" : "out";
 
       return {
         id: item._id.toString(),
-        description: item.comment || item.type,
-        type: item.type,
-        amount: Math.abs(item.amount),
+        description: item.metadata?.comment || item.transaction?.reason || type,
+        type,
+        amount: Math.abs(amount),
         date: formatDate(item.createdAt),
         dateOrder: Number(
           new Date(item.createdAt).toISOString().slice(0, 10).replaceAll("-", ""),
         ),
         status: "Completed",
         direction,
-        balanceAfter: item.quotaAfter,
-        method: item.method || "System",
-        note: item.reference || "",
+        balanceAfter: item.quota?.amountAfter ?? 0,
+        method: item.metadata?.method || "System",
+        note: item.reference?.jobIdString || "",
       };
     }),
   };
@@ -156,10 +183,10 @@ const getQuotaTransactionsData = async (userId) => {
 
 const getDashboardData = async (userId, period) => {
   const user = await getRequiredUser(userId);
-  const allJobs = await PrintJob.find({ userId });
-  const pendingJobs = allJobs.filter((job) => job.status === "Pending Release");
-  const printedJobs = allJobs.filter((job) => job.status === "Printed");
-  const totalPages = printedJobs.reduce((sum, job) => sum + (job.pages || 0), 0);
+  const allJobs = await PrintJob.find({ "user.userId": userId });
+  const pendingJobs = allJobs.filter((job) => getJobStatus(job) === "Pending Release");
+  const printedJobs = allJobs.filter((job) => getJobStatus(job) === "Printed");
+  const totalPages = printedJobs.reduce((sum, job) => sum + getJobPages(job), 0);
   const quota = user.printing?.quota?.remaining ?? 0;
 
   return {
@@ -232,12 +259,12 @@ const getAdminUsersData = async () => {
   return Promise.all(
     users.map(async (user) => {
       const stats = await PrintJob.aggregate([
-        { $match: { userId: user._id } },
+        { $match: { "user.userId": user._id } },
         {
           $group: {
-            _id: "$userId",
+            _id: "$user.userId",
             jobs: { $sum: 1 },
-            pages: { $sum: "$pages" },
+            pages: { $sum: "$document.pages" },
           },
         },
       ]);
@@ -252,11 +279,11 @@ const getAdminUsersData = async () => {
         standing: user.standing || "Student",
         phone: user.phone || "-",
         quota: user.printing?.quota?.remaining ?? 0,
-        restricted: user.restricted ? "Restricted" : "Unrestricted",
+        restricted: isPrintingRestricted(user) ? "Restricted" : "Unrestricted",
         pages: stats[0]?.pages || 0,
         jobs: stats[0]?.jobs || 0,
-        lastActivity: user.lastActivity
-          ? formatDateTimeLabel(user.lastActivity)
+        lastActivity: user.statistics?.lastActivityAt
+          ? formatDateTimeLabel(user.statistics.lastActivityAt)
           : "No activity",
         notes: "",
       };

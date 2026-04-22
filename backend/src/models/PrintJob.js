@@ -1,93 +1,79 @@
 const mongoose = require("mongoose");
 
-const printJobSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+const printJobSchema = new Schema(
   {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
+    jobId: { type: String, required: true, unique: true, trim: true },
+    documentName: { type: String, default: "" },
+    user: {
+      userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+      username: { type: String, default: "" },
+      department: { type: String, default: "" },
     },
-    printerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Printer",
-      default: null,
-      index: true,
+    printer: {
+      printerId: { type: Schema.Types.ObjectId, ref: "Printer", default: null, index: true },
+      printerName: { type: String, default: "" },
+      queueId: { type: Schema.Types.ObjectId, ref: "Queue", default: null, index: true },
+      queueName: { type: String, default: "" },
     },
-    queueId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Queue",
-      default: null,
-      index: true,
+    document: {
+      fileName: { type: String, default: "" },
+      fileType: { type: String, default: "pdf" },
+      fileSize: { type: Number, default: 0 },
+      pages: { type: Number, required: true, min: 1 },
+      originalFileName: { type: String, default: "" },
     },
-    jobId: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
+    printSettings: {
+      colorMode: { type: String, default: "B&W" },
+      mode: { type: String, enum: ["Simplex", "Duplex"], default: "Simplex" },
+      paperSize: { type: String, default: "" },
+      quality: { type: String, default: "" },
+      copies: { type: Number, default: 1 },
+      attributes: { type: [String], default: [] },
+      options: { type: [String], default: [] },
     },
-    documentName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    pages: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
-    cost: {
-      type: Number,
-      required: true,
-      min: 0,
+    source: {
+      clientType: { type: String, default: "Web Upload" },
+      sourceIp: { type: String, default: "" },
+      userAgent: { type: String, default: "" },
     },
     status: {
-      type: String,
-      enum: ["Pending Release", "Printed", "Refunded", "Failed", "Cancelled"],
-      default: "Pending Release",
-      index: true,
+      current: {
+        type: String,
+        enum: ["Pending Release", "Printed", "Refunded", "Failed", "Cancelled", "Held"],
+        default: "Pending Release",
+        index: true,
+      },
+      submittedAt: { type: Date, default: Date.now },
+      printedAt: { type: Date, default: null },
+      cancelledAt: { type: Date, default: null },
+      releasedAt: { type: Date, default: null },
+      readinessPercent: { type: Number, min: 0, max: 100, default: 0 },
     },
-    attributes: {
-      type: [String],
-      default: [],
+    cost: {
+      costPerPage: { type: Number, default: 0 },
+      totalCost: { type: Number, required: true, min: 0 },
+      quotaDeducted: { type: Boolean, default: false },
+      refundedAmount: { type: Number, default: 0 },
+      refundedAt: { type: Date, default: null },
     },
-    options: {
-      type: [String],
-      default: [],
+    release: {
+      method: { type: String, enum: ["PIN", "Card", "Manual", "Biometric"], default: "PIN" },
+      pinHash: { type: String, default: "" },
+      cardId: { type: String, default: "" },
+      releaseCode: { type: String, default: "" },
+      releaseCodeExpiry: { type: Date, default: null },
+      maxReleaseAttempts: { type: Number, default: 0 },
+      failedReleaseAttempts: { type: Number, default: 0 },
     },
-    clientSource: {
-      type: String,
-      default: "Web Upload",
-      trim: true,
-    },
-    fileType: {
-      type: String,
-      default: "pdf",
-      trim: true,
-    },
-    printMode: {
-      type: String,
-      default: "Simplex",
-      trim: true,
-    },
-    readinessPercent: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 0,
-    },
-    submittedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    printedAt: {
-      type: Date,
-      default: null,
-    },
+    notes: { type: String, default: "" },
+    errorMessage: { type: String, default: "" },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true },
 );
 
-module.exports = mongoose.model("PrintJob", printJobSchema);
+printJobSchema.index({ "user.userId": 1, "status.current": 1 });
+printJobSchema.index({ "printer.printerId": 1, "status.submittedAt": -1 });
+
+module.exports = mongoose.models.PrintJob || mongoose.model("PrintJob", printJobSchema);

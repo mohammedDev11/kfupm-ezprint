@@ -4,8 +4,16 @@ const authRoutes = require("../modules/auth/auth.routes");
 const userRoutes = require("../modules/users/users.routes");
 const userAdminRoutes = require("../modules/users/users.admin.routes");
 const jobRoutes = require("../modules/jobs/jobs.routes");
+const jobAdminRoutes = require("../modules/jobs/jobs.admin.routes");
 const printerRoutes = require("../modules/printers/printers.routes");
 const queueRoutes = require("../modules/queues/queues.routes");
+const groupRoutes = require("../modules/groups/groups.routes");
+const notificationRoutes = require("../modules/notifications/notifications.routes");
+const notificationAdminRoutes = require("../modules/notifications/notifications.admin.routes");
+const logRoutes = require("../modules/logs/logs.routes");
+const quotaRoutes = require("../modules/quota/quota.routes");
+const quotaAdminRoutes = require("../modules/quota/quota.admin.routes");
+const reportRoutes = require("../modules/reports/reports.routes");
 
 const router = express.Router();
 
@@ -20,8 +28,16 @@ router.use("/health", healthRoutes);
 router.use("/auth", authRoutes);
 router.use("/user", userRoutes);
 router.use("/user/jobs", jobRoutes);
+router.use("/user/notifications", notificationRoutes);
+router.use("/user/quota", quotaRoutes);
 router.use("/admin/users", userAdminRoutes);
+router.use("/admin/groups", groupRoutes);
+router.use("/admin/jobs", jobAdminRoutes);
 router.use("/admin/printers", printerRoutes);
 router.use("/admin/queues", queueRoutes);
+router.use("/admin/notifications", notificationAdminRoutes);
+router.use("/admin/logs", logRoutes);
+router.use("/admin/quota", quotaAdminRoutes);
+router.use("/admin/reports", reportRoutes);
 
 module.exports = router;
