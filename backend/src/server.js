@@ -1,11 +1,13 @@
 const app = require("./app");
 const env = require("./config/env");
 const { connectDatabase } = require("./config/db");
+const { ensureDefaultPrinterSetup } = require("./modules/printers/printer.provision.service");
 
 const startServer = async () => {
   try {
     const connection = await connectDatabase();
     console.log(`MongoDB connected: ${connection.name}`);
+    await ensureDefaultPrinterSetup();
 
     app.listen(env.port, () => {
       console.log(

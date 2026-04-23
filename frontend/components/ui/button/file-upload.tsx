@@ -744,7 +744,6 @@ import { useDropzone, type Accept } from "react-dropzone";
 import { cn } from "@/lib/cn";
 import ExpandedButton from "../button/ExpandedButton";
 import Button from "../button/Button";
-import { printUploadFileActions } from "@/lib/mock-data/User/print";
 
 const mainVariant = {
   initial: { x: 0, y: 0 },
@@ -754,6 +753,16 @@ const mainVariant = {
 const secondaryVariant = {
   initial: { opacity: 0, scale: 0.98 },
   animate: { opacity: 1, scale: 1 },
+};
+
+const previewFileAction = {
+  label: "Preview",
+  icon: IconUpload,
+};
+
+const deleteFileAction = {
+  label: "Delete",
+  icon: IconX,
 };
 
 type FileUploadProps = {
@@ -1174,15 +1183,6 @@ export const FileUpload = ({
 
                 <div className="space-y-4">
                   {files.map((file, idx) => {
-                    const previewAction = printUploadFileActions.find(
-                      (action) => action.id === "preview-file"
-                    );
-                    const deleteAction = printUploadFileActions.find(
-                      (action) => action.id === "delete-file"
-                    );
-
-                    if (!previewAction || !deleteAction) return null;
-
                     return (
                       <motion.div
                         key={getFileId(file)}
@@ -1252,8 +1252,8 @@ export const FileUpload = ({
                             {showPreview && (
                               <ExpandedButton
                                 id={`preview-${getFileId(file)}`}
-                                label={previewAction.label}
-                                icon={previewAction.icon}
+                                label={previewFileAction.label}
+                                icon={previewFileAction.icon}
                                 variant="surface"
                                 onClick={(e) => {
                                   e?.stopPropagation?.();
@@ -1265,8 +1265,8 @@ export const FileUpload = ({
                             {showRemove && (
                               <ExpandedButton
                                 id={`delete-${getFileId(file)}`}
-                                label={deleteAction.label}
-                                icon={deleteAction.icon}
+                                label={deleteFileAction.label}
+                                icon={deleteFileAction.icon}
                                 variant="danger"
                                 onClick={(e) => {
                                   e?.stopPropagation?.();

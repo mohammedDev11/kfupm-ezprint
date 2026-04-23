@@ -1,39 +1,150 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CreditCard,
   FileText,
   Folder,
   Printer,
+  RefreshCw,
   Users,
 } from "lucide-react";
+
+import Card from "@/components/ui/card/Card";
 import {
   Dropdown,
   DropdownContent,
   DropdownItem,
   DropdownTrigger,
 } from "@/components/ui/dropdown/Dropdown";
-import Card from "@/components/ui/card/Card";
-import UsageProgress from "@/components/shared/features/UsageProgress";
-import {
-  reportCategories,
-  reportPeriods,
-  type ReportCategoryId,
-  type ReportItem,
-  type ReportPeriod,
-} from "@/lib/mock-data/Admin/reports";
 import { cn } from "@/lib/cn";
+import {
+  exportTableData,
+  TableExportColumn,
+  TableExportFormat,
+} from "@/lib/export";
+import { apiGet } from "@/services/api";
+
 import ReportExportButton from "./ReportExportButton";
 
-const categoryIcons: Record<ReportCategoryId, React.ReactNode> = {
-  user: <Users className="h-4 w-4" />,
-  printer: <Printer className="h-4 w-4" />,
-  group: <Folder className="h-4 w-4" />,
-  account: <CreditCard className="h-4 w-4" />,
-  summary: <BarChart3 className="h-4 w-4" />,
+type ReportsSummary = {
+  period: string;
+  generatedAt: string;
+  overviewCards: Array<{
+    id: string;
+    title: string;
+    value: string;
+    helperText: string;
+  }>;
+  systemSummary: {
+    totalUsers: number;
+    activePrinters: number;
+    activeQueues: number;
+    unreadNotifications: number;
+    totalJobs: number;
+    printedPages: number;
+    pendingRelease: number;
+    totalPrintCost: number;
+  };
+  quotaSummary: Array<{
+    type: string;
+    total: number;
+    count: number;
+  }>;
+  topUsers: Array<{
+    userId: string;
+    username: string;
+    jobs: number;
+    pages: number;
+    cost: number;
+  }>;
+  topPrinters: Array<{
+    printerId: string;
+    printerName: string;
+    jobs: number;
+    pages: number;
+    cost: number;
+  }>;
+  jobStatusBreakdown: Array<{
+    status: string;
+    count: number;
+    pages: number;
+    cost: number;
+  }>;
+  groupSummary: Array<{
+    id: string;
+    name: string;
+    members: number;
+    jobs: number;
+    pages: number;
+    cost: number;
+  }>;
 };
+
+type ReportCategoryId = "summary" | "printer" | "user" | "group" | "account";
+
+type ReportDefinition<T> = {
+  id: string;
+  title: string;
+  description: string;
+  rows: T[];
+  columns: TableExportColumn<T>[];
+  filename: string;
+};
+
+type CategoryDefinition = {
+  id: ReportCategoryId;
+  label: string;
+  panelTitle: string;
+  panelDescription: string;
+  Icon: typeof BarChart3;
+};
+
+const periods = ["Last 7 days", "Last 30 days", "Last 90 days", "This year"];
+
+const categoryDefinitions: CategoryDefinition[] = [
+  {
+    id: "summary",
+    label: "Summary",
+    panelTitle: "Operational Summary Reports",
+    panelDescription:
+      "Review the live report snapshot for system totals and job status from the selected reporting window.",
+    Icon: BarChart3,
+  },
+  {
+    id: "printer",
+    label: "Printers",
+    panelTitle: "Printer Activity Reports",
+    panelDescription:
+      "Compare printer output and cost using the same live metrics powering the admin dashboard.",
+    Icon: Printer,
+  },
+  {
+    id: "user",
+    label: "Users",
+    panelTitle: "User Activity Reports",
+    panelDescription:
+      "Export the current top-user activity summary without relying on mock report rows.",
+    Icon: Users,
+  },
+  {
+    id: "group",
+    label: "Groups",
+    panelTitle: "Group Usage Reports",
+    panelDescription:
+      "Track group printing volume, membership, and cost from the backend group summary.",
+    Icon: Folder,
+  },
+  {
+    id: "account",
+    label: "Accounts",
+    panelTitle: "Quota And Account Reports",
+    panelDescription:
+      "Review quota transaction totals and counts for the selected period.",
+    Icon: CreditCard,
+  },
+];
 
 function ReportTabs({
   value,
@@ -50,8 +161,9 @@ function ReportTabs({
         borderColor: "var(--border)",
       }}
     >
-      {reportCategories.map((category) => {
+      {categoryDefinitions.map((category) => {
         const active = category.id === value;
+        const Icon = category.Icon;
 
         return (
           <button
@@ -62,10 +174,10 @@ function ReportTabs({
               "inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition-all duration-200",
               active
                 ? "bg-brand-500 text-white shadow-sm"
-                : "text-[var(--paragraph)] hover:bg-[var(--surface-2)]"
+                : "text-[var(--paragraph)] hover:bg-[var(--surface-2)]",
             )}
           >
-            {categoryIcons[category.id]}
+            <Icon className="h-4 w-4" />
             <span>{category.label}</span>
           </button>
         );
@@ -74,9 +186,38 @@ function ReportTabs({
   );
 }
 
-function ReportRow({ report }: { report: ReportItem }) {
-  const [period, setPeriod] = useState<ReportPeriod>(report.defaultPeriod);
+function SummaryCard({
+  title,
+  value,
+  helper,
+}: {
+  title: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div
+      className="rounded-2xl border p-5"
+      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {title}
+      </p>
+      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
+    </div>
+  );
+}
 
+function ReportRow<T>({
+  report,
+  period,
+  onExport,
+}: {
+  report: ReportDefinition<T>;
+  period: string;
+  onExport: (report: ReportDefinition<T>, format: TableExportFormat) => void;
+}) {
   return (
     <div className="flex flex-col gap-5 border-b border-[var(--border)] px-6 py-5 last:border-b-0 lg:flex-row lg:items-start lg:justify-between">
       <div className="flex min-w-0 items-start gap-4">
@@ -91,40 +232,31 @@ function ReportRow({ report }: { report: ReportItem }) {
           <h3 className="text-xl font-semibold text-[var(--foreground)]">
             {report.title}
           </h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {report.description}
+          <p className="mt-1 text-sm text-[var(--muted)]">{report.description}</p>
+          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            {report.rows.length} row{report.rows.length === 1 ? "" : "s"} in {period}
           </p>
-
-          {typeof report.usagePercent === "number" ? (
-            <UsageProgress value={report.usagePercent} className="mt-3" />
-          ) : null}
         </div>
       </div>
 
       <div className="flex flex-col gap-4 lg:items-end">
-        <Dropdown
-          value={period}
-          onValueChange={(value) => setPeriod(value as ReportPeriod)}
+        <div
+          className="inline-flex items-center rounded-xl border px-4 py-3 text-sm font-semibold"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+            color: "var(--title)",
+          }}
         >
-          <DropdownTrigger className="h-12 min-w-[150px] rounded-xl px-4 text-sm">
-            {period}
-          </DropdownTrigger>
-
-          <DropdownContent align="right" widthClassName="w-[180px]">
-            {reportPeriods.map((item) => (
-              <DropdownItem key={item} value={item}>
-                {item}
-              </DropdownItem>
-            ))}
-          </DropdownContent>
-        </Dropdown>
+          {period}
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {report.supportedFormats.map((format) => (
+          {(["PDF", "Excel", "CSV"] as TableExportFormat[]).map((format) => (
             <ReportExportButton
               key={format}
               format={format}
-              onClick={() => console.log(`Export ${report.title} as ${format}`)}
+              onClick={() => onExport(report, format)}
             />
           ))}
         </div>
@@ -132,33 +264,246 @@ function ReportRow({ report }: { report: ReportItem }) {
     </div>
   );
 }
-const ReportsPanel = () => {
-  const [activeCategory, setActiveCategory] =
-    useState<ReportCategoryId>("printer");
 
-  const currentCategory = useMemo(
-    () => reportCategories.find((item) => item.id === activeCategory)!,
-    [activeCategory]
-  );
+const toMoney = (value: number) => `${value.toFixed(2)} SAR`;
+
+export default function ReportsPanel() {
+  const [activeCategory, setActiveCategory] = useState<ReportCategoryId>("summary");
+  const [period, setPeriod] = useState("Last 30 days");
+  const [summary, setSummary] = useState<ReportsSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSummary = async () => {
+      setLoading(true);
+
+      try {
+        const query = encodeURIComponent(period);
+        const data = await apiGet<ReportsSummary>(
+          `/admin/reports/summary?period=${query}`,
+          "admin",
+        );
+
+        if (!mounted) return;
+        setSummary(data);
+        setError("");
+      } catch (requestError) {
+        if (!mounted) return;
+        setSummary(null);
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load report summary.",
+        );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSummary();
+
+    return () => {
+      mounted = false;
+    };
+  }, [period, refreshTick]);
+
+  const reportCatalog = useMemo(() => {
+    const overviewRows =
+      summary?.overviewCards.map((card) => ({
+        metric: card.title,
+        value: card.value,
+        helper: card.helperText,
+      })) || [];
+
+    const reports: Record<ReportCategoryId, ReportDefinition<any>[]> = {
+      summary: [
+        {
+          id: "system-overview",
+          title: "System Overview",
+          description:
+            "Exports the live overview cards shown on the admin dashboard.",
+          rows: overviewRows,
+          filename: "alpha-queue-system-overview",
+          columns: [
+            { label: "Metric", value: (row) => row.metric },
+            { label: "Value", value: (row) => row.value },
+            { label: "Helper", value: (row) => row.helper },
+          ],
+        },
+        {
+          id: "job-status-breakdown",
+          title: "Job Status Breakdown",
+          description:
+            "Current job volumes, pages, and cost grouped by backend job status.",
+          rows: summary?.jobStatusBreakdown || [],
+          filename: "alpha-queue-job-status-breakdown",
+          columns: [
+            { label: "Status", value: (row) => row.status },
+            { label: "Jobs", value: (row) => row.count },
+            { label: "Pages", value: (row) => row.pages },
+            { label: "Cost", value: (row) => toMoney(row.cost) },
+          ],
+        },
+      ],
+      printer: [
+        {
+          id: "top-printers",
+          title: "Top Printers",
+          description:
+            "Highest-volume printers for the selected reporting period.",
+          rows: summary?.topPrinters || [],
+          filename: "alpha-queue-top-printers",
+          columns: [
+            { label: "Printer", value: (row) => row.printerName },
+            { label: "Jobs", value: (row) => row.jobs },
+            { label: "Pages", value: (row) => row.pages },
+            { label: "Cost", value: (row) => toMoney(row.cost) },
+          ],
+        },
+      ],
+      user: [
+        {
+          id: "top-users",
+          title: "Top Users",
+          description:
+            "Users with the highest activity based on the live print job records.",
+          rows: summary?.topUsers || [],
+          filename: "alpha-queue-top-users",
+          columns: [
+            { label: "Username", value: (row) => row.username },
+            { label: "Jobs", value: (row) => row.jobs },
+            { label: "Pages", value: (row) => row.pages },
+            { label: "Cost", value: (row) => toMoney(row.cost) },
+          ],
+        },
+      ],
+      group: [
+        {
+          id: "group-activity",
+          title: "Group Activity",
+          description:
+            "Group activity totals from the backend group summary.",
+          rows: summary?.groupSummary || [],
+          filename: "alpha-queue-group-activity",
+          columns: [
+            { label: "Group", value: (row) => row.name },
+            { label: "Members", value: (row) => row.members },
+            { label: "Jobs", value: (row) => row.jobs },
+            { label: "Pages", value: (row) => row.pages },
+            { label: "Cost", value: (row) => toMoney(row.cost) },
+          ],
+        },
+      ],
+      account: [
+        {
+          id: "quota-summary",
+          title: "Quota Summary",
+          description:
+            "Quota transaction totals and counts grouped by transaction type.",
+          rows: summary?.quotaSummary || [],
+          filename: "alpha-queue-quota-summary",
+          columns: [
+            { label: "Type", value: (row) => row.type },
+            { label: "Transactions", value: (row) => row.count },
+            { label: "Total", value: (row) => toMoney(row.total) },
+          ],
+        },
+      ],
+    };
+
+    return reports;
+  }, [summary]);
+
+  const currentCategoryDefinition =
+    categoryDefinitions.find((item) => item.id === activeCategory) ||
+    categoryDefinitions[0];
+  const currentReports = reportCatalog[activeCategory];
+  const quickExportReport = currentReports[0];
+  const CategoryIcon = currentCategoryDefinition.Icon;
+
+  const handleExport = <T,>(report: ReportDefinition<T>, format: TableExportFormat) => {
+    exportTableData({
+      title: `${report.title} (${period})`,
+      filename: report.filename,
+      format,
+      columns: report.columns,
+      rows: report.rows,
+    });
+  };
 
   return (
     <section className="space-y-6">
-      <ReportTabs value={activeCategory} onChange={setActiveCategory} />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <ReportTabs value={activeCategory} onChange={setActiveCategory} />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Dropdown value={period} onValueChange={setPeriod}>
+            <DropdownTrigger className="h-12 min-w-[190px] px-4 text-sm">
+              {period}
+            </DropdownTrigger>
+
+            <DropdownContent align="right" widthClassName="w-[220px]">
+              {periods.map((item) => (
+                <DropdownItem key={item} value={item}>
+                  {item}
+                </DropdownItem>
+              ))}
+            </DropdownContent>
+          </Dropdown>
+
+          <button
+            type="button"
+            onClick={() => setRefreshTick((current) => current + 1)}
+            className="inline-flex h-12 items-center gap-2 rounded-md border px-4 text-sm font-semibold transition"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--surface)",
+              color: "var(--title)",
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {(summary?.overviewCards || []).map((card) => (
+          <SummaryCard
+            key={card.id}
+            title={card.title}
+            value={card.value}
+            helper={card.helperText}
+          />
+        ))}
+      </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
         <Card className="h-fit rounded-[28px]">
-          <div className="space-y-6 ">
+          <div className="space-y-6">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-2xl"
               style={{ background: "var(--surface-2)" }}
             >
-              <BarChart3 className="h-8 w-8 text-brand-500" />
+              <CategoryIcon className="h-8 w-8 text-brand-500" />
             </div>
 
             <div>
-              <h2 className="title-md">{currentCategory.panelTitle}</h2>
+              <h2 className="title-md">{currentCategoryDefinition.panelTitle}</h2>
               <p className="paragraph mt-3">
-                {currentCategory.panelDescription}
+                {currentCategoryDefinition.panelDescription}
               </p>
             </div>
 
@@ -170,20 +515,20 @@ const ReportsPanel = () => {
                 className="text-xs font-semibold uppercase tracking-[0.18em]"
                 style={{ color: "var(--muted)" }}
               >
-                Export formats
+                Quick export
               </p>
 
               <div className="mt-4 flex flex-wrap gap-3">
-                {currentCategory.exportFormats.map((format) => (
+                {(["PDF", "Excel", "CSV"] as TableExportFormat[]).map((format) => (
                   <ReportExportButton
                     key={format}
                     format={format}
                     className="hover:scale-100"
-                    onClick={() =>
-                      console.log(
-                        `Quick export for ${currentCategory.label}: ${format}`
-                      )
-                    }
+                    onClick={() => {
+                      if (quickExportReport) {
+                        handleExport(quickExportReport, format);
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -197,27 +542,56 @@ const ReportsPanel = () => {
                 className="text-xs font-semibold uppercase tracking-[0.18em]"
                 style={{ color: "var(--muted)" }}
               >
-                Report readiness
+                Current state
               </p>
 
-              <UsageProgress
-                value={currentCategory.overviewPercent}
-                className="mt-4"
-              />
+              <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
+                <p>
+                  Period:{" "}
+                  <span className="font-semibold text-[var(--title)]">{period}</span>
+                </p>
+                <p>
+                  Generated:{" "}
+                  <span className="font-semibold text-[var(--title)]">
+                    {summary?.generatedAt
+                      ? new Date(summary.generatedAt).toLocaleString()
+                      : "Waiting for backend data"}
+                  </span>
+                </p>
+                <p>
+                  Reports in category:{" "}
+                  <span className="font-semibold text-[var(--title)]">
+                    {currentReports.length}
+                  </span>
+                </p>
+              </div>
             </div>
           </div>
         </Card>
 
-        <Card className="rounded-[28px] p-0 overflow-hidden">
-          <div className="divide-y divide-[var(--border)]">
-            {currentCategory.reports.map((report) => (
-              <ReportRow key={report.id} report={report} />
-            ))}
-          </div>
+        <Card className="overflow-hidden rounded-[28px] p-0">
+          {loading ? (
+            <div className="px-6 py-12 text-center text-sm text-[var(--muted)]">
+              Loading report definitions...
+            </div>
+          ) : currentReports.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-[var(--muted)]">
+              No report data is available for this category yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--border)]">
+              {currentReports.map((report) => (
+                <ReportRow
+                  key={report.id}
+                  report={report}
+                  period={period}
+                  onExport={handleExport}
+                />
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </section>
   );
-};
-
-export default ReportsPanel;
+}

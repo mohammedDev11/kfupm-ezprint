@@ -40,7 +40,6 @@ const normalizeCreateJobPayload = (payload = {}) => {
 
   return {
     queueId,
-    printerId: toStringValue(payload.printerId),
     documentName:
       toStringValue(payload.documentName) ||
       toStringValue(payload.originalFileName) ||
@@ -77,7 +76,39 @@ const normalizeJobIdsPayload = (payload = {}) => {
   };
 };
 
+const normalizeUploadPrintHeaders = (headers = {}) => {
+  const fileName = toStringValue(headers["x-alpha-file-name"]);
+  const originalFileName =
+    toStringValue(headers["x-alpha-original-file-name"]) || fileName;
+
+  if (!fileName && !originalFileName) {
+    throw createHttpError(400, "x-alpha-file-name header is required.");
+  }
+
+  return {
+    queueId: toStringValue(headers["x-alpha-queue-id"]),
+    documentName:
+      toStringValue(headers["x-alpha-document-name"]) ||
+      originalFileName ||
+      fileName,
+    fileName: fileName || originalFileName,
+    originalFileName: originalFileName || fileName,
+    fileType: toStringValue(headers["content-type"] || "application/pdf"),
+    fileSize: toNumberValue(headers["content-length"], 0),
+    copies: Math.max(1, toNumberValue(headers["x-alpha-copies"], 1)),
+    colorMode: toStringValue(headers["x-alpha-color-mode"] || "B&W"),
+    mode: /duplex/i.test(toStringValue(headers["x-alpha-mode"]))
+      ? "Duplex"
+      : "Simplex",
+    paperSize: toStringValue(headers["x-alpha-paper-size"] || "A4"),
+    quality: toStringValue(headers["x-alpha-quality"] || "Normal"),
+    notes: toStringValue(headers["x-alpha-notes"]),
+    clientType: toStringValue(headers["x-alpha-client-type"] || "Web Print"),
+  };
+};
+
 module.exports = {
   normalizeCreateJobPayload,
   normalizeJobIdsPayload,
+  normalizeUploadPrintHeaders,
 };

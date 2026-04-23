@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dropdown/Dropdown";
 import {
   printerFilterOptions,
-  printersData,
   type PrinterFilterValue,
   type PrinterItem,
 } from "@/lib/mock-data/Admin/printers";
@@ -30,10 +29,11 @@ import PrinterCard from "./PrinterCard";
 import AddPrinterModal from "./PrinterDetailsModal";
 
 const PrintersGrid = () => {
-  const [printers, setPrinters] = useState<PrinterItem[]>(printersData);
+  const [printers, setPrinters] = useState<PrinterItem[]>([]);
   const [search, setSearch] = useState("");
   const [columns, setColumns] = useState<"2" | "3">("2");
   const [filter, setFilter] = useState<PrinterFilterValue>("all");
+  const [loadError, setLoadError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterItem | null>(
     null,
@@ -42,12 +42,16 @@ const PrintersGrid = () => {
   useEffect(() => {
     apiGet<{ printers: PrinterItem[] }>("/admin/printers", "admin")
       .then((data) => {
-        if (data?.printers?.length) {
-          setPrinters(data.printers);
-        }
+        setPrinters(Array.isArray(data?.printers) ? data.printers : []);
+        setLoadError("");
       })
-      .catch(() => {
-        // keep fallback
+      .catch((requestError) => {
+        setPrinters([]);
+        setLoadError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load printers.",
+        );
       });
   }, []);
 
@@ -163,6 +167,21 @@ const PrintersGrid = () => {
             </Button>
           </TableControls>
         </TableTop>
+
+        {loadError ? (
+          <div className="px-6 pb-2">
+            <p
+              className="rounded-2xl border px-4 py-3 text-sm"
+              style={{
+                borderColor: "rgba(239, 68, 68, 0.2)",
+                background: "rgba(254, 242, 242, 1)",
+                color: "rgb(185, 28, 28)",
+              }}
+            >
+              {loadError}
+            </p>
+          </div>
+        ) : null}
 
         <div className="p-6">
           {filteredPrinters.length === 0 ? (

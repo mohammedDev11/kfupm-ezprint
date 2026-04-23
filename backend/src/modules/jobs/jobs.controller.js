@@ -2,13 +2,19 @@ const {
   getRecentJobsData,
   getPendingReleaseJobsData,
   createPrintJobData,
+  getPrintJobOptionsData,
+  uploadAndPrintJobData,
   releaseJobData,
   releaseJobsByIdsData,
   releaseAllEligibleJobsData,
   cancelPendingJobData,
   getAdminPendingReleaseJobsData,
 } = require("./jobs.service");
-const { normalizeCreateJobPayload, normalizeJobIdsPayload } = require("./jobs.validation");
+const {
+  normalizeCreateJobPayload,
+  normalizeJobIdsPayload,
+  normalizeUploadPrintHeaders,
+} = require("./jobs.validation");
 
 const getActor = (req) => ({
   userId: req.userId,
@@ -48,6 +54,41 @@ const createPrintJob = async (req, res, next) => {
   try {
     const payload = normalizeCreateJobPayload(req.body);
     const data = await createPrintJobData(req.userId, payload, getActor(req));
+
+    return res.status(201).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const getPrintJobOptions = async (req, res, next) => {
+  try {
+    const data = await getPrintJobOptionsData(req.userId);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const uploadAndPrintJob = async (req, res, next) => {
+  try {
+    const payload = normalizeUploadPrintHeaders(req.headers);
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+    const data = await uploadAndPrintJobData(
+      req.userId,
+      {
+        ...payload,
+        buffer,
+      },
+      getActor(req),
+    );
 
     return res.status(201).json({
       success: true,
@@ -197,6 +238,8 @@ module.exports = {
   getRecentJobs,
   getPendingReleaseJobs,
   createPrintJob,
+  getPrintJobOptions,
+  uploadAndPrintJob,
   releaseJob,
   releaseSelectedJobs,
   releaseAllEligibleJobs,

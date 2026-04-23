@@ -21,7 +21,6 @@ import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import Modal from "@/components/ui/modal/Modal";
 
-import { WalletTransaction, walletTransactions } from "@/lib/mock-data/User/wallet";
 import { apiGet } from "@/services/api";
 
 import { cn } from "@/lib/cn";
@@ -31,13 +30,26 @@ import { cn } from "@/lib/cn";
 type SortKey = "date" | "amount" | "type" | "status";
 type SortDir = "asc" | "desc";
 
+type WalletTransaction = {
+  id: string;
+  description: string;
+  type: string;
+  amount: number;
+  date: string;
+  dateOrder: number;
+  status: string;
+  direction: "in" | "out";
+  balanceAfter: number;
+  method: string;
+  note: string;
+};
+
 /* ================= UI ================= */
 
 const columnsClass = "[grid-template-columns:70px_1fr_140px_140px_140px_140px]";
 
 const WalletTransactionsTable = () => {
-  const [transactions, setTransactions] =
-    useState<WalletTransaction[]>(walletTransactions);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("date");
@@ -104,12 +116,10 @@ const WalletTransactionsTable = () => {
       "user",
     )
       .then((data) => {
-        if (!mounted || !data?.transactions?.length) return;
-        setTransactions(data.transactions);
+        if (!mounted) return;
+        setTransactions(data?.transactions || []);
       })
-      .catch(() => {
-        // Keep local fallback if API fails.
-      });
+      .catch(() => {});
 
     return () => {
       mounted = false;

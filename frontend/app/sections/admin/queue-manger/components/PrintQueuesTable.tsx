@@ -1044,11 +1044,8 @@ import Modal from "@/components/ui/modal/Modal";
 import {
   queueDepartmentOptions,
   queueFormDefaults,
-  queueGroupOptions,
   queueModalTabs,
-  queuePrinterOptions,
   queueRoleOptions,
-  queuesData,
   queueStatusMeta,
   queueTableColumns,
   queueTypeMeta,
@@ -1056,7 +1053,6 @@ import {
   type QueueSortKey,
   type QueueStatus,
   type QueueTableItem,
-  type QueueType,
 } from "@/lib/mock-data/Admin/queues";
 import { apiGet } from "@/services/api";
 import { Plus, X } from "lucide-react";
@@ -1068,14 +1064,65 @@ type SortDir = "asc" | "desc";
 const columnsClassName =
   "[grid-template-columns:72px_minmax(250px,1.5fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(200px,1.1fr)_minmax(150px,0.8fr)_minmax(130px,0.7fr)_minmax(120px,0.7fr)_minmax(150px,0.9fr)]";
 
-const typeOptions: QueueType[] = ["Secure Release", "Faculty"];
+type QueuePrinterOption = {
+  id: string;
+  name: string;
+  location: string;
+};
+
+type AdminQueuesResponse = {
+  queues: QueueTableItem[];
+};
+
+type AdminPrintersResponse = {
+  printers: Array<{
+    id: string;
+    name: string;
+    location: string;
+    building?: string;
+    room?: string;
+  }>;
+};
+
+type AdminGroupsResponse = {
+  groups: Array<{
+    id: string;
+    name: string;
+  }>;
+};
+
+const typeOptions = [
+  "Secure Release Queue",
+  "Secure Release",
+  "Direct Print",
+  "Faculty",
+  "Department-based",
+  "General",
+];
 
 const statusOptions: QueueStatus[] = ["Active", "Inactive", "Disabled"];
 
 const formatRetention = (hours: number) => `${hours}h`;
 
-function QueueTypeBadge({ type }: { type: QueueType }) {
-  const meta = queueTypeMeta[type];
+const getQueueTypeMeta = (type: string) =>
+  type === "Secure Release Queue"
+    ? {
+        label: "Secure Release Queue",
+        className: "bg-brand-100 text-brand-600",
+      }
+    : queueTypeMeta[type as keyof typeof queueTypeMeta] || {
+        label: type || "Unknown",
+        className: "bg-[var(--surface-2)] text-[var(--paragraph)]",
+      };
+
+const getQueueStatusMeta = (status: string) =>
+  queueStatusMeta[status as keyof typeof queueStatusMeta] || {
+    label: status || "Unknown",
+    tone: "inactive" as const,
+  };
+
+function QueueTypeBadge({ type }: { type: string }) {
+  const meta = getQueueTypeMeta(type);
 
   return (
     <span
@@ -1093,10 +1140,10 @@ function QueueStatusBadge({
   status,
   className = "",
 }: {
-  status: QueueStatus;
+  status: string;
   className?: string;
 }) {
-  const meta = queueStatusMeta[status];
+  const meta = getQueueStatusMeta(status);
 
   return (
     <StatusBadge label={meta.label} tone={meta.tone} className={className} />
@@ -1297,16 +1344,18 @@ function AccessRuleFieldInput({
 }
 
 function PrinterSelectionList({
+  printerOptions,
   selectedPrinters,
   onToggle,
 }: {
+  printerOptions: QueuePrinterOption[];
   selectedPrinters: string[];
   onToggle: (printerName: string) => void;
 }) {
   return (
     <div className="max-h-[280px] overflow-y-auto rounded-md border border-[var(--border)] p-3 scrollbar-none">
       <div className="space-y-3">
-        {queuePrinterOptions.map((printer) => {
+        {printerOptions.map((printer) => {
           const checked = selectedPrinters.includes(printer.name);
 
           return (
@@ -1342,6 +1391,8 @@ function QueueEditorModal({
   title,
   queue,
   activeTab,
+  printerOptions,
+  groupOptions,
   onTabChange,
   onClose,
   onSave,
@@ -1350,6 +1401,8 @@ function QueueEditorModal({
   title: string;
   queue: QueueTableItem | null;
   activeTab: QueueModalTab;
+  printerOptions: QueuePrinterOption[];
+  groupOptions: string[];
   onTabChange: (value: QueueModalTab) => void;
   onClose: () => void;
   onSave: (queue: QueueTableItem) => void;
@@ -1490,7 +1543,7 @@ function QueueEditorModal({
                 <Dropdown
                   value={draft.type}
                   onValueChange={(value) =>
-                    updateDraft("type", value as QueueType)
+                    updateDraft("type", value as QueueTableItem["type"])
                   }
                 >
                   <DropdownTrigger className="h-14 w-full px-4 text-left">
@@ -1532,6 +1585,7 @@ function QueueEditorModal({
             <div className="space-y-5">
               <EditField label="Assigned Printers">
                 <PrinterSelectionList
+                  printerOptions={printerOptions}
                   selectedPrinters={draft.assignedPrinters}
                   onToggle={togglePrinter}
                 />
@@ -1566,7 +1620,7 @@ function QueueEditorModal({
                     setSelectedGroup(""),
                   )
                 }
-                options={queueGroupOptions}
+                options={groupOptions}
                 items={draft.allowedGroups}
                 onRemove={(item) => removeChip("allowedGroups", item)}
               />
@@ -1653,7 +1707,10 @@ function QueueEditorModal({
 }
 
 const PrintQueuesTable = () => {
-  const [queues, setQueues] = useState<QueueTableItem[]>(queuesData);
+  const [queues, setQueues] = useState<QueueTableItem[]>([]);
+  const [printerOptions, setPrinterOptions] = useState<QueuePrinterOption[]>([]);
+  const [groupOptions, setGroupOptions] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
 
   const [sortKey, setSortKey] = useState<QueueSortKey>("name");
@@ -1670,14 +1727,53 @@ const PrintQueuesTable = () => {
 
   useEffect(() => {
     let mounted = true;
-    apiGet<{ queues: QueueTableItem[] }>("/admin/queues", "admin")
-      .then((data) => {
-        if (!mounted || !data?.queues?.length) return;
-        setQueues(data.queues);
-      })
-      .catch(() => {
-        // Keep fallback.
-      });
+
+    Promise.allSettled([
+      apiGet<AdminQueuesResponse>("/admin/queues", "admin"),
+      apiGet<AdminPrintersResponse>("/admin/printers", "admin"),
+      apiGet<AdminGroupsResponse>("/admin/groups", "admin"),
+    ]).then(([queuesResult, printersResult, groupsResult]) => {
+      if (!mounted) {
+        return;
+      }
+
+      if (queuesResult.status === "fulfilled") {
+        setQueues(Array.isArray(queuesResult.value?.queues) ? queuesResult.value.queues : []);
+        setLoadError("");
+      } else {
+        setQueues([]);
+        setLoadError("Unable to load live queue data right now.");
+      }
+
+      if (printersResult.status === "fulfilled") {
+        const nextPrinterOptions = Array.isArray(printersResult.value?.printers)
+          ? printersResult.value.printers.map((printer) => ({
+              id: printer.id,
+              name: printer.name,
+              location:
+                printer.location ||
+                [printer.building, printer.room ? `Room ${printer.room}` : ""]
+                  .filter(Boolean)
+                  .join(", ") ||
+                "No location set",
+            }))
+          : [];
+
+        setPrinterOptions(nextPrinterOptions);
+      } else {
+        setPrinterOptions([]);
+      }
+
+      if (groupsResult.status === "fulfilled") {
+        setGroupOptions(
+          Array.isArray(groupsResult.value?.groups)
+            ? groupsResult.value.groups.map((group) => group.name).filter(Boolean)
+            : [],
+        );
+      } else {
+        setGroupOptions([]);
+      }
+    });
 
     return () => {
       mounted = false;
@@ -1828,6 +1924,14 @@ const PrintQueuesTable = () => {
           </TableControls>
         </TableTop>
 
+        {loadError ? (
+          <div className="px-6 pb-2">
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {loadError}
+            </p>
+          </div>
+        ) : null}
+
         <TableMain>
           <TableGrid minWidthClassName="min-w-[1350px]">
             <TableHeader columnsClassName={columnsClassName}>
@@ -1930,6 +2034,8 @@ const PrintQueuesTable = () => {
         title="Edit Queue"
         queue={openQueue}
         activeTab={openQueueTab}
+        printerOptions={printerOptions}
+        groupOptions={groupOptions}
         onTabChange={setOpenQueueTab}
         onClose={() => setOpenQueue(null)}
         onSave={handleSaveQueueChanges}
@@ -1940,6 +2046,8 @@ const PrintQueuesTable = () => {
         title="Add Queue"
         queue={newQueue}
         activeTab={addQueueTab}
+        printerOptions={printerOptions}
+        groupOptions={groupOptions}
         onTabChange={setAddQueueTab}
         onClose={() => {
           setIsAddModalOpen(false);

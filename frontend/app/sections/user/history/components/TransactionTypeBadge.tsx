@@ -1,32 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import {
-  Check,
-  Download,
-  Eye,
-  Filter,
-  RotateCcw,
-  Search,
-  WalletCards,
-  X,
-} from "lucide-react";
-import { RiFilter3Line } from "react-icons/ri";
-import Modal from "@/components/ui/modal/Modal";
-import StatusBadge from "@/components/ui/badge/StatusBadge";
-import FloatingInput from "@/components/ui/input/FloatingInput";
-import ExpandedButton from "@/components/ui/button/ExpandedButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import { RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import {
   Table,
   TableBody,
   TableCell,
-  TableCheckbox,
   TableControls,
   TableEmptyState,
   TableGrid,
@@ -37,67 +17,100 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import { cn } from "@/lib/cn";
-import {
-  userTransactionColumns,
-  userTransactionData,
-  userTransactionFilterOptions,
-  userTransactionTypeMeta,
-  type UserTransactionItem,
-  type UserTransactionSortKey,
-  type UserTransactionType,
-} from "@/lib/mock-data/User/history";
+import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import Button from "@/components/ui/button/Button";
+import Modal from "@/components/ui/modal/Modal";
+import { exportTableData, TableExportFormat } from "@/lib/export";
+import { apiGet } from "@/services/api";
 
 type SortDir = "asc" | "desc";
-type FilterValue = "all" | UserTransactionType;
+type TransactionSortKey =
+  | "date"
+  | "description"
+  | "type"
+  | "amount"
+  | "balanceAfter"
+  | "status";
 
-const columnsClassName =
-  "[grid-template-columns:72px_170px_180px_170px_190px_minmax(320px,1.6fr)]";
-
-const formatMoney = (value: number) => {
-  const abs = Math.abs(value).toFixed(2);
-  return value > 0 ? `+${abs}` : value < 0 ? `-${abs}` : `${abs}`;
+type TransactionItem = {
+  id: string;
+  description: string;
+  type: string;
+  amount: number;
+  date: string;
+  dateOrder: number;
+  status: string;
+  direction: "in" | "out";
+  balanceAfter: number;
+  method: string;
+  note: string;
 };
 
-function TransactionTypeBadge({ type }: { type: UserTransactionType }) {
-  const config = userTransactionTypeMeta[type];
+type TransactionsResponse = {
+  transactions: TransactionItem[];
+};
 
-  const icon =
-    type === "Refund" ? (
-      <RotateCcw className="h-4 w-4" strokeWidth={2.6} />
-    ) : type === "Credit" ? (
-      <Check className="h-4 w-4" strokeWidth={2.8} />
-    ) : type === "Deduction" ? (
-      <X className="h-4 w-4" strokeWidth={2.8} />
-    ) : (
-      <WalletCards className="h-4 w-4" strokeWidth={2.4} />
-    );
+const columnsClassName =
+  "[grid-template-columns:minmax(160px,0.9fr)_minmax(260px,1.4fr)_minmax(170px,0.8fr)_minmax(150px,0.8fr)_minmax(170px,0.8fr)_minmax(150px,0.8fr)]";
 
-  return (
-    <StatusBadge
-      label={config.label}
-      tone={config.tone}
-      icon={icon}
-      className="px-4 py-2 text-sm"
-    />
-  );
-}
+const toneByDirection = {
+  in: "text-emerald-700",
+  out: "text-red-700",
+};
 
-const UserTransactionHistoryTable = () => {
-  const [transactions] = useState<UserTransactionItem[]>(userTransactionData);
+const compareValues = (a: string | number, b: string | number, direction: SortDir) => {
+  if (typeof a === "number" && typeof b === "number") {
+    return direction === "asc" ? a - b : b - a;
+  }
+
+  return direction === "asc"
+    ? String(a).localeCompare(String(b))
+    : String(b).localeCompare(String(a));
+};
+
+const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
+
+export default function UserTransactionHistoryTable() {
+  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<UserTransactionSortKey>("date");
+  const [sortKey, setSortKey] = useState<TransactionSortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [filterValue, setFilterValue] = useState<FilterValue>("all");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const [openTransactionModal, setOpenTransactionModal] =
-    useState<UserTransactionItem | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<TransactionItem | null>(null);
 
-  const handleSort = (key: UserTransactionSortKey) => {
+  const loadTransactions = async (showSpinner = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
+
+    try {
+      const data = await apiGet<TransactionsResponse>(
+        "/user/quota/transactions",
+        "user",
+      );
+      setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
+      setError("");
+    } catch (requestError) {
+      setTransactions([]);
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load transaction history.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadTransactions(true);
+  }, []);
+
+  const handleSort = (key: TransactionSortKey) => {
     if (sortKey === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
       return;
     }
 
@@ -105,180 +118,195 @@ const UserTransactionHistoryTable = () => {
     setSortDir(key === "date" ? "desc" : "asc");
   };
 
-  const toggleRowSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
   const filteredTransactions = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const searchTerm = search.trim().toLowerCase();
 
     return [...transactions]
-      .filter((transaction) => {
-        const matchesSearch =
-          !term ||
-          transaction.date.toLowerCase().includes(term) ||
-          transaction.type.toLowerCase().includes(term) ||
-          transaction.comment.toLowerCase().includes(term) ||
-          transaction.reference.toLowerCase().includes(term);
-
-        if (!matchesSearch) return false;
-        if (filterValue === "all") return true;
-
-        return transaction.type === filterValue;
-      })
-      .sort((a, b) => {
-        const getSortValue = (item: UserTransactionItem) => {
-          switch (sortKey) {
-            case "date":
-              return item.date;
-            case "type":
-              return item.type.toLowerCase();
-            case "amount":
-              return item.amount;
-            case "balanceAfter":
-              return item.balanceAfter;
-            case "comment":
-              return item.comment.toLowerCase();
-            default:
-              return item.date;
-          }
-        };
-
-        const aValue = getSortValue(a);
-        const bValue = getSortValue(b);
-
-        if (typeof aValue === "number" && typeof bValue === "number") {
-          return sortDir === "asc" ? aValue - bValue : bValue - aValue;
+      .filter((item) => {
+        if (!searchTerm) {
+          return true;
         }
 
-        return sortDir === "asc"
-          ? String(aValue).localeCompare(String(bValue))
-          : String(bValue).localeCompare(String(aValue));
+        return [
+          item.description,
+          item.type,
+          item.status,
+          item.method,
+          item.note,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(searchTerm);
+      })
+      .sort((a, b) => {
+        switch (sortKey) {
+          case "amount":
+            return compareValues(a.amount, b.amount, sortDir);
+          case "balanceAfter":
+            return compareValues(a.balanceAfter, b.balanceAfter, sortDir);
+          case "date":
+            return compareValues(a.dateOrder, b.dateOrder, sortDir);
+          default:
+            return compareValues(a[sortKey], b[sortKey], sortDir);
+        }
       });
-  }, [transactions, search, filterValue, sortKey, sortDir]);
+  }, [transactions, search, sortDir, sortKey]);
 
-  const allVisibleIds = filteredTransactions.map(
-    (transaction) => transaction.id
-  );
-  const isAllSelected =
-    allVisibleIds.length > 0 &&
-    allVisibleIds.every((id) => selectedIds.includes(id));
-
-  const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedIds((prev) =>
-        prev.filter((id) => !allVisibleIds.includes(id))
-      );
-      return;
-    }
-
-    setSelectedIds((prev) => Array.from(new Set([...prev, ...allVisibleIds])));
+  const exportTransactions = (format: TableExportFormat) => {
+    exportTableData({
+      title: "User Transaction History",
+      filename: "alpha-queue-transaction-history",
+      format,
+      columns: [
+        { label: "Date", value: (row: TransactionItem) => row.date },
+        { label: "Description", value: (row) => row.description },
+        { label: "Type", value: (row) => row.type },
+        {
+          label: "Amount",
+          value: (row) =>
+            `${row.direction === "in" ? "+" : "-"}${formatMoney(row.amount)}`,
+        },
+        { label: "Balance After", value: (row) => formatMoney(row.balanceAfter) },
+        { label: "Status", value: (row) => row.status },
+        { label: "Method", value: (row) => row.method },
+        { label: "Reference", value: (row) => row.note },
+      ],
+      rows: filteredTransactions,
+    });
   };
 
   return (
-    <>
+    <div className="space-y-5">
       <Table>
         <TableTop>
           <TableTitleBlock
             title="Transaction History"
-            description={`${filteredTransactions.length} transactions`}
+            description={`Showing ${filteredTransactions.length} transaction${filteredTransactions.length === 1 ? "" : "s"} from the live quota ledger.`}
           />
 
           <TableControls>
             <TableSearch
-              id="search-user-transactions"
-              label="Search transactions..."
+              id="search-transactions"
+              label="Search transactions"
               value={search}
               onChange={setSearch}
             />
 
-            <ExpandedButton
-              id="filter-transactions"
-              label="Filter"
-              icon={RiFilter3Line}
-              className="h-14 rounded-md px-2 hover:bg-brand-700"
-              onClick={() => setIsFilterModalOpen(true)}
+            <Button
+              variant="secondary"
+              iconLeft={<RefreshCw className="h-4 w-4" />}
+              className="h-14 px-6 text-base"
+              onClick={() => loadTransactions(false)}
+            >
+              Refresh
+            </Button>
+
+            <TableExportDropdown
+              disabled={filteredTransactions.length === 0}
+              onExport={exportTransactions}
             />
           </TableControls>
         </TableTop>
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1160px]">
-            <TableHeader columnsClassName={columnsClassName}>
-              <TableCell className="justify-center">
-                <TableCheckbox
-                  checked={isAllSelected}
-                  onToggle={toggleSelectAll}
-                />
-              </TableCell>
+        {error ? (
+          <div className="px-6 pb-2">
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </p>
+          </div>
+        ) : null}
 
-              {userTransactionColumns.map((column) => (
-                <TableHeaderCell
-                  key={column.key}
-                  label={column.label}
-                  sortable={column.sortable}
-                  active={sortKey === column.key}
-                  direction={sortDir}
-                  onClick={() => handleSort(column.key)}
-                />
-              ))}
+        <TableMain>
+          <TableGrid minWidthClassName="min-w-[1060px]">
+            <TableHeader columnsClassName={columnsClassName}>
+              <TableHeaderCell
+                label="Date"
+                sortable
+                active={sortKey === "date"}
+                direction={sortDir}
+                onClick={() => handleSort("date")}
+              />
+              <TableHeaderCell
+                label="Description"
+                sortable
+                active={sortKey === "description"}
+                direction={sortDir}
+                onClick={() => handleSort("description")}
+              />
+              <TableHeaderCell
+                label="Type"
+                sortable
+                active={sortKey === "type"}
+                direction={sortDir}
+                onClick={() => handleSort("type")}
+              />
+              <TableHeaderCell
+                label="Amount"
+                sortable
+                active={sortKey === "amount"}
+                direction={sortDir}
+                onClick={() => handleSort("amount")}
+              />
+              <TableHeaderCell
+                label="Balance After"
+                sortable
+                active={sortKey === "balanceAfter"}
+                direction={sortDir}
+                onClick={() => handleSort("balanceAfter")}
+              />
+              <TableHeaderCell
+                label="Status"
+                sortable
+                active={sortKey === "status"}
+                direction={sortDir}
+                onClick={() => handleSort("status")}
+              />
             </TableHeader>
 
             <TableBody>
-              {filteredTransactions.length === 0 ? (
-                <TableEmptyState text="No transactions found" />
+              {loading ? (
+                <TableEmptyState text="Loading transactions..." />
+              ) : filteredTransactions.length === 0 ? (
+                <TableEmptyState text="No transactions matched the current search." />
               ) : (
-                filteredTransactions.map((transaction) => {
-                  const isSelected = selectedIds.includes(transaction.id);
-                  const isPositive = transaction.amount > 0;
+                filteredTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    onClick={() => setSelectedTransaction(transaction)}
+                    className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
+                  >
+                    <TableCell className="text-[var(--title)]">{transaction.date}</TableCell>
 
-                  return (
-                    <div
-                      key={transaction.id}
-                      onClick={() => setOpenTransactionModal(transaction)}
-                      className={cn(
-                        "grid w-full cursor-pointer items-center border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30",
-                        columnsClassName
-                      )}
-                    >
-                      <TableCell className="justify-center">
-                        <TableCheckbox
-                          checked={isSelected}
-                          onToggle={() => toggleRowSelection(transaction.id)}
-                        />
-                      </TableCell>
+                    <TableCell className="flex-col items-start">
+                      <p className="font-semibold text-[var(--title)]">
+                        {transaction.description}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        {transaction.method}
+                      </p>
+                    </TableCell>
 
-                      <TableCell className="text-base font-medium text-[var(--paragraph)]">
-                        {transaction.date}
-                      </TableCell>
+                    <TableCell className="text-[var(--title)]">{transaction.type}</TableCell>
 
-                      <TableCell>
-                        <TransactionTypeBadge type={transaction.type} />
-                      </TableCell>
-
-                      <TableCell
-                        className={cn(
-                          "text-base font-semibold",
-                          isPositive ? "text-success-600" : "text-danger-500"
-                        )}
+                    <TableCell>
+                      <span
+                        className={`text-sm font-semibold ${toneByDirection[transaction.direction]}`}
                       >
+                        {transaction.direction === "in" ? "+" : "-"}
                         {formatMoney(transaction.amount)}
-                      </TableCell>
+                      </span>
+                    </TableCell>
 
-                      <TableCell className="text-base font-semibold text-[var(--title)]">
-                        {transaction.balanceAfter.toFixed(2)}
-                      </TableCell>
+                    <TableCell className="text-[var(--title)]">
+                      {formatMoney(transaction.balanceAfter)}
+                    </TableCell>
 
-                      <TableCell className="min-w-0">
-                        <span className="block truncate text-base text-[var(--paragraph)]">
-                          {transaction.comment}
-                        </span>
-                      </TableCell>
-                    </div>
-                  );
-                })
+                    <TableCell className="text-[var(--title)]">
+                      {transaction.status}
+                    </TableCell>
+                  </div>
+                ))
               )}
             </TableBody>
           </TableGrid>
@@ -286,134 +314,52 @@ const UserTransactionHistoryTable = () => {
       </Table>
 
       <Modal
-        open={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
+        open={Boolean(selectedTransaction)}
+        onClose={() => setSelectedTransaction(null)}
       >
         <div className="space-y-4 pr-8">
           <div>
-            <h3 className="title-md">Filter Transactions</h3>
-            <p className="paragraph mt-1">
-              Narrow down your transaction history.
-            </p>
+            <h3 className="title-md">{selectedTransaction?.description}</h3>
+            <p className="paragraph mt-1">{selectedTransaction?.date}</p>
           </div>
 
-          <Dropdown
-            value={filterValue}
-            onValueChange={(value) => setFilterValue(value as FilterValue)}
-          >
-            <DropdownTrigger className="h-14 w-full px-4 text-left text-base">
-              {
-                userTransactionFilterOptions.find(
-                  (option) => option.value === filterValue
-                )?.label
-              }
-            </DropdownTrigger>
-
-            <DropdownContent widthClassName="w-full">
-              {userTransactionFilterOptions.map((option) => (
-                <DropdownItem
-                  key={option.value}
-                  value={option.value}
-                  className="py-3 text-base"
-                >
-                  {option.label}
-                </DropdownItem>
-              ))}
-            </DropdownContent>
-          </Dropdown>
-        </div>
-      </Modal>
-
-      <Modal
-        open={Boolean(openTransactionModal)}
-        onClose={() => setOpenTransactionModal(null)}
-      >
-        <div className="space-y-5 pr-8">
-          <div>
-            <h3 className="title-md">{openTransactionModal?.reference}</h3>
-            <p className="paragraph mt-1">
-              View full transaction details and account activity.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Date</p>
-              <p className="paragraph mt-1">
-                {openTransactionModal?.timestamp}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Type</p>
-              <div className="mt-2">
-                {openTransactionModal?.type ? (
-                  <TransactionTypeBadge type={openTransactionModal.type} />
-                ) : null}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Amount</p>
-              <p
-                className={cn(
-                  "mt-1 text-base font-semibold",
-                  (openTransactionModal?.amount ?? 0) > 0
-                    ? "text-success-600"
-                    : "text-danger-500"
-                )}
+          <div className="grid gap-3 md:grid-cols-2">
+            {[
+              ["Type", selectedTransaction?.type || "—"],
+              [
+                "Amount",
+                selectedTransaction ? formatMoney(selectedTransaction.amount) : "—",
+              ],
+              ["Direction", selectedTransaction?.direction || "—"],
+              [
+                "Balance After",
+                selectedTransaction
+                  ? formatMoney(selectedTransaction.balanceAfter)
+                  : "—",
+              ],
+              ["Status", selectedTransaction?.status || "—"],
+              ["Method", selectedTransaction?.method || "—"],
+              ["Reference", selectedTransaction?.note || "—"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border p-4"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface-2)",
+                }}
               >
-                {openTransactionModal
-                  ? formatMoney(openTransactionModal.amount)
-                  : "-"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">
-                Balance After
-              </p>
-              <p className="paragraph mt-1">
-                {openTransactionModal?.balanceAfter.toFixed(2)}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Method</p>
-              <p className="paragraph mt-1">{openTransactionModal?.method}</p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">
-                Reference
-              </p>
-              <p className="paragraph mt-1">
-                {openTransactionModal?.reference}
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-medium text-[var(--muted)]">Comment</p>
-            <p className="paragraph mt-2">{openTransactionModal?.comment}</p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              iconLeft={<Download className="h-4 w-4" />}
-            >
-              Export Receipt
-            </Button>
-
-            <Button variant="primary" iconLeft={<Eye className="h-4 w-4" />}>
-              View Details
-            </Button>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  {label}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--title)]">
+                  {String(value)}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </Modal>
-    </>
+    </div>
   );
-};
-
-export default UserTransactionHistoryTable;
+}

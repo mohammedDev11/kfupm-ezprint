@@ -33,10 +33,10 @@ import {
   UserRole,
   UserSortKey,
   UserStanding,
-  userAccountsData,
   userRestrictedSortOrder,
   userTableColumns,
 } from "@/lib/mock-data/Admin/users";
+import { exportTableData } from "@/lib/export";
 import { apiGet } from "@/services/api";
 import {
   FileOutput,
@@ -156,7 +156,8 @@ function FilterCheckbox({
 }
 
 const UserAccountsTable = () => {
-  const [users, setUsers] = useState<UserAccountItem[]>(userAccountsData);
+  const [users, setUsers] = useState<UserAccountItem[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<UserSortKey>("username");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -194,11 +195,18 @@ const UserAccountsTable = () => {
 
     apiGet<{ users: UserAccountItem[] }>("/admin/users", "admin")
       .then((data) => {
-        if (!mounted || !data?.users?.length) return;
-        setUsers(data.users);
+        if (!mounted) return;
+        setUsers(Array.isArray(data?.users) ? data.users : []);
+        setLoadError("");
       })
-      .catch(() => {
-        // Keep fallback.
+      .catch((requestError) => {
+        if (!mounted) return;
+        setUsers([]);
+        setLoadError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load users.",
+        );
       });
 
     return () => {
@@ -513,6 +521,31 @@ const UserAccountsTable = () => {
     setActionModal(null);
   };
 
+  const handleExportSelectedUsers = () => {
+    if (selectedUsers.length === 0) return;
+
+    exportTableData({
+      title: "User Accounts",
+      filename: "alpha-queue-user-accounts",
+      format: exportMethod,
+      columns: [
+        { label: "Username", value: (user: UserAccountItem) => user.username },
+        { label: "Full Name", value: (user) => user.fullName },
+        { label: "Email", value: (user) => user.email },
+        { label: "Role", value: (user) => user.role },
+        { label: "Department", value: (user) => user.department },
+        { label: "Standing", value: (user) => user.standing },
+        { label: "Quota", value: (user) => formatMoney(user.quota) },
+        { label: "Restricted", value: (user) => user.restricted },
+        { label: "Pages", value: (user) => user.pages },
+        { label: "Jobs", value: (user) => user.jobs },
+      ],
+      rows: selectedUsers,
+    });
+
+    setActionModal(null);
+  };
+
   const actionTitleMap: Record<ActionValue, string> = {
     "delete-selected": "Delete selected",
     "export-users": "Export users",
@@ -588,6 +621,14 @@ const UserAccountsTable = () => {
             </Dropdown>
           </TableControls>
         </TableTop>
+
+        {loadError ? (
+          <div className="px-6 pb-2">
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {loadError}
+            </p>
+          </div>
+        ) : null}
 
         <TableMain>
           <TableGrid minWidthClassName="min-w-[1200px]">
@@ -1261,7 +1302,7 @@ const UserAccountsTable = () => {
                 Cancel
               </Button>
               <Button
-                onClick={() => setActionModal(null)}
+                onClick={handleExportSelectedUsers}
                 className="px-8"
                 disabled={selectedUsers.length === 0}
               >

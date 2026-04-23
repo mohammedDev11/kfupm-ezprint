@@ -7,7 +7,12 @@
 
 import React from "react";
 import NavbarShell from "@/components/shared/page/navbar/NavbarShell";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <NavbarShell role="user">{children}</NavbarShell>;
+  return (
+    <RoleGuard scope="user">
+      <NavbarShell role="user">{children}</NavbarShell>
+    </RoleGuard>
+  );
 }

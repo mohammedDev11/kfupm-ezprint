@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/dropdown/Dropdown";
 import Modal from "@/components/ui/modal/Modal";
 import {
-  recentPrintJobsData,
   recentPrintJobsFilterOptions,
   recentPrintJobsStatusMeta,
   recentPrintJobsTableColumns,
@@ -75,7 +74,7 @@ function PrintJobStatusBadge({ status }: { status: RecentPrintJobStatus }) {
 }
 
 const RecentPrintJobsTable = () => {
-  const [jobs, setJobs] = useState<RecentPrintJobItem[]>(recentPrintJobsData);
+  const [jobs, setJobs] = useState<RecentPrintJobItem[]>([]);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<RecentPrintJobSortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -101,12 +100,10 @@ const RecentPrintJobsTable = () => {
 
     apiGet<{ jobs: RecentPrintJobItem[] }>("/user/jobs/recent", "user")
       .then((data) => {
-        if (!mounted || !data?.jobs?.length) return;
-        setJobs(data.jobs);
+        if (!mounted) return;
+        setJobs(data?.jobs || []);
       })
-      .catch(() => {
-        // Keep local fallback if API fails.
-      });
+      .catch(() => {});
 
     return () => {
       mounted = false;

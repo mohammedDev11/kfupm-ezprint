@@ -1,59 +1,100 @@
 "use client";
 
-import { walletSummaryCards } from "@/lib/mock-data/User/wallet";
 import GeneralLineChart from "@/components/shared/charts/GeneralLineChart";
 import Button from "@/components/ui/button/Button";
 import Card from "@/components/ui/card/Card";
 import { apiGet } from "@/services/api";
 import {
   ArrowDownLeft,
+  ArrowUpRight,
   CreditCard,
   Gift,
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import WalletTransactionsTable from "./WalletTransactionsTable";
-// import GeneralLineChart from "@/components/ui/card/GeneralLineChart";
+
+type SummaryCardItem = {
+  title: string;
+  value: string;
+  helperText: string;
+  iconKey: "wallet" | "arrow-down-left" | "arrow-up-right" | "gift";
+};
+
+type WalletOverviewResponse = {
+  quota: number;
+  balance: number;
+  walletSummaryCards: SummaryCardItem[];
+};
+
+type WalletTransaction = {
+  id: string;
+  description: string;
+  type: string;
+  amount: number;
+  date: string;
+  dateOrder: number;
+  status: string;
+  direction: "in" | "out";
+  balanceAfter: number;
+  method: string;
+  note: string;
+};
+
+const iconMap = {
+  wallet: Wallet,
+  "arrow-down-left": ArrowDownLeft,
+  "arrow-up-right": ArrowUpRight,
+  gift: Gift,
+};
+
+const walletMetricsConfig = {
+  spent: {
+    label: "Spent",
+    color: "var(--color-warning-500)",
+  },
+  redeemed: {
+    label: "Credits",
+    color: "var(--color-brand-500)",
+  },
+};
 
 const WalletOverview = () => {
-  const [summaryCards, setSummaryCards] = useState(walletSummaryCards);
-  const [quotaBalance, setQuotaBalance] = useState(245.5);
-
-  const balance = quotaBalance;
-  const totalSpent = 128.75;
-  const totalRedeemed = 80;
-  const pendingAmount = 36.75;
+  const [summaryCards, setSummaryCards] = useState<SummaryCardItem[]>([]);
+  const [quotaBalance, setQuotaBalance] = useState(0);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
 
   useEffect(() => {
     let mounted = true;
 
-    apiGet<{
-      quota: number;
-      walletSummaryCards: Array<{
-        title: string;
-        value: string;
-        helperText: string;
-      }>;
-    }>("/user/quota/overview", "user")
-      .then((data) => {
-        if (!mounted) return;
-        if (typeof data?.quota === "number") {
-          setQuotaBalance(data.quota);
+    Promise.all([
+      apiGet<WalletOverviewResponse>("/user/quota/overview", "user"),
+      apiGet<{ transactions: WalletTransaction[] }>(
+        "/user/quota/transactions",
+        "user",
+      ),
+    ])
+      .then(([overview, transactionData]) => {
+        if (!mounted) {
+          return;
         }
-        if (data?.walletSummaryCards?.length) {
-          setSummaryCards((prev) =>
-            prev.map((card, index) => ({
-              ...card,
-              value: data.walletSummaryCards[index]?.value ?? card.value,
-              helperText:
-                data.walletSummaryCards[index]?.helperText ?? card.helperText,
-            })),
-          );
-        }
+
+        setQuotaBalance(
+          typeof overview?.quota === "number"
+            ? overview.quota
+            : overview?.balance || 0,
+        );
+        setSummaryCards(overview?.walletSummaryCards || []);
+        setTransactions(transactionData?.transactions || []);
       })
       .catch(() => {
-        // Keep local fallback if API is unavailable.
+        if (!mounted) {
+          return;
+        }
+
+        setSummaryCards([]);
+        setTransactions([]);
       });
 
     return () => {
@@ -61,32 +102,65 @@ const WalletOverview = () => {
     };
   }, []);
 
-  const walletActivityData = [
-    { day: "M", spent: 18, redeemed: 8 },
-    { day: "T", spent: 26, redeemed: 12 },
-    { day: "W", spent: 22, redeemed: 10 },
-    { day: "T", spent: 35, redeemed: 16 },
-    { day: "F", spent: 28, redeemed: 14 },
-    { day: "S", spent: 42, redeemed: 9 },
-    { day: "S", spent: 31, redeemed: 11 },
-  ];
+  const totals = useMemo(() => {
+    const incoming = transactions
+      .filter((item) => item.direction === "in")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const outgoing = transactions
+      .filter((item) => item.direction === "out")
+      .reduce((sum, item) => sum + item.amount, 0);
 
-  const walletMetricsConfig = {
-    spent: {
-      label: "Spent",
-      color: "var(--color-warning-500)",
-    },
-    redeemed: {
-      label: "Redeemed",
-      color: "var(--color-brand-500)",
-    },
-  };
+    return {
+      incoming,
+      outgoing,
+      count: transactions.length,
+    };
+  }, [transactions]);
+
+  const walletActivityData = useMemo(() => {
+    const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - index));
+      const key = date.toISOString().slice(0, 10);
+
+      return {
+        key,
+        label: date.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 1),
+        spent: 0,
+        redeemed: 0,
+      };
+    });
+
+    const lookup = new Map(lastSevenDays.map((item) => [item.key, item]));
+
+    transactions.forEach((transaction) => {
+      const item = lookup.get(
+        `${String(transaction.dateOrder).slice(0, 4)}-${String(transaction.dateOrder).slice(4, 6)}-${String(transaction.dateOrder).slice(6, 8)}`,
+      );
+
+      if (!item) {
+        return;
+      }
+
+      if (transaction.direction === "out") {
+        item.spent += transaction.amount;
+      } else {
+        item.redeemed += transaction.amount;
+      }
+    });
+
+    return lastSevenDays.map((item) => ({
+      day: item.label,
+      spent: Number(item.spent.toFixed(2)),
+      redeemed: Number(item.redeemed.toFixed(2)),
+    }));
+  }, [transactions]);
 
   return (
     <section className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => {
-          const Icon = card.icon;
+          const Icon = iconMap[card.iconKey] || Wallet;
 
           return (
             <Card key={card.title} className="p-5">
@@ -137,20 +211,19 @@ const WalletOverview = () => {
                   style={{ color: "var(--title)" }}
                   className="text-4xl font-bold tracking-tight"
                 >
-                  {balance.toFixed(2)} SAR
+                  {quotaBalance.toFixed(2)} SAR
                 </h2>
                 <p
                   style={{ color: "var(--paragraph)" }}
                   className="max-w-xl text-sm leading-7"
                 >
-                  Manage your wallet balance, redeem codes, review top-ups, and
-                  keep track of all payment-related activity in one place.
+                  Wallet balances and transaction history now come from the real
+                  quota endpoints in the backend.
                 </p>
               </div>
             </div>
 
             <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:shrink-0">
-              {" "}
               <Button className="w-full lg:min-w-[160px]">
                 <ArrowDownLeft className="h-4 w-4" />
                 Add Funds
@@ -175,7 +248,7 @@ const WalletOverview = () => {
                 style={{ color: "var(--title)" }}
                 className="text-xl font-semibold"
               >
-                420.00 SAR
+                {totals.incoming.toFixed(2)} SAR
               </p>
             </div>
 
@@ -191,7 +264,7 @@ const WalletOverview = () => {
                 style={{ color: "var(--title)" }}
                 className="text-xl font-semibold"
               >
-                {totalSpent.toFixed(2)} SAR
+                {totals.outgoing.toFixed(2)} SAR
               </p>
             </div>
 
@@ -201,28 +274,27 @@ const WalletOverview = () => {
                 className="mb-2 flex items-center gap-2 text-sm font-medium"
               >
                 <TrendingUp className="h-4 w-4 text-brand-600" />
-                Pending
+                Transactions
               </div>
               <p
                 style={{ color: "var(--title)" }}
                 className="text-xl font-semibold"
               >
-                {pendingAmount.toFixed(2)} SAR
+                {totals.count}
               </p>
             </div>
           </div>
         </Card>
 
         <GeneralLineChart
-          title="Monthly Activity"
+          title="Recent Wallet Activity"
           data={walletActivityData}
           metricsConfig={walletMetricsConfig}
           xDataKey="day"
           height={320}
-          showFilter={true}
+          showFilter={false}
           showLegend={true}
           showMoreButton={false}
-          yDomain={[0, 50]}
         />
       </div>
 

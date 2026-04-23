@@ -1,16 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { Bell, Check, RefreshCw, Trash2 } from "lucide-react";
-import Modal from "@/components/ui/modal/Modal";
-import Button from "@/components/ui/button/Button";
-import ExpandedButton from "@/components/ui/button/ExpandedButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import { Bell, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import {
   Table,
   TableBody,
@@ -23,664 +15,796 @@ import {
   TableHeaderCell,
   TableMain,
   TableSearch,
+  TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import {
-  userNotificationActionOptions,
-  userNotificationColumns,
-  userNotificationData,
-  userNotificationModalContent,
-  userNotificationSeverityOptions,
-  userNotificationSeverityRank,
-  userNotificationSourceOptions,
-  userNotificationStatusOptions,
-  userNotificationStatusRank,
-  userNotificationTableMeta,
-  userNotificationTypeOptions,
-  type UserNotificationActionValue,
-  type UserNotificationItem,
-  type UserNotificationSeverity,
-  type UserNotificationSortKey,
-  type UserNotificationStatus,
-} from "@/lib/mock-data/User/notifications";
+import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
+import Button from "@/components/ui/button/Button";
+import Modal from "@/components/ui/modal/Modal";
+import { exportTableData, TableExportFormat } from "@/lib/export";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
 
 type SortDir = "asc" | "desc";
+type NotificationSortKey = "title" | "type" | "source" | "severity" | "status" | "createdAt";
 
-const TOTAL_SECONDS = Number(userNotificationTableMeta.refreshSeconds);
-const columnsClassName = userNotificationTableMeta.columnsClassName;
-
-function formatTypeLabel(type: UserNotificationItem["type"]) {
-  switch (type) {
-    case "print-job":
-      return "Print Job";
-    case "balance":
-      return "Balance";
-    case "redeem-card":
-      return "Redeem Card";
-    case "printer":
-      return "Printer";
-    case "system":
-      return "System";
-    case "account":
-      return "Account";
-    default:
-      return type;
-  }
-}
-
-function formatSourceLabel(source: UserNotificationItem["source"]) {
-  switch (source) {
-    case "web-print":
-      return "Web Print";
-    case "jobs-pending-release":
-      return "Jobs Pending Release";
-    case "recent-print-jobs":
-      return "Recent Print Jobs";
-    case "transaction-history":
-      return "Transaction History";
-    case "redeem-card":
-      return "Redeem Card";
-    case "printer-device":
-      return "Printer Device";
-    case "system":
-      return "System";
-    default:
-      return source;
-  }
-}
-
-function SeverityBadge({ severity }: { severity: UserNotificationSeverity }) {
-  const styles: Record<UserNotificationSeverity, string> = {
-    info: "bg-slate-800 text-white",
-    success: "bg-green-100 text-green-600",
-    warning: "bg-amber-100 text-amber-600",
-    error: "bg-red-100 text-red-500",
-    critical: "bg-red-100 text-red-500",
+type UserNotification = {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  source: string;
+  severity: "info" | "success" | "warning" | "error" | "critical";
+  status: "unread" | "read" | "resolved" | "archived";
+  createdAt: string;
+  createdAtLabel: string;
+  canMarkAsRead?: boolean;
+  canArchive?: boolean;
+  canDelete?: boolean;
+  relatedEntity?: {
+    kind: string;
+    id: string;
+    label: string;
   };
+};
 
-  return (
-    <span
-      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium ${styles[severity]}`}
-    >
-      {severity.charAt(0).toUpperCase() + severity.slice(1)}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: UserNotificationStatus }) {
-  const styles: Record<UserNotificationStatus, string> = {
-    unread: "bg-amber-100 text-amber-600",
-    read: "bg-slate-800 text-white",
-    resolved: "bg-green-100 text-green-600",
-    archived: "bg-slate-100 text-slate-500",
+type UserNotificationsResponse = {
+  notifications: UserNotification[];
+  summary: {
+    total: number;
+    unread: number;
+    critical: number;
+    actionRequired: number;
   };
+};
 
-  return (
-    <span
-      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium ${styles[status]}`}
-    >
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
-}
+const REFRESH_SECONDS = 30;
+const columnsClassName =
+  "[grid-template-columns:72px_minmax(260px,1.4fr)_minmax(150px,0.8fr)_minmax(160px,0.8fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(170px,0.8fr)_minmax(210px,1fr)]";
 
-function RefreshTimer({
-  secondsLeft,
-  onRefreshNow,
+const severityTone: Record<UserNotification["severity"], string> = {
+  info: "bg-slate-100 text-slate-700",
+  success: "bg-emerald-100 text-emerald-700",
+  warning: "bg-amber-100 text-amber-700",
+  error: "bg-red-100 text-red-700",
+  critical: "bg-red-200 text-red-800",
+};
+
+const statusTone: Record<UserNotification["status"], string> = {
+  unread: "bg-amber-100 text-amber-700",
+  read: "bg-slate-100 text-slate-700",
+  resolved: "bg-emerald-100 text-emerald-700",
+  archived: "bg-slate-200 text-slate-700",
+};
+
+const severityRank: Record<UserNotification["severity"], number> = {
+  info: 0,
+  success: 1,
+  warning: 2,
+  error: 3,
+  critical: 4,
+};
+
+const statusRank: Record<UserNotification["status"], number> = {
+  unread: 0,
+  read: 1,
+  resolved: 2,
+  archived: 3,
+};
+
+const filterOptions = {
+  type: ["all", "print-job", "balance", "redeem-card", "printer", "system"],
+  severity: ["all", "info", "success", "warning", "error", "critical"],
+  status: ["all", "unread", "read", "resolved", "archived"],
+  source: [
+    "all",
+    "web-print",
+    "jobs-pending-release",
+    "recent-print-jobs",
+    "transaction-history",
+    "redeem-card",
+    "printer-device",
+    "system",
+  ],
+};
+
+const formatOptionLabel = (value: string) =>
+  value
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+
+const parseSortableDate = (value: string) => {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? value : timestamp;
+};
+
+const compareValues = (a: string | number, b: string | number, direction: SortDir) => {
+  if (typeof a === "number" && typeof b === "number") {
+    return direction === "asc" ? a - b : b - a;
+  }
+
+  return direction === "asc"
+    ? String(a).localeCompare(String(b))
+    : String(b).localeCompare(String(a));
+};
+
+function SummaryCard({
+  label,
+  value,
+  helper,
 }: {
-  secondsLeft: number;
-  onRefreshNow: () => void;
+  label: string;
+  value: string | number;
+  helper: string;
 }) {
-  const progress = secondsLeft / TOTAL_SECONDS;
-  const radius = 16;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - progress);
-  const done = secondsLeft === 0;
-
   return (
-    <button
-      type="button"
-      onClick={onRefreshNow}
-      className="btn-secondary h-12 gap-3 px-4"
+    <div
+      className="rounded-2xl border p-5"
+      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
     >
-      <span className="relative flex h-6 w-6 items-center justify-center">
-        {done ? (
-          <Check className="h-5 w-5 text-success-500" />
-        ) : (
-          <>
-            <svg className="h-6 w-6 -rotate-90" viewBox="0 0 40 40">
-              <circle
-                cx="20"
-                cy="20"
-                r={radius}
-                fill="none"
-                stroke="rgba(148,163,184,0.25)"
-                strokeWidth="4"
-              />
-              <circle
-                cx="20"
-                cy="20"
-                r={radius}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={dashOffset}
-                className="text-brand-500 transition-all duration-1000 ease-linear"
-              />
-            </svg>
-            <RefreshCw className="absolute h-3.5 w-3.5 text-brand-500" />
-          </>
-        )}
-      </span>
-
-      <span className="font-medium">
-        {done ? "Updated" : `${secondsLeft}s`}
-      </span>
-    </button>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {label}
+      </p>
+      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
+    </div>
   );
 }
 
-const UserNotificationsTable = () => {
-  const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<UserNotificationSortKey>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex min-w-[180px] flex-col gap-2">
+      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 rounded-md border px-4 text-sm outline-none"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--surface)",
+          color: "var(--title)",
+        }}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option === "all" ? `All ${label}` : formatOptionLabel(option)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [secondsLeft, setSecondsLeft] = useState<number>(TOTAL_SECONDS);
+export default function UserNotificationsTable() {
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [summary, setSummary] = useState<UserNotificationsResponse["summary"]>({
+    total: 0,
+    unread: 0,
+    critical: 0,
+    actionRequired: 0,
+  });
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<NotificationSortKey>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [secondsLeft, setSecondsLeft] = useState(REFRESH_SECONDS);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [detailsNotification, setDetailsNotification] =
+    useState<UserNotification | null>(null);
 
-  const [detailsModal, setDetailsModal] = useState<UserNotificationItem | null>(
-    null
-  );
-  const [actionModal, setActionModal] =
-    useState<UserNotificationActionValue | null>(null);
-  const [deleteModal, setDeleteModal] = useState<UserNotificationItem | null>(
-    null
-  );
+  const loadNotifications = async (showSpinner = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
+
+    try {
+      const data = await apiGet<UserNotificationsResponse>(
+        "/user/notifications",
+        "user",
+      );
+
+      const nextNotifications = Array.isArray(data?.notifications)
+        ? data.notifications
+        : [];
+
+      setNotifications(nextNotifications);
+      setSummary(
+        data.summary || {
+          total: 0,
+          unread: 0,
+          critical: 0,
+          actionRequired: 0,
+        },
+      );
+      setSelectedIds((current) =>
+        current.filter((id) => nextNotifications.some((item) => item.id === id)),
+      );
+      setError("");
+    } catch (requestError) {
+      setNotifications([]);
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load notifications.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 0) return TOTAL_SECONDS;
-        return prev - 1;
+    void loadNotifications(true);
+  }, []);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      setSecondsLeft((current) => {
+        if (current <= 1) {
+          void loadNotifications(false);
+          return REFRESH_SECONDS;
+        }
+
+        return current - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      window.clearInterval(refreshTimer);
+    };
   }, []);
 
-  const handleRefreshNow = () => {
-    setSecondsLeft(0);
-    setTimeout(() => {
-      setSecondsLeft(TOTAL_SECONDS);
-    }, 900);
-  };
-
-  const handleSort = (key: UserNotificationSortKey) => {
+  const handleSort = (key: NotificationSortKey) => {
     if (sortKey === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
       return;
     }
 
     setSortKey(key);
-    setSortDir("asc");
-  };
-
-  const toggleRowSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    setSortDir(key === "createdAt" ? "desc" : "asc");
   };
 
   const filteredNotifications = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const searchTerm = search.trim().toLowerCase();
 
-    return [...userNotificationData]
-      .filter((item) => {
-        const matchesSearch =
-          !term ||
-          item.title.toLowerCase().includes(term) ||
-          item.message.toLowerCase().includes(term) ||
-          formatSourceLabel(item.source).toLowerCase().includes(term) ||
-          formatTypeLabel(item.type).toLowerCase().includes(term);
+    return [...notifications]
+      .filter((notification) => {
+        const haystack = [
+          notification.title,
+          notification.message,
+          notification.type,
+          notification.source,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-        const matchesType = typeFilter === "all" || item.type === typeFilter;
-        const matchesSeverity =
-          severityFilter === "all" || item.severity === severityFilter;
-        const matchesStatus =
-          statusFilter === "all" || item.status === statusFilter;
-        const matchesSource =
-          sourceFilter === "all" || item.source === sourceFilter;
+        if (searchTerm && !haystack.includes(searchTerm)) {
+          return false;
+        }
 
-        return (
-          matchesSearch &&
-          matchesType &&
-          matchesSeverity &&
-          matchesStatus &&
-          matchesSource
-        );
+        if (typeFilter !== "all" && notification.type !== typeFilter) {
+          return false;
+        }
+
+        if (severityFilter !== "all" && notification.severity !== severityFilter) {
+          return false;
+        }
+
+        if (statusFilter !== "all" && notification.status !== statusFilter) {
+          return false;
+        }
+
+        if (sourceFilter !== "all" && notification.source !== sourceFilter) {
+          return false;
+        }
+
+        return true;
       })
       .sort((a, b) => {
-        const direction = sortDir === "asc" ? 1 : -1;
-
         switch (sortKey) {
-          case "title":
-            return a.title.localeCompare(b.title) * direction;
-          case "type":
-            return a.type.localeCompare(b.type) * direction;
-          case "source":
-            return a.source.localeCompare(b.source) * direction;
           case "severity":
-            return (
-              (userNotificationSeverityRank[a.severity] -
-                userNotificationSeverityRank[b.severity]) *
-              direction
-            );
+            return compareValues(severityRank[a.severity], severityRank[b.severity], sortDir);
           case "status":
-            return (
-              (userNotificationStatusRank[a.status] -
-                userNotificationStatusRank[b.status]) *
-              direction
+            return compareValues(statusRank[a.status], statusRank[b.status], sortDir);
+          case "createdAt":
+            return compareValues(
+              parseSortableDate(a.createdAt),
+              parseSortableDate(b.createdAt),
+              sortDir,
             );
-          case "date":
+          case "source":
+            return compareValues(
+              formatOptionLabel(a.source),
+              formatOptionLabel(b.source),
+              sortDir,
+            );
           default:
-            return (
-              (new Date(a.createdAt).getTime() -
-                new Date(b.createdAt).getTime()) *
-              direction
-            );
+            return compareValues(a[sortKey], b[sortKey], sortDir);
         }
       });
   }, [
+    notifications,
     search,
-    typeFilter,
+    sortDir,
+    sortKey,
+    sourceFilter,
     severityFilter,
     statusFilter,
-    sourceFilter,
-    sortKey,
-    sortDir,
+    typeFilter,
   ]);
 
-  const allVisibleIds = filteredNotifications.map((item) => item.id);
-  const isAllSelected =
-    allVisibleIds.length > 0 &&
-    allVisibleIds.every((id) => selectedIds.includes(id));
+  const visibleIds = filteredNotifications.map((notification) => notification.id);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
 
-  const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedIds((prev) =>
-        prev.filter((id) => !allVisibleIds.includes(id))
+  const toggleSelectedId = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedIds((current) =>
+        current.filter((id) => !visibleIds.includes(id)),
       );
       return;
     }
 
-    setSelectedIds((prev) => Array.from(new Set([...prev, ...allVisibleIds])));
+    setSelectedIds((current) => Array.from(new Set([...current, ...visibleIds])));
   };
 
-  const actionTitleMap: Record<UserNotificationActionValue, string> = {
-    "mark-selected-read": userNotificationModalContent.markRead.title,
-    "mark-selected-unread": userNotificationModalContent.markUnread.title,
-    "archive-selected": userNotificationModalContent.archive.title,
-    "delete-selected": userNotificationModalContent.delete.title,
-    "clear-read": userNotificationModalContent.clearRead.title,
+  const runAction = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+
+    try {
+      await action();
+      await loadNotifications(false);
+      setSecondsLeft(REFRESH_SECONDS);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Notification action failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const actionDescriptionMap: Record<UserNotificationActionValue, string> = {
-    "mark-selected-read": userNotificationModalContent.markRead.description,
-    "mark-selected-unread": userNotificationModalContent.markUnread.description,
-    "archive-selected": userNotificationModalContent.archive.description,
-    "delete-selected": userNotificationModalContent.delete.description,
-    "clear-read": userNotificationModalContent.clearRead.description,
+  const exportNotifications = (format: TableExportFormat) => {
+    const rows =
+      selectedIds.length > 0
+        ? filteredNotifications.filter((notification) =>
+            selectedIds.includes(notification.id),
+          )
+        : filteredNotifications;
+
+    exportTableData({
+      title: "User Notifications",
+      filename: "alpha-queue-user-notifications",
+      format,
+      columns: [
+        { label: "Title", value: (row: UserNotification) => row.title },
+        { label: "Message", value: (row) => row.message },
+        { label: "Type", value: (row) => formatOptionLabel(row.type) },
+        { label: "Source", value: (row) => formatOptionLabel(row.source) },
+        { label: "Severity", value: (row) => formatOptionLabel(row.severity) },
+        { label: "Status", value: (row) => formatOptionLabel(row.status) },
+        { label: "Created", value: (row) => row.createdAtLabel },
+      ],
+      rows,
+    });
   };
 
   return (
-    <>
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Total"
+          value={summary.total}
+          helper="Notifications currently visible to this user."
+        />
+        <SummaryCard
+          label="Unread"
+          value={summary.unread}
+          helper="Items that still need attention."
+        />
+        <SummaryCard
+          label="Critical"
+          value={summary.critical}
+          helper="High-severity alerts."
+        />
+        <SummaryCard
+          label="Action Required"
+          value={summary.actionRequired}
+          helper="Items flagged by the backend for follow-up."
+        />
+      </div>
+
       <Table>
-        <TableTop className="pb-4">
-          <p className="paragraph mt-1">
-            {filteredNotifications.length} notifications
-          </p>
+        <TableTop>
+          <TableTitleBlock
+            title="User Notifications"
+            description={`Showing ${filteredNotifications.length} notification${filteredNotifications.length === 1 ? "" : "s"} from the live user feed.`}
+          />
 
           <TableControls>
             <TableSearch
               id="search-user-notifications"
-              label={userNotificationTableMeta.searchPlaceholder}
+              label="Search notifications"
               value={search}
               onChange={setSearch}
-              wrapperClassName="w-full md:w-[430px]"
             />
 
-            <Dropdown onValueChange={setTypeFilter}>
-              <DropdownTrigger className="h-12 min-w-[160px] px-5 text-base">
-                {userNotificationTypeOptions.find(
-                  (item) => item.value === typeFilter
-                )?.label ?? "All Types"}
-              </DropdownTrigger>
-              <DropdownContent widthClassName="w-[220px]">
-                {userNotificationTypeOptions.map((item) => (
-                  <DropdownItem key={item.value} value={item.value}>
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-
-            <Dropdown onValueChange={setSeverityFilter}>
-              <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-                {userNotificationSeverityOptions.find(
-                  (item) => item.value === severityFilter
-                )?.label ?? "All Severities"}
-              </DropdownTrigger>
-              <DropdownContent widthClassName="w-[220px]">
-                {userNotificationSeverityOptions.map((item) => (
-                  <DropdownItem key={item.value} value={item.value}>
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-
-            <Dropdown onValueChange={setStatusFilter}>
-              <DropdownTrigger className="h-12 min-w-[160px] px-5 text-base">
-                {userNotificationStatusOptions.find(
-                  (item) => item.value === statusFilter
-                )?.label ?? "All Statuses"}
-              </DropdownTrigger>
-              <DropdownContent widthClassName="w-[220px]">
-                {userNotificationStatusOptions.map((item) => (
-                  <DropdownItem key={item.value} value={item.value}>
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-
-            <Dropdown onValueChange={setSourceFilter}>
-              <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-                {userNotificationSourceOptions.find(
-                  (item) => item.value === sourceFilter
-                )?.label ?? "All Sources"}
-              </DropdownTrigger>
-              <DropdownContent widthClassName="w-[240px]">
-                {userNotificationSourceOptions.map((item) => (
-                  <DropdownItem key={item.value} value={item.value}>
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-
-            <RefreshTimer
-              secondsLeft={secondsLeft}
-              onRefreshNow={handleRefreshNow}
+            <TableExportDropdown
+              disabled={filteredNotifications.length === 0}
+              onExport={exportNotifications}
             />
-
-            <Dropdown
-              onValueChange={(value) =>
-                setActionModal(value as UserNotificationActionValue)
-              }
-            >
-              <DropdownTrigger className="h-12 min-w-[180px] px-5 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[260px]">
-                {userNotificationActionOptions.map((item) => (
-                  <DropdownItem
-                    key={item.value}
-                    value={item.value}
-                    className="py-4 text-base"
-                  >
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
           </TableControls>
         </TableTop>
 
+        <div className="px-6 pb-6">
+          <div className="flex flex-wrap gap-3">
+            <SelectField
+              label="Type"
+              value={typeFilter}
+              options={filterOptions.type}
+              onChange={setTypeFilter}
+            />
+            <SelectField
+              label="Severity"
+              value={severityFilter}
+              options={filterOptions.severity}
+              onChange={setSeverityFilter}
+            />
+            <SelectField
+              label="Status"
+              value={statusFilter}
+              options={filterOptions.status}
+              onChange={setStatusFilter}
+            />
+            <SelectField
+              label="Source"
+              value={sourceFilter}
+              options={filterOptions.source}
+              onChange={setSourceFilter}
+            />
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button
+              variant="secondary"
+              iconLeft={<RefreshCw className="h-4 w-4" />}
+              disabled={busy}
+              onClick={() =>
+                runAction(async () => {
+                  await loadNotifications(false);
+                })
+              }
+            >
+              Refresh ({secondsLeft}s)
+            </Button>
+
+            <Button
+              variant="outline"
+              disabled={busy || selectedIds.length === 0}
+              onClick={() =>
+                runAction(async () => {
+                  await apiPatch(
+                    "/user/notifications/bulk/read",
+                    { notificationIds: selectedIds },
+                    "user",
+                  );
+                  setSelectedIds([]);
+                })
+              }
+            >
+              Mark Selected Read
+            </Button>
+
+            <Button
+              variant="outline"
+              disabled={busy || selectedIds.length === 0}
+              onClick={() =>
+                runAction(async () => {
+                  await Promise.all(
+                    selectedIds.map((id) =>
+                      apiPatch(`/user/notifications/${id}/archive`, {}, "user"),
+                    ),
+                  );
+                  setSelectedIds([]);
+                })
+              }
+            >
+              Archive Selected
+            </Button>
+
+            <Button
+              variant="outline"
+              iconLeft={<Trash2 className="h-4 w-4" />}
+              disabled={busy || selectedIds.length === 0}
+              onClick={() =>
+                runAction(async () => {
+                  await apiPost(
+                    "/user/notifications/bulk/delete",
+                    { notificationIds: selectedIds },
+                    "user",
+                  );
+                  setSelectedIds([]);
+                })
+              }
+            >
+              Delete Selected
+            </Button>
+          </div>
+
+          {error ? (
+            <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+        </div>
+
         <TableMain>
-          <TableGrid minWidthClassName="min-w-[1380px]">
+          <TableGrid minWidthClassName="min-w-[1500px]">
             <TableHeader columnsClassName={columnsClassName}>
               <TableCell className="justify-center">
                 <TableCheckbox
-                  checked={isAllSelected}
-                  onToggle={toggleSelectAll}
+                  checked={allVisibleSelected}
+                  onToggle={toggleSelectAllVisible}
                 />
               </TableCell>
-
-              {userNotificationColumns.map((column) => (
-                <TableHeaderCell
-                  key={column.key}
-                  label={column.label}
-                  sortable={column.sortable}
-                  active={sortKey === column.key}
-                  direction={sortDir}
-                  onClick={() =>
-                    handleSort(column.key as UserNotificationSortKey)
-                  }
-                />
-              ))}
-
-              <div
-                className="text-[11px] font-semibold uppercase tracking-[0.18em] sm:text-xs"
-                style={{ color: "var(--muted)" }}
-              >
-                Quick Actions
-              </div>
+              <TableHeaderCell
+                label="Notification"
+                sortable
+                active={sortKey === "title"}
+                direction={sortDir}
+                onClick={() => handleSort("title")}
+              />
+              <TableHeaderCell
+                label="Type"
+                sortable
+                active={sortKey === "type"}
+                direction={sortDir}
+                onClick={() => handleSort("type")}
+              />
+              <TableHeaderCell
+                label="Source"
+                sortable
+                active={sortKey === "source"}
+                direction={sortDir}
+                onClick={() => handleSort("source")}
+              />
+              <TableHeaderCell
+                label="Severity"
+                sortable
+                active={sortKey === "severity"}
+                direction={sortDir}
+                onClick={() => handleSort("severity")}
+              />
+              <TableHeaderCell
+                label="Status"
+                sortable
+                active={sortKey === "status"}
+                direction={sortDir}
+                onClick={() => handleSort("status")}
+              />
+              <TableHeaderCell
+                label="Created"
+                sortable
+                active={sortKey === "createdAt"}
+                direction={sortDir}
+                onClick={() => handleSort("createdAt")}
+              />
+              <TableHeaderCell label="Actions" />
             </TableHeader>
 
             <TableBody>
-              {filteredNotifications.length === 0 ? (
-                <TableEmptyState
-                  text={userNotificationTableMeta.emptyStateText}
-                />
+              {loading ? (
+                <TableEmptyState text="Loading notifications..." />
+              ) : filteredNotifications.length === 0 ? (
+                <TableEmptyState text="No notifications matched the current filters." />
               ) : (
-                filteredNotifications.map((item) => {
-                  const isSelected = selectedIds.includes(item.id);
+                filteredNotifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    onClick={() => setDetailsNotification(notification)}
+                    className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
+                  >
+                    <TableCell className="justify-center">
+                      <TableCheckbox
+                        checked={selectedIds.includes(notification.id)}
+                        onToggle={() => toggleSelectedId(notification.id)}
+                      />
+                    </TableCell>
 
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setDetailsModal(item)}
-                      className={`grid w-full cursor-pointer items-center border-b border-[var(--border)] px-6 py-4 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
-                    >
-                      <TableCell className="justify-center">
-                        <TableCheckbox
-                          checked={isSelected}
-                          onToggle={() => toggleRowSelection(item.id)}
-                        />
-                      </TableCell>
+                    <TableCell className="flex-col items-start">
+                      <p className="font-semibold text-[var(--title)]">
+                        {notification.title}
+                      </p>
+                      <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
+                        {notification.message}
+                      </p>
+                    </TableCell>
 
-                      <TableCell className="min-w-0 pr-8">
-                        <div className="w-full min-w-0">
-                          <span className="block truncate text-sm font-semibold text-[var(--title)]">
-                            {item.title}
-                          </span>
-                          <span className="block truncate text-sm text-[var(--muted)]">
-                            {item.message}
-                          </span>
-                        </div>
-                      </TableCell>
+                    <TableCell className="text-[var(--title)]">
+                      {formatOptionLabel(notification.type)}
+                    </TableCell>
 
-                      <TableCell className="min-w-0">
-                        <span className="paragraph block truncate">
-                          {formatTypeLabel(item.type)}
-                        </span>
-                      </TableCell>
+                    <TableCell className="text-[var(--title)]">
+                      {formatOptionLabel(notification.source)}
+                    </TableCell>
 
-                      <TableCell className="min-w-0">
-                        <span className="paragraph block truncate">
-                          {formatSourceLabel(item.source)}
-                        </span>
-                      </TableCell>
-
-                      <TableCell>
-                        <SeverityBadge severity={item.severity} />
-                      </TableCell>
-
-                      <TableCell className="min-w-0">
-                        <span className="paragraph block truncate">
-                          {item.createdAtLabel}
-                        </span>
-                      </TableCell>
-
-                      <TableCell>
-                        <StatusBadge status={item.status} />
-                      </TableCell>
-
-                      <TableCell
-                        className="justify-center"
-                        onClick={(e) => e.stopPropagation()}
+                    <TableCell>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${severityTone[notification.severity]}`}
                       >
-                        <ExpandedButton
-                          id={`delete-${item.id}`}
-                          label="Delete"
-                          icon={Trash2}
-                          variant="danger"
-                          onClick={() => setDeleteModal(item)}
-                        />
-                      </TableCell>
-                    </div>
-                  );
-                })
+                        {formatOptionLabel(notification.severity)}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone[notification.status]}`}
+                      >
+                        {formatOptionLabel(notification.status)}
+                      </span>
+                    </TableCell>
+
+                    <TableCell className="text-[var(--title)]">
+                      {notification.createdAtLabel}
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        {notification.canMarkAsRead ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiPatch(
+                                  `/user/notifications/${notification.id}/read`,
+                                  {},
+                                  "user",
+                                );
+                              });
+                            }}
+                          >
+                            Mark Read
+                          </Button>
+                        ) : null}
+
+                        {notification.canArchive ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiPatch(
+                                  `/user/notifications/${notification.id}/archive`,
+                                  {},
+                                  "user",
+                                );
+                              });
+                            }}
+                          >
+                            Archive
+                          </Button>
+                        ) : null}
+
+                        {notification.canDelete ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiDelete(
+                                  `/user/notifications/${notification.id}`,
+                                  "user",
+                                );
+                              });
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </div>
+                ))
               )}
             </TableBody>
           </TableGrid>
         </TableMain>
       </Table>
 
-      <Modal open={Boolean(detailsModal)} onClose={() => setDetailsModal(null)}>
-        <div className="space-y-5 pr-8">
-          <div className="flex items-start gap-3">
+      <Modal
+        open={Boolean(detailsNotification)}
+        onClose={() => setDetailsNotification(null)}
+      >
+        <div className="space-y-4 pr-8">
+          <div className="flex items-center gap-3">
             <div
               className="flex h-11 w-11 items-center justify-center rounded-xl"
-              style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-              }}
+              style={{ background: "var(--surface-2)" }}
             >
-              <Bell className="h-5 w-5 text-[var(--muted)]" />
+              <Bell className="h-5 w-5 text-[var(--color-brand-500)]" />
             </div>
-
             <div>
-              <h3 className="title-md">{detailsModal?.title}</h3>
+              <h3 className="title-md">{detailsNotification?.title}</h3>
               <p className="paragraph mt-1">
-                {userNotificationModalContent.details.description}
+                {detailsNotification?.createdAtLabel}
               </p>
             </div>
           </div>
 
           <div
-            className="rounded-xl border p-4"
+            className="rounded-2xl border p-4"
             style={{
-              background: "var(--surface-2)",
               borderColor: "var(--border)",
+              background: "var(--surface-2)",
             }}
           >
-            <p className="paragraph">{detailsModal?.message}</p>
+            <p className="text-sm text-[var(--title)]">
+              {detailsNotification?.message}
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Type</p>
-              <p className="paragraph mt-1">
-                {detailsModal ? formatTypeLabel(detailsModal.type) : "-"}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div
+              className="rounded-xl border p-4"
+              style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Type
+              </p>
+              <p className="mt-2 text-sm font-semibold text-[var(--title)]">
+                {detailsNotification ? formatOptionLabel(detailsNotification.type) : "-"}
               </p>
             </div>
 
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Source</p>
-              <p className="paragraph mt-1">
-                {detailsModal ? formatSourceLabel(detailsModal.source) : "-"}
+            <div
+              className="rounded-xl border p-4"
+              style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Source
               </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">
-                Severity
-              </p>
-              <div className="mt-2">
-                {detailsModal ? (
-                  <SeverityBadge severity={detailsModal.severity} />
-                ) : null}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Status</p>
-              <div className="mt-2">
-                {detailsModal ? (
-                  <StatusBadge status={detailsModal.status} />
-                ) : null}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Date</p>
-              <p className="paragraph mt-1">
-                {detailsModal?.createdAtLabel ?? "-"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--muted)]">
-                Reference
-              </p>
-              <p className="paragraph mt-1">
-                {detailsModal?.relatedEntity?.label ?? "No linked reference"}
+              <p className="mt-2 text-sm font-semibold text-[var(--title)]">
+                {detailsNotification ? formatOptionLabel(detailsNotification.source) : "-"}
               </p>
             </div>
           </div>
         </div>
       </Modal>
-
-      <Modal open={Boolean(actionModal)} onClose={() => setActionModal(null)}>
-        <div className="space-y-3 pr-8">
-          <h3 className="title-md">
-            {actionModal ? actionTitleMap[actionModal] : "Notification Action"}
-          </h3>
-
-          <p className="paragraph">
-            {actionModal
-              ? actionDescriptionMap[actionModal]
-              : "Apply an action to your selected notifications."}
-          </p>
-
-          <p className="paragraph">
-            Selected rows:{" "}
-            <span className="font-semibold">{selectedIds.length}</span>
-          </p>
-
-          <div className="pt-2">
-            <Button variant="primary">Confirm</Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={Boolean(deleteModal)} onClose={() => setDeleteModal(null)}>
-        <div className="space-y-3 pr-8">
-          <h3 className="title-md">Delete Notification</h3>
-          <p className="paragraph">
-            This notification will be permanently removed from your notification
-            list.
-          </p>
-          <p className="paragraph font-medium text-[var(--title)]">
-            {deleteModal?.title}
-          </p>
-
-          <div className="pt-2">
-            <Button variant="primary">Delete</Button>
-          </div>
-        </div>
-      </Modal>
-    </>
+    </div>
   );
-};
-
-export default UserNotificationsTable;
+}
