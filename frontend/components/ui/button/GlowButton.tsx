@@ -33,7 +33,7 @@ const GlowButton: React.FC<GlowButtonProps> = ({
       <span
         className="
         absolute -inset-[1px] rounded-2xl
-        bg-gradient-to-r from-blue-500 via-brand-500 to-red-500
+        bg-gradient-to-r from-support-300 via-brand-500 to-brand-700
         blur-md opacity-60
       "
       />
@@ -42,7 +42,7 @@ const GlowButton: React.FC<GlowButtonProps> = ({
       <span
         className="
         absolute inset-0 rounded-2xl
-        bg-gradient-to-r from-blue-500 via-brand-500 to-red-500
+        bg-gradient-to-r from-support-300 via-brand-500 to-brand-700
         opacity-80
       "
       />

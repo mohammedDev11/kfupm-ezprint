@@ -27,7 +27,7 @@ export default function UsersTableRow({
       onClick={() => onToggle(user.id)}
       className={`group cursor-pointer transition-colors duration-150 ${
         isSelected
-          ? 'bg-blue-50/50 dark:bg-blue-500/10'
+          ? 'bg-brand-50/60 dark:bg-brand-500/10'
           : 'hover:bg-slate-50/60 dark:hover:bg-slate-900'
       }`}
     >
@@ -37,7 +37,7 @@ export default function UsersTableRow({
           checked={isSelected}
           onChange={() => onToggle(user.id)}
           onClick={(e) => e.stopPropagation()}
-          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 cursor-pointer accent-blue-500"
+          className="w-4 h-4 rounded border-slate-300 dark:border-white/10 cursor-pointer accent-[var(--color-brand-500)]"
         />
       </td>
 

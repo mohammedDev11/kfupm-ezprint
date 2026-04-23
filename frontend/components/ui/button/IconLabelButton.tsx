@@ -23,16 +23,22 @@ export default function IconLabelButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "group inline-flex items-center rounded-xl px-2 py-2 text-sm font-medium transition cursor-pointer",
+        "group inline-flex items-center rounded-[1rem] border px-2.5 py-2 text-sm font-medium transition-all duration-300 cursor-pointer",
         className
       )}
+      style={{
+        borderColor: "var(--border)",
+        background:
+          "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
+        color: "var(--foreground)",
+        boxShadow:
+          "0 10px 24px rgba(var(--shadow-color), 0.08), inset 0 1px 0 rgba(255,255,255,0.08)",
+      }}
     >
-      {/* ICON */}
       <span className="flex h-8 w-8 items-center justify-center shrink-0">
         {icon}
       </span>
 
-      {/* LABEL */}
       <span
         className={cn(
           "ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0",

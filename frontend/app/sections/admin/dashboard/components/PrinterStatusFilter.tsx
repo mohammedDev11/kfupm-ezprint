@@ -56,7 +56,7 @@ const PrinterStatusFilter = ({
                 type="checkbox"
                 checked={checked}
                 onChange={() => onToggleStatus(status)}
-                className="h-4 w-4 accent-blue-600"
+                className="h-4 w-4 accent-[var(--color-brand-500)]"
               />
             </label>
           );

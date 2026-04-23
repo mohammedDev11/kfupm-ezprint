@@ -1,12 +1,13 @@
 "use client";
 
+import PreviewVideo from "@/components/ui/video/PreviewVideo";
 import { cn } from "@/lib/cn";
 import {
   getDockItems,
   type SidebarItem,
   type SidebarSection,
 } from "@/lib/mock-data/Navbar";
-import PreviewVideo from "@/components/ui/video/PreviewVideo";
+import useIsClient from "@/lib/useIsClient";
 import {
   AnimatePresence,
   motion,
@@ -22,6 +23,8 @@ import { createPortal } from "react-dom";
 
 type DockNavbarBottomProps = {
   sections: SidebarSection[];
+  inFrame?: boolean;
+  className?: string;
 };
 
 type DockItemProps = {
@@ -155,12 +158,8 @@ function PreviewPortal({
   onPreviewEnter,
   onPreviewLeave,
 }: PreviewPortalProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [coords, setCoords] = useState({ left: 0, bottom: 0 });
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useLayoutEffect(() => {
     if (!visible || !anchorRef.current) return;
@@ -239,7 +238,7 @@ function PreviewPortal({
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body
+    document.body,
   );
 }
 
@@ -292,7 +291,7 @@ function DockItem({ item, mouseX }: DockItemProps) {
   const iconScaleTransform = useTransform(
     distance,
     [-160, 0, 160],
-    [1, 1.18, 1]
+    [1, 1.18, 1],
   );
 
   const width = useSpring(widthTransform, {
@@ -346,7 +345,7 @@ function DockItem({ item, mouseX }: DockItemProps) {
             "relative flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border transition-colors duration-200",
             active
               ? "inverse-surface shadow-lg-inverse"
-              : "bg-surface text-foreground"
+              : "text-[var(--foreground)]",
           )}
           style={{
             borderColor: active ? "transparent" : "var(--border)",
@@ -373,7 +372,9 @@ function DockItem({ item, mouseX }: DockItemProps) {
             <Icon
               className={cn(
                 "text-[1.45rem]",
-                active ? "" : "text-[var(--foreground)]"
+                active
+                  ? "text-[var(--color-brand-500)]"
+                  : "text-[var(--foreground)]",
               )}
             />
           </motion.div>
@@ -383,25 +384,34 @@ function DockItem({ item, mouseX }: DockItemProps) {
   );
 }
 
-export default function DockNavbarBottom({ sections }: DockNavbarBottomProps) {
+export default function DockNavbarBottom({
+  sections,
+  inFrame = false,
+  className,
+}: DockNavbarBottomProps) {
   const mouseX = useMotionValue<number>(Infinity);
   const dockItems = useMemo(() => getDockItems(sections), [sections]);
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 hidden md:block">
+    <div
+      className={cn(
+        "hidden md:block",
+        inFrame ? "relative" : "fixed bottom-4 left-4 right-4 z-50",
+        className,
+      )}
+    >
       <motion.div
         onMouseMove={(event) => mouseX.set(event.pageX)}
         onMouseLeave={() => mouseX.set(Infinity)}
         className="flex w-full items-center justify-center"
       >
         <div
-          className="flex w-fit max-w-[calc(100vw-2rem)] items-end gap-3 overflow-x-auto rounded-[1.75rem] border px-4 pt-4 pb-3"
+          className={cn(
+            "flex w-fit items-end gap-3 overflow-x-auto px-4 pt-4 pb-3",
+            inFrame ? "max-w-full" : "max-w-[calc(100vw-2rem)]",
+          )}
           style={{
-            background: "color-mix(in srgb, var(--surface) 85%, transparent)",
-            borderColor: "var(--border)",
-            boxShadow:
-              "0 18px 50px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
-            backdropFilter: "blur(18px)",
+            background: "transparent",
           }}
         >
           {dockItems.map((item) => (

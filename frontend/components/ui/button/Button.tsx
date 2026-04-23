@@ -82,23 +82,20 @@ export default function Button({
       className={clsx(
         "inline-flex items-center justify-center gap-2 font-medium transition-all duration-300 cursor-pointer",
 
-        // 🔵 PRIMARY (new design)
         {
           "relative overflow-hidden text-white rounded-md shadow-md":
             variant === "primary",
         },
 
-        // darker gradient + darker hover
         {
-          "bg-gradient-to-b from-[#3b82f6] to-[#1d4ed8] hover:from-[#1e40af] hover:to-[#1e3a8a] active:scale-[0.97]":
+          "bg-[linear-gradient(135deg,var(--color-brand-400),var(--color-brand-600))] hover:-translate-y-0.5 active:scale-[0.97]":
             variant === "primary",
         },
 
-        // remove white glow → replace with darker feel
         {
-          "hover:shadow-md hover:shadow-blue-900/40": variant === "primary",
+          "shadow-[0_14px_30px_rgba(var(--brand-rgb),0.28)] hover:shadow-[0_18px_36px_rgba(var(--brand-rgb),0.34)]":
+            variant === "primary",
         },
-        // OTHER VARIANTS (unchanged)
         {
           "bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--surface-2)]":
             variant === "outline",

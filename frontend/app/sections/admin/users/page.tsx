@@ -134,7 +134,7 @@
 //                       type="checkbox"
 //                       checked={allSelected}
 //                       onChange={toggleAll}
-//                       className="w-4 h-4 rounded cursor-pointer accent-blue-500"
+//                       className="w-4 h-4 rounded cursor-pointer accent-[var(--color-brand-500)]"
 //                     />
 //                   </th>
 
@@ -194,7 +194,7 @@
 //                             checked={isSelected}
 //                             onChange={() => toggleOne(user.id)}
 //                             onClick={(e) => e.stopPropagation()}
-//                             className="w-4 h-4 rounded cursor-pointer accent-blue-500"
+//                             className="w-4 h-4 rounded cursor-pointer accent-[var(--color-brand-500)]"
 //                           />
 //                         </td>
 

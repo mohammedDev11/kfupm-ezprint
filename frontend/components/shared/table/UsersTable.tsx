@@ -42,7 +42,7 @@ export default function UsersTable({
                 type="checkbox"
                 checked={allSelected}
                 onChange={onToggleAll}
-                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 cursor-pointer accent-blue-500"
+                className="w-4 h-4 rounded border-slate-300 dark:border-white/10 cursor-pointer accent-[var(--color-brand-500)]"
               />
             </th>
 

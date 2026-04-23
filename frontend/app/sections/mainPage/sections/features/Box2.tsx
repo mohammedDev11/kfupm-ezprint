@@ -26,7 +26,7 @@ const Box2 = () => {
       id: "docx",
       label: "WORD",
       icon: IconFileTypeDocx,
-      iconClassName: "text-blue-500",
+      iconClassName: "text-[var(--color-support-500)]",
     },
     {
       id: "xls",

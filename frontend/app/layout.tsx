@@ -1,11 +1,10 @@
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import type { Metadata } from "next";
-import NavbarShell from "@/components/shared/page/navbar/NavbarShell";
 
 export const metadata: Metadata = {
-  title: "Alpha Queue",
-  description: "Next.js app",
+  title: "EzPrint",
+  description: "Premium print management workspace for campus operations.",
 };
 
 export default function RootLayout({

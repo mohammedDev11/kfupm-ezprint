@@ -2,7 +2,7 @@
 
 // export default function Home() {
 //   return (
-//     <main className="min-h-screen bg-[#020617] flex items-center justify-center overflow-hidden">
+//     <main className="min-h-screen bg-[#090909] flex items-center justify-center overflow-hidden">
 //       <div className="w-[900px] h-[600px] pointer-events-none">
 //         {/* <Spline scene="https://prod.spline.design/FHTIF0RO-Dc-36py/scene.splinecode" /> */}
 //       </div>

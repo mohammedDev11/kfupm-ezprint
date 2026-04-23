@@ -132,7 +132,7 @@ const GeneralLineChart = ({
                           type="checkbox"
                           checked={visibleMetrics[key]}
                           onChange={() => toggleMetric(key)}
-                          className="accent-blue-600"
+                          className="accent-[var(--color-brand-500)]"
                         />
                       </label>
                     ))}

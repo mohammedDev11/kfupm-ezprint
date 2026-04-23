@@ -260,7 +260,7 @@
 //     secondary: "bg-transparent shadow-none text-[var(--foreground)]",
 //     dark: "bg-black text-white shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.1)_inset]",
 //     gradient:
-//       "bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.3)_inset]",
+//       "bg-gradient-to-b from-brand-400 to-brand-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.22)_inset]",
 //   };
 
 //   return (
@@ -277,6 +277,7 @@
 // =============New============
 "use client";
 import { cn } from "@/lib/cn";
+import { BrandMark } from "@/components/shared/page/Logo";
 import { IconMenu2, IconX } from "@tabler/icons-react";
 import {
   motion,
@@ -468,6 +469,13 @@ export const MobileNavMenu = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              onClose();
+            }
+          }}
+          role="dialog"
+          tabIndex={-1}
           className={cn(
             "absolute inset-x-0 top-16 z-50 flex w-full flex-col items-start justify-start gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-8 shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.08)_inset]",
             className
@@ -500,10 +508,8 @@ export const NavbarLogo = () => {
       href="#"
       className="relative z-20 mr-4 flex items-center space-x-2 px-2 py-1 text-sm font-normal text-[var(--foreground)]"
     >
-      <div className="bg-brand-900 rounded-md p-1.5">
-        <img src="./favicon.ico" alt="logo" width={18} height={18} />
-      </div>
-      <span className="font-medium text-[var(--foreground)]">Alpha Queue</span>
+      <BrandMark compact />
+      <span className="font-medium text-[var(--foreground)]">EzPrint</span>
     </a>
   );
 };
@@ -534,7 +540,7 @@ export const NavbarButton = ({
     secondary: "bg-transparent shadow-none text-[var(--foreground)]",
     dark: "bg-[var(--foreground)] text-[var(--background)] shadow-[0_0_24px_rgba(34,_42,_53,_0.06),_0_1px_1px_rgba(0,_0,_0,_0.05),_0_0_0_1px_rgba(34,_42,_53,_0.04),_0_0_4px_rgba(34,_42,_53,_0.08),_0_16px_68px_rgba(47,_48,_55,_0.05),_0_1px_0_rgba(255,_255,_255,_0.08)_inset]",
     gradient:
-      "bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.3)_inset]",
+      "bg-gradient-to-b from-brand-400 to-brand-700 text-white shadow-[0px_2px_0px_0px_rgba(255,255,255,0.22)_inset]",
   };
 
   return (

@@ -9,15 +9,14 @@ import {
   FaYoutube,
 } from "react-icons/fa";
 import { BsTwitterX } from "react-icons/bs";
-import favicon from "@/app/favicon.ico";
-import Image from "next/image";
+import { BrandMark } from "@/components/shared/page/Logo";
 
 const Footer = () => {
   const brand = {
-    name: "Alpha Queue",
+    name: "EzPrint",
     tagline: "KFUPM Printing Management System",
     description:
-      "Alpha Queue provides a secure and streamlined printing experience for KFUPM students, faculty, and staff. Upload documents, release print jobs safely, and manage your printing workflow with clarity and control.",
+      "EzPrint provides a secure and streamlined printing experience for KFUPM students, faculty, and staff. Upload documents, release print jobs safely, and manage your printing workflow with clarity and control.",
   };
 
   const socialLinks = [
@@ -108,15 +107,7 @@ const Footer = () => {
             <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="mb-4 flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand-900 shadow-surface">
-                    <Image
-                      src={favicon}
-                      alt="Alpha Queue"
-                      width={26}
-                      height={26}
-                      className="h-[26px] w-[26px] object-contain"
-                    />
-                  </div>
+                  <BrandMark className="h-12 w-12" />
 
                   <div>
                     <h2 className="text-3xl font-bold tracking-tight text-[var(--title)] sm:text-4xl">
@@ -213,7 +204,7 @@ const Footer = () => {
           {/* bottom */}
           <div className="border-t border-[var(--border)] pt-6">
             <div className="flex flex-col items-center justify-between gap-3 text-center text-xs text-[var(--muted)] sm:text-sm md:flex-row md:text-left">
-              <span>© 2026 Alpha Queue. All rights reserved.</span>
+              <span>© 2026 EzPrint. All rights reserved.</span>
 
               <span>
                 Developed for{" "}
