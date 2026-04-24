@@ -8,6 +8,7 @@ const navbarModeStorageKey = "ezprint-navbar-mode";
 
 type SectionBadgeProps = {
   title: string;
+  description?: string;
   className?: string;
 };
 
@@ -24,7 +25,11 @@ const readNavbarMode = (): NavbarMode => {
     : "left";
 };
 
-export default function SectionBadge({ title, className }: SectionBadgeProps) {
+export default function SectionBadge({
+  title,
+  description,
+  className,
+}: SectionBadgeProps) {
   const [navbarMode, setNavbarMode] = useState<NavbarMode>("left");
   const isRightMode = navbarMode === "right";
 
@@ -57,39 +62,64 @@ export default function SectionBadge({ title, className }: SectionBadgeProps) {
     };
   }, []);
 
+  const edgeClass = "pointer-events-none absolute top-0 z-20";
+  const badgeEdgeClass = "pointer-events-none absolute z-20 -top-4 sm:-top-6 lg:-top-8";
+  const badgeLeftEdgeClass = "-left-4 sm:-left-6 lg:-left-8";
+  const badgeRightEdgeClass = "-right-4 sm:-right-6 lg:-right-8";
+  const descriptionEdgeClass =
+    "pointer-events-none absolute z-20 -top-4 sm:-top-6 lg:-top-8";
+  const textLeftEdgeClass = "left-0";
+  const textRightEdgeClass = "right-0";
+
   return (
-    <div
-      className={cn(
-        "pointer-events-none absolute z-20 -top-4 sm:-top-6 lg:-top-8",
-        isRightMode
-          ? "-left-4 sm:-left-6 lg:-left-8"
-          : "-right-4 sm:-right-6 lg:-right-8",
-        className,
-      )}
-    >
-      <div
-        className={cn(
-          "ezprint-section-badge-inner min-w-[150px] px-6 py-3.5 shadow-2xl sm:min-w-[170px] sm:px-7 sm:py-4",
-          isRightMode
-            ? "rounded-br-[1.45rem]"
-            : "rounded-bl-[1.45rem]",
-        )}
-        style={{
-          transformOrigin: isRightMode ? "top left" : "top right",
-        }}
-      >
-        <h1
-          key={`${title}-${isRightMode ? "right" : "left"}`}
+    <>
+      {description ? (
+        <p
+          key={`${description}-${isRightMode ? "right" : "left"}`}
           className={cn(
-            "ezprint-section-badge-text text-center text-base font-semibold tracking-[-0.01em] text-[var(--title)] sm:text-lg",
+            "ezprint-section-description max-w-[min(36rem,calc(100vw-16rem))] py-3.5 text-sm font-semibold leading-6 text-[var(--title)] sm:py-4",
+            descriptionEdgeClass,
             isRightMode
-              ? "ezprint-section-badge-text-from-left"
-              : "ezprint-section-badge-text-from-right",
+              ? `${textRightEdgeClass} ezprint-section-description-from-right text-right`
+              : `${textLeftEdgeClass} ezprint-section-description-from-left text-left`,
           )}
         >
-          {title}
-        </h1>
+          {description}
+        </p>
+      ) : null}
+
+      <div
+        className={cn(
+          edgeClass,
+          badgeEdgeClass,
+          isRightMode ? badgeLeftEdgeClass : badgeRightEdgeClass,
+          className,
+        )}
+      >
+        <div
+          className={cn(
+            "ezprint-section-badge-inner min-w-[150px] px-6 py-3.5 shadow-2xl sm:min-w-[170px] sm:px-7 sm:py-4",
+            isRightMode
+              ? "rounded-br-[1.45rem]"
+              : "rounded-bl-[1.45rem]",
+          )}
+          style={{
+            transformOrigin: isRightMode ? "top left" : "top right",
+          }}
+        >
+          <h1
+            key={`${title}-${isRightMode ? "right" : "left"}`}
+            className={cn(
+              "ezprint-section-badge-text text-center text-base font-semibold tracking-[-0.01em] text-[var(--title)] sm:text-lg",
+              isRightMode
+                ? "ezprint-section-badge-text-from-left"
+                : "ezprint-section-badge-text-from-right",
+            )}
+          >
+            {title}
+          </h1>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

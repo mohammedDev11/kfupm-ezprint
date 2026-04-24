@@ -291,6 +291,87 @@ body {
     cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
 }
 
+@keyframes ezprint-section-description-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ezprint-section-description-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ezprint-section-description {
+  will-change: transform, opacity;
+}
+
+.ezprint-section-description-from-left {
+  animation: ezprint-section-description-from-left 620ms
+    cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+.ezprint-section-description-from-right {
+  animation: ezprint-section-description-from-right 620ms
+    cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+.admin-dashboard-breakdown-table {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 96%, transparent),
+    color-mix(in srgb, var(--surface-2) 94%, transparent)
+  );
+  box-shadow:
+    0 16px 34px rgba(var(--shadow-color), 0.1),
+    inset 0 1px 0 var(--panel-highlight);
+}
+
+.admin-dashboard-breakdown-table .admin-dashboard-breakdown-header {
+  --admin-dashboard-breakdown-header-text: var(--foreground);
+  border-bottom: 1px solid var(--frame-border);
+  background: var(--background);
+  background-color: var(--background);
+  color: var(--admin-dashboard-breakdown-header-text);
+}
+
+.admin-dashboard-breakdown-row {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.admin-dashboard-breakdown-row:hover {
+  background: color-mix(in srgb, var(--surface-3) 22%, var(--surface));
+}
+
+[data-theme="dark"] .admin-dashboard-breakdown-table .admin-dashboard-breakdown-header {
+  --admin-dashboard-breakdown-header-text: var(--foreground);
+  border-bottom-color: var(--frame-border);
+  background: var(--background);
+  background-color: var(--background);
+  color: var(--admin-dashboard-breakdown-header-text);
+}
+
+[data-theme="dark"] .admin-dashboard-breakdown-row {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+[data-theme="dark"] .admin-dashboard-breakdown-row:hover {
+  background: color-mix(in srgb, var(--surface-3) 34%, var(--surface));
+}
+
 .ezprint-sidebar-link-active {
   border: 0 !important;
   outline: 0 !important;

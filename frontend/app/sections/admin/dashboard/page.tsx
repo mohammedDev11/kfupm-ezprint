@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Filter } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -16,8 +16,6 @@ import {
   TableCell,
   TableEmptyState,
   TableGrid,
-  TableHeader,
-  TableHeaderCell,
   TableMain,
   TableTitleBlock,
   TableTop,
@@ -133,16 +131,18 @@ type ActivitySlice = {
   color: string;
 };
 
+type StatusTone = "success" | "warning" | "danger" | "support" | "neutral";
+
 const periods = ["Last 7 days", "Last 30 days", "Last 90 days", "This year"];
 const activityPeriods: ActivityPeriod[] = ["Today", "This Week", "This Month"];
 const columnsClassName =
   "[grid-template-columns:minmax(180px,1.2fr)_minmax(110px,0.7fr)_minmax(110px,0.7fr)_minmax(150px,0.8fr)]";
 
 const trendMetrics: TrendMetric[] = [
-  { key: "pages", label: "Pages Printed", color: "#3b82f6" },
-  { key: "submitted", label: "Jobs Submitted", color: "#22c55e" },
-  { key: "released", label: "Jobs Released", color: "#f59e0b" },
-  { key: "failed", label: "Failed Jobs", color: "#ef4444" },
+  { key: "pages", label: "Pages Printed", color: "var(--color-brand-500)" },
+  { key: "submitted", label: "Jobs Submitted", color: "var(--color-support-500)" },
+  { key: "released", label: "Jobs Released", color: "var(--color-warning-500)" },
+  { key: "failed", label: "Failed Jobs", color: "var(--color-danger-500)" },
 ];
 
 function PeriodDropdown({
@@ -401,9 +401,9 @@ const buildActivitySlices = (
   const staff = Math.max(1, totalPages - students - faculty);
 
   return [
-    { name: "Students", value: students, color: "#3b82f6" },
-    { name: "Faculty", value: faculty, color: "#22c55e" },
-    { name: "Staff", value: staff, color: "#f59e0b" },
+    { name: "Students", value: students, color: "var(--color-brand-500)" },
+    { name: "Faculty", value: faculty, color: "var(--color-support-500)" },
+    { name: "Staff", value: staff, color: "var(--color-warning-500)" },
   ];
 };
 
@@ -659,7 +659,7 @@ function ActivityPeriodDropdown({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-11 min-w-[150px] cursor-pointer items-center justify-between gap-3 rounded-xl px-4 text-sm font-semibold transition-all"
+        className="inline-flex h-11 min-w-[150px] cursor-pointer items-center justify-between gap-3 rounded-md px-4 text-sm font-semibold transition-all"
         style={{
           color: "var(--title)",
           background:
@@ -679,7 +679,7 @@ function ActivityPeriodDropdown({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-[1rem] p-2 shadow-2xl backdrop-blur-xl"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-md p-2 shadow-2xl backdrop-blur-xl"
           style={{
             background:
               "linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
@@ -695,7 +695,7 @@ function ActivityPeriodDropdown({
                 onChange(option);
                 setOpen(false);
               }}
-              className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition"
+              className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2.5 text-left text-sm font-semibold transition"
               style={{
                 color:
                   option === value ? "var(--color-brand-500)" : "var(--paragraph)",
@@ -834,6 +834,68 @@ const getPeriodSummaryText = (periodLabel: string) => {
   return `Showing selected reporting window (${periodLabel || "Custom range"})`;
 };
 
+const getStatusTone = (status: string): StatusTone => {
+  const normalizedStatus = status.toLowerCase();
+
+  if (normalizedStatus.includes("failed")) return "danger";
+  if (normalizedStatus.includes("pending")) return "warning";
+  if (normalizedStatus.includes("printed")) return "success";
+  if (normalizedStatus.includes("refunded")) return "support";
+
+  return "neutral";
+};
+
+const getStatusColor = (status: string) => {
+  const tone = getStatusTone(status);
+
+  if (tone === "danger") return "var(--color-danger-500)";
+  if (tone === "warning") return "var(--color-warning-500)";
+  if (tone === "success") return "var(--color-success-500)";
+  if (tone === "support") return "var(--color-support-500)";
+
+  return "var(--muted)";
+};
+
+function DashboardSortHeader({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onClick,
+}: {
+  label: string;
+  sortKey: JobStatusSortKey;
+  activeKey: JobStatusSortKey;
+  direction: SortDir;
+  onClick: () => void;
+}) {
+  const active = activeKey === sortKey;
+  const SortIcon = active && direction === "asc" ? ChevronUp : ChevronDown;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors sm:text-xs"
+      style={{
+        color: active
+          ? "var(--color-brand-500)"
+          : "var(--admin-dashboard-breakdown-header-text)",
+      }}
+    >
+      <span>{label}</span>
+      <SortIcon
+        className="h-4 w-4 transition-colors"
+        style={{
+          color: active
+            ? "var(--color-brand-500)"
+            : "var(--admin-dashboard-breakdown-header-text)",
+        }}
+      />
+    </button>
+  );
+}
+
 const compareValues = (a: string | number, b: string | number, direction: SortDir) => {
   if (typeof a === "number" && typeof b === "number") {
     return direction === "asc" ? a - b : b - a;
@@ -926,8 +988,11 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-10">
-      <section className="relative space-y-4 pt-12">
-        <SectionBadge title="Dashboard" />
+      <section className="relative space-y-4 pt-16">
+        <SectionBadge
+          title="Dashboard"
+          description="Live admin overview powered by real backend reporting data."
+        />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-full text-left text-sm font-medium text-[var(--muted)]">
@@ -973,7 +1038,7 @@ export default function Page() {
         <PrintingActivityDonut summary={summary} />
       </section>
 
-      <Table>
+      <Table className="admin-dashboard-breakdown-table">
         <TableTop>
           <TableTitleBlock
             title="Job Status Breakdown"
@@ -988,36 +1053,38 @@ export default function Page() {
 
         <TableMain>
           <TableGrid minWidthClassName="min-w-[760px]">
-            <TableHeader columnsClassName={columnsClassName}>
-              <TableHeaderCell
+            <div
+              className={`admin-dashboard-breakdown-header grid px-6 py-5 ${columnsClassName}`}
+            >
+              <DashboardSortHeader
                 label="Status"
-                sortable
-                active={statusSortKey === "status"}
+                sortKey="status"
+                activeKey={statusSortKey}
                 direction={statusSortDir}
                 onClick={() => handleStatusSort("status")}
               />
-              <TableHeaderCell
+              <DashboardSortHeader
                 label="Jobs"
-                sortable
-                active={statusSortKey === "count"}
+                sortKey="count"
+                activeKey={statusSortKey}
                 direction={statusSortDir}
                 onClick={() => handleStatusSort("count")}
               />
-              <TableHeaderCell
+              <DashboardSortHeader
                 label="Pages"
-                sortable
-                active={statusSortKey === "pages"}
+                sortKey="pages"
+                activeKey={statusSortKey}
                 direction={statusSortDir}
                 onClick={() => handleStatusSort("pages")}
               />
-              <TableHeaderCell
+              <DashboardSortHeader
                 label="Cost"
-                sortable
-                active={statusSortKey === "cost"}
+                sortKey="cost"
+                activeKey={statusSortKey}
                 direction={statusSortDir}
                 onClick={() => handleStatusSort("cost")}
               />
-            </TableHeader>
+            </div>
 
             <TableBody>
               {loading ? (
@@ -1028,14 +1095,25 @@ export default function Page() {
                 jobStatusRows.map((item) => (
                   <div
                     key={item.status}
-                    className={`grid w-full border-b border-[var(--border)] px-6 py-5 last:border-b-0 ${columnsClassName}`}
+                    className={`admin-dashboard-breakdown-row grid w-full border-b border-[var(--border)] px-6 py-5 transition-colors duration-200 last:border-b-0 ${columnsClassName}`}
                   >
-                    <TableCell className="font-semibold text-[var(--title)]">
-                      {item.status}
+                    <TableCell className="gap-3 font-semibold text-[var(--title)]">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: getStatusColor(item.status),
+                          boxShadow: `0 0 14px color-mix(in srgb, ${getStatusColor(item.status)} 40%, transparent)`,
+                        }}
+                      />
+                      <span>{item.status}</span>
                     </TableCell>
-                    <TableCell className="text-[var(--title)]">{item.count}</TableCell>
-                    <TableCell className="text-[var(--title)]">{item.pages}</TableCell>
-                    <TableCell className="text-[var(--title)]">
+                    <TableCell className="font-medium text-[var(--title)]">
+                      {item.count}
+                    </TableCell>
+                    <TableCell className="font-medium text-[var(--title)]">
+                      {item.pages}
+                    </TableCell>
+                    <TableCell className="font-semibold text-[var(--color-brand-500)]">
                       {formatMoney(item.cost)}
                     </TableCell>
                   </div>
