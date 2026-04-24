@@ -209,6 +209,88 @@ body {
     linear-gradient(180deg, rgba(var(--brand-rgb), 0.025), transparent 18%);
 }
 
+@keyframes ezprint-section-badge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ezprint-section-badge-inner {
+  border: 0;
+  outline: 0;
+  overflow: hidden;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--surface-2) 76%, var(--surface-raised)),
+    color-mix(in srgb, var(--surface) 86%, var(--surface-3))
+  );
+  box-shadow:
+    0 16px 30px rgba(var(--shadow-color), 0.08),
+    inset 7px 7px 15px rgba(var(--shadow-color), 0.09),
+    inset -7px -7px 15px rgba(255, 255, 255, 0.88);
+  animation: ezprint-section-badge-in 460ms cubic-bezier(0.2, 0.8, 0.2, 1)
+    both;
+}
+
+[data-theme="dark"] .ezprint-section-badge-inner {
+  border: 0;
+  outline: 0;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--surface-raised) 72%, var(--surface-2)),
+    color-mix(in srgb, var(--surface) 72%, var(--surface-3))
+  );
+  box-shadow:
+    0 16px 30px rgba(var(--shadow-color), 0.22),
+    inset 7px 7px 15px rgba(0, 0, 0, 0.46),
+    inset -7px -7px 15px rgba(255, 255, 255, 0.045);
+}
+
+@keyframes ezprint-section-badge-text-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(52px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ezprint-section-badge-text-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-52px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ezprint-section-badge-text {
+  display: block;
+  will-change: transform, opacity;
+}
+
+.ezprint-section-badge-text-from-right {
+  animation: ezprint-section-badge-text-from-right 720ms
+    cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+}
+
+.ezprint-section-badge-text-from-left {
+  animation: ezprint-section-badge-text-from-left 720ms
+    cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+}
+
 .ezprint-sidebar-link-active {
   border: 0 !important;
   outline: 0 !important;

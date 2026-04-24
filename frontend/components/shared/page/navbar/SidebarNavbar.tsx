@@ -16,6 +16,7 @@ type SidebarNavbarProps = {
   isExpanded: boolean;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  side?: "left" | "right";
   inFrame?: boolean;
   className?: string;
   showBrand?: boolean;
@@ -25,18 +26,21 @@ type SidebarVideoPreviewProps = {
   item: SidebarItem;
   anchorRef: RefObject<HTMLAnchorElement | null>;
   visible: boolean;
+  side: "left" | "right";
 };
 
 type SidebarNavItemProps = {
   item: SidebarItem;
   isExpanded: boolean;
   pathname: string;
+  side: "left" | "right";
 };
 
 function SidebarVideoPreview({
   item,
   anchorRef,
   visible,
+  side,
 }: SidebarVideoPreviewProps) {
   const mounted = useIsClient();
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -50,7 +54,7 @@ function SidebarVideoPreview({
 
       setCoords({
         top: rect.top + rect.height / 2,
-        left: rect.right + 18,
+        left: side === "right" ? rect.left - 18 : rect.right + 18,
       });
     };
 
@@ -63,20 +67,21 @@ function SidebarVideoPreview({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [visible, anchorRef]);
+  }, [visible, anchorRef, side]);
 
   if (!mounted || !visible) return null;
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0, x: -8, y: -10, scale: 0.98 }}
+      initial={{ opacity: 0, x: side === "right" ? 8 : -8, y: -10, scale: 0.98 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
       className="pointer-events-none fixed z-[99999]"
       style={{
         top: coords.top,
         left: coords.left,
-        transform: "translateY(-50%)",
+        transform:
+          side === "right" ? "translate(-100%, -50%)" : "translateY(-50%)",
       }}
     >
       <div className="relative">
@@ -114,7 +119,12 @@ function SidebarVideoPreview({
         </div>
 
         <span
-          className="absolute left-0 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border"
+          className={cn(
+            "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rotate-45 border",
+            side === "right"
+              ? "right-0 translate-x-1/2"
+              : "left-0 -translate-x-1/2",
+          )}
           style={{
             background:
               "linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
@@ -127,7 +137,12 @@ function SidebarVideoPreview({
   );
 }
 
-function SidebarNavItem({ item, isExpanded, pathname }: SidebarNavItemProps) {
+function SidebarNavItem({
+  item,
+  isExpanded,
+  pathname,
+  side,
+}: SidebarNavItemProps) {
   const Icon = item.icon;
   const linkRef = useRef<HTMLAnchorElement | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -207,6 +222,7 @@ function SidebarNavItem({ item, isExpanded, pathname }: SidebarNavItemProps) {
           item={item}
           anchorRef={linkRef}
           visible={hovered}
+          side={side}
         />
       ) : null}
     </>
@@ -218,6 +234,7 @@ export default function SidebarNavbar({
   isExpanded,
   onMouseEnter,
   onMouseLeave,
+  side = "left",
   inFrame = false,
   className,
   showBrand = true,
@@ -235,7 +252,9 @@ export default function SidebarNavbar({
         "z-40 transition-[width] duration-300 ease-out",
         inFrame
           ? "relative self-stretch"
-          : "fixed left-0 top-0 hidden h-screen lg:flex",
+          : side === "right"
+            ? "fixed right-0 top-0 hidden h-screen lg:flex"
+            : "fixed left-0 top-0 hidden h-screen lg:flex",
         inFrame ? "w-full" : isExpanded ? "w-[320px]" : "w-[112px]",
         className,
       )}
@@ -320,6 +339,7 @@ export default function SidebarNavbar({
                       item={item}
                       isExpanded={isExpanded}
                       pathname={pathname}
+                      side={side}
                     />
                   ))}
                 </div>

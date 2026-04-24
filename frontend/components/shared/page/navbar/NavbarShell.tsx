@@ -22,7 +22,10 @@ const readStoredMode = (): NavbarMode => {
 
   const saved = window.localStorage.getItem(STORAGE_KEY);
 
-  return saved === "left" || saved === "bottom" || saved === "top"
+  return saved === "left" ||
+    saved === "right" ||
+    saved === "bottom" ||
+    saved === "top"
     ? saved
     : "left";
 };
@@ -162,6 +165,13 @@ export default function NavbarShell({
     };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.ezprintNavbarMode = resolvedMode;
+    window.dispatchEvent(
+      new CustomEvent("ezprint-navbar-mode-change", { detail: resolvedMode }),
+    );
+  }, [resolvedMode]);
+
   const handleModeChange = (nextMode: NavbarMode) => {
     setManualMode(nextMode);
 
@@ -175,7 +185,9 @@ export default function NavbarShell({
       className={cn(
         "app-panel flex min-h-0 flex-1 flex-col rounded-none",
         resolvedMode === "left" &&
-          "rounded-tl-[1.8rem] rounded-tr-[1.8rem] sm:rounded-tl-[2rem] sm:rounded-tr-[2rem]",
+          "rounded-tl-[1.8rem] sm:rounded-tl-[2rem]",
+        resolvedMode === "right" &&
+          "rounded-tr-[1.8rem] sm:rounded-tr-[2rem]",
       )}
     >
       <div className="relative z-10 min-h-0 flex-1 overflow-y-auto">
@@ -200,7 +212,7 @@ export default function NavbarShell({
       <Logo />
 
       <div className="min-w-0 flex-1 px-4">
-        {resolvedMode === "left" ? (
+        {resolvedMode === "left" || resolvedMode === "right" ? (
           <GlobalSearch mode="full" role={role} sections={sections} />
         ) : null}
         {resolvedMode === "top" ? (
@@ -212,7 +224,7 @@ export default function NavbarShell({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {resolvedMode !== "left" ? (
+        {resolvedMode !== "left" && resolvedMode !== "right" ? (
           <GlobalSearch
             mode="compact"
             role={role}
@@ -261,6 +273,22 @@ export default function NavbarShell({
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {renderContentPanel()}
           </div>
+
+          {resolvedMode === "right" ? (
+            <SidebarNavbar
+              sections={sections}
+              isExpanded={isSidebarExpanded}
+              onMouseEnter={handleSidebarMouseEnter}
+              onMouseLeave={handleSidebarMouseLeave}
+              side="right"
+              inFrame
+              showBrand={false}
+              className={cn(
+                "hidden md:flex",
+                isSidebarExpanded ? "w-[320px]" : "w-[112px]",
+              )}
+            />
+          ) : null}
         </div>
 
         {resolvedMode === "bottom" ? renderShellBar("bottom") : null}

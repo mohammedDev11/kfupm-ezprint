@@ -41,6 +41,16 @@ export default function AppNavbar({
         />
       )}
 
+      {mode === "right" && (
+        <SidebarNavbar
+          sections={sections}
+          isExpanded={isSidebarExpanded}
+          onMouseEnter={onSidebarMouseEnter}
+          onMouseLeave={onSidebarMouseLeave}
+          side="right"
+        />
+      )}
+
       {mode === "bottom" && <DockNavbarBottom sections={sections} />}
       {mode === "top" && <DockNavbarTop sections={sections} />}
     </>

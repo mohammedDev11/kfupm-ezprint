@@ -5,10 +5,11 @@ import { useRef, useState } from "react";
 import {
   RiLayoutBottomLine,
   RiLayoutLeftLine,
+  RiLayoutRightLine,
   RiLayoutTopLine,
 } from "react-icons/ri";
 
-export type NavbarMode = "left" | "bottom" | "top";
+export type NavbarMode = "left" | "right" | "bottom" | "top";
 
 type NavbarModeSwitcherProps = {
   value: NavbarMode;
@@ -25,6 +26,7 @@ type Option = {
 
 const options: Option[] = [
   { value: "left", label: "Left", icon: RiLayoutLeftLine },
+  { value: "right", label: "Right", icon: RiLayoutRightLine },
   { value: "bottom", label: "Bottom", icon: RiLayoutBottomLine },
   { value: "top", label: "Top", icon: RiLayoutTopLine },
 ];
