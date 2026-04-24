@@ -1,9 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import useIsClient from "@/lib/useIsClient";
-import { useTheme } from "next-themes";
-import { FiMoon, FiSun } from "react-icons/fi";
+import { useRef, useState } from "react";
 import {
   RiLayoutBottomLine,
   RiLayoutLeftLine,
@@ -16,6 +14,7 @@ type NavbarModeSwitcherProps = {
   value: NavbarMode;
   onChange: (mode: NavbarMode) => void;
   className?: string;
+  placement?: "up" | "down";
 };
 
 type Option = {
@@ -34,59 +33,102 @@ export default function NavbarModeSwitcher({
   value,
   onChange,
   className,
+  placement = "down",
 }: NavbarModeSwitcherProps) {
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const mounted = useIsClient();
+  const [open, setOpen] = useState(false);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentOption =
+    options.find((option) => option.value === value) ?? options[0];
+  const CurrentIcon = currentOption.icon;
 
-  const currentTheme = theme === "system" ? resolvedTheme : theme;
-  const isDark = currentTheme === "dark";
+  const clearCloseTimeout = () => {
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+  };
+
+  const openMenu = () => {
+    clearCloseTimeout();
+    setOpen(true);
+  };
+
+  const closeMenuWithDelay = () => {
+    clearCloseTimeout();
+    closeTimeoutRef.current = setTimeout(() => setOpen(false), 180);
+  };
+
+  const handleSelect = (nextMode: NavbarMode) => {
+    onChange(nextMode);
+    setOpen(false);
+  };
 
   return (
     <div
-      className={cn("flex items-center gap-1 rounded-[1rem] p-1", className)}
-      style={{
-        background: "rgba(148, 163, 184, 0.08)",
-      }}
+      className={cn("relative", className)}
+      onMouseEnter={openMenu}
+      onMouseLeave={closeMenuWithDelay}
     >
-      {options.map((option) => {
-        const Icon = option.icon;
-        const active = value === option.value;
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[1rem] px-3 text-sm font-semibold transition-all duration-300 text-[var(--color-brand-500)]"
+        style={{
+          background:
+            "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
+          boxShadow:
+            "0 10px 24px rgba(var(--shadow-color), 0.08), inset 0 1px 0 rgba(255,255,255,0.08)",
+        }}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Select navbar layout"
+      >
+        <CurrentIcon className="shrink-0 text-lg" />
+        <span>{currentOption.label}</span>
+      </button>
 
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "relative inline-flex h-11 items-center justify-center gap-2 rounded-[0.9rem] px-3 text-sm font-medium transition-all duration-300",
-              active
-                ? "text-[var(--color-brand-500)]"
-                : "text-[var(--muted)] hover:text-[var(--color-brand-500)]",
-            )}
-            style={{
-              background: active ? "rgba(201, 106, 90, 0.12)" : "transparent",
-            }}
-            aria-pressed={active}
-            aria-label={`Set navbar to ${option.label}`}
-          >
-            <Icon className="shrink-0 text-lg" />
-            <span className="hidden xl:inline">{option.label}</span>
-          </button>
-        );
-      })}
-
-      {mounted ? (
-        <button
-          type="button"
-          onClick={() => setTheme(isDark ? "light" : "dark")}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-[0.95rem] transition-all duration-300 text-[var(--muted)] hover:text-[var(--color-brand-500)]"
+      {open ? (
+        <div
+          className={cn(
+            "absolute right-0 z-50 w-40 overflow-hidden rounded-[1rem] border p-1.5 shadow-2xl backdrop-blur-xl",
+            placement === "up"
+              ? "bottom-[calc(100%+0.35rem)]"
+              : "top-[calc(100%+0.35rem)]",
+          )}
           style={{
-            background: "transparent",
+            borderColor: "var(--border)",
+            background:
+              "linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
+            boxShadow:
+              "0 18px 42px rgba(var(--shadow-color), 0.18), inset 0 1px 0 rgba(255,255,255,0.07)",
           }}
-          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          role="menu"
         >
-          {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
-        </button>
+          {options.map((option) => {
+            const Icon = option.icon;
+            const active = value === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleSelect(option.value)}
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-2 rounded-[0.8rem] px-3 py-2.5 text-left text-sm font-medium transition-all duration-200",
+                  active
+                    ? "text-[var(--color-brand-500)]"
+                    : "text-[var(--paragraph)] hover:text-[var(--color-brand-500)]",
+                )}
+                style={{
+                  background: active
+                    ? "rgba(var(--brand-rgb), 0.12)"
+                    : "transparent",
+                }}
+                role="menuitem"
+              >
+                <Icon className="shrink-0 text-lg" />
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );
