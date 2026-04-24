@@ -9,6 +9,8 @@ export default function UsersHeader({
   title = 'Users',
   description = 'Manage all user accounts and permissions',
 }: UsersHeaderProps) {
+  console.log('OLD UsersHeader RENDERED');
+
   return (
     <div>
       <h1 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">

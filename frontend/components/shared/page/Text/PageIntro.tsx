@@ -17,6 +17,8 @@ const PageIntro = ({
   actions,
   className = "",
 }: PageIntroProps) => {
+  console.log("NEW PageIntro RENDERED");
+
   return (
     <div className={cn("relative min-h-[4rem] pt-16", className)}>
       <SectionBadge title={title} description={description} />
