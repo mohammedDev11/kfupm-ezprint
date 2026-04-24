@@ -1,9 +1,10 @@
 import Link from "next/link";
+import Image from "next/image";
+import favicon from "@/app/favicon.ico";
 import { cn } from "@/lib/cn";
 
 type BrandMarkProps = {
   className?: string;
-  textClassName?: string;
   compact?: boolean;
 };
 
@@ -19,18 +20,16 @@ type LogoProps = {
 
 export function BrandMark({
   className,
-  textClassName,
   compact = false,
 }: BrandMarkProps) {
   return (
     <span
       className={cn(
-        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[1.05rem] border",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[1.05rem]",
         compact ? "h-10 w-10" : "h-11 w-11",
         className,
       )}
       style={{
-        borderColor: "rgba(var(--brand-rgb), 0.18)",
         background:
           "linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 92%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
         boxShadow:
@@ -45,16 +44,16 @@ export function BrandMark({
         }}
       />
 
-      <span
+      <Image
+        src={favicon}
+        alt=""
+        aria-hidden="true"
         className={cn(
-          "relative z-10 lowercase font-black tracking-[-0.12em]",
-          compact ? "text-[0.86rem]" : "text-[0.92rem]",
-          textClassName,
+          "relative z-10 object-contain",
+          compact ? "h-5 w-5" : "h-6 w-6",
         )}
-        style={{ color: "var(--color-brand-500)" }}
-      >
-        ez
-      </span>
+        sizes={compact ? "20px" : "24px"}
+      />
 
       <span
         className="pointer-events-none absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full"

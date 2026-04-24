@@ -29,7 +29,28 @@ type SearchSuggestion = {
   subtitle: string;
   href?: string;
   keywords: string;
+  shortcut?: NavigationShortcut;
 };
+
+type NavigationShortcut = {
+  code: string;
+  key: string;
+};
+
+const navigationShortcutKeys = [
+  { code: "Digit1", key: "1" },
+  { code: "Digit2", key: "2" },
+  { code: "Digit3", key: "3" },
+  { code: "Digit4", key: "4" },
+  { code: "Digit5", key: "5" },
+  { code: "Digit6", key: "6" },
+  { code: "Digit7", key: "7" },
+  { code: "Digit8", key: "8" },
+  { code: "Digit9", key: "9" },
+  { code: "Digit0", key: "0" },
+  { code: "Minus", key: "-" },
+  { code: "Equal", key: "=" },
+];
 
 const extraSuggestionsByRole: Record<NavbarRole, SearchSuggestion[]> = {
   admin: [
@@ -89,6 +110,31 @@ const extraSuggestionsByRole: Record<NavbarRole, SearchSuggestion[]> = {
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
+const isApplePlatform = () => {
+  if (typeof navigator === "undefined") return true;
+
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+};
+
+const formatNavigationShortcut = (shortcut: NavigationShortcut) =>
+  isApplePlatform()
+    ? `⌥⇧${shortcut.key}`
+    : `Alt+Shift+${shortcut.key}`;
+
+const isEditableTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const tagName = target.tagName.toLowerCase();
+
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable ||
+    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
+  );
+};
+
 export default function GlobalSearch({
   mode,
   role,
@@ -104,18 +150,29 @@ export default function GlobalSearch({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const suggestions = useMemo<SearchSuggestion[]>(() => {
-    const routeSuggestions = sections.flatMap((section) =>
-      section.items.map((item) => ({
-        id: `${section.title}-${item.href}`,
+    const routeSuggestions = sections
+      .flatMap((section) =>
+        section.items.map((item) => ({
+          sectionTitle: section.title,
+          item,
+        })),
+      )
+      .map(({ sectionTitle, item }, index) => ({
+        id: `${sectionTitle}-${item.href}`,
         title: item.label,
-        subtitle: section.title,
+        subtitle: sectionTitle,
         href: item.href,
-        keywords: `${item.label} ${section.title} ${item.href}`,
-      })),
-    );
+        keywords: `${item.label} ${sectionTitle} ${item.href}`,
+        shortcut: navigationShortcutKeys[index],
+      }));
 
     return [...routeSuggestions, ...extraSuggestionsByRole[role]];
   }, [role, sections]);
+
+  const shortcutSuggestions = useMemo(
+    () => suggestions.filter((suggestion) => suggestion.href && suggestion.shortcut),
+    [suggestions],
+  );
 
   const filteredSuggestions = useMemo(() => {
     const search = normalize(query);
@@ -132,6 +189,10 @@ export default function GlobalSearch({
 
   useEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
       if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) {
         return;
       }
@@ -152,6 +213,37 @@ export default function GlobalSearch({
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [mode]);
+
+  useEffect(() => {
+    const handleNavigationShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        isEditableTarget(event.target) ||
+        !event.altKey ||
+        !event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey
+      ) {
+        return;
+      }
+
+      const selected = shortcutSuggestions.find(
+        (suggestion) => suggestion.shortcut?.code === event.code,
+      );
+
+      if (!selected?.href) {
+        return;
+      }
+
+      event.preventDefault();
+      setOpen(false);
+      setQuery("");
+      router.push(selected.href);
+    };
+
+    window.addEventListener("keydown", handleNavigationShortcut);
+    return () =>
+      window.removeEventListener("keydown", handleNavigationShortcut);
+  }, [router, shortcutSuggestions]);
 
   useEffect(() => {
     if (!open) return;
@@ -235,7 +327,7 @@ export default function GlobalSearch({
           setActiveIndex(0);
         }}
         onKeyDown={handleKeyDown}
-        placeholder="Search sections, users, printers...  ⌘K"
+        placeholder={`Search sections, users, printers...  ⌘K · ${isApplePlatform() ? "⌥⇧1" : "Alt+Shift+1"}`}
         className="h-11 w-full rounded-[1rem] border bg-transparent pl-11 pr-4 text-sm outline-none transition-all duration-200 placeholder:text-[var(--muted)]"
         style={{
           borderColor: "var(--border)",
@@ -295,16 +387,30 @@ export default function GlobalSearch({
             >
               <FiSearch size={16} />
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                {suggestion.title}
+            <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">
+                  {suggestion.title}
+                </span>
+                <span
+                  className="block truncate text-xs"
+                  style={{ color: "var(--muted)" }}
+                >
+                  {suggestion.subtitle}
+                </span>
               </span>
-              <span
-                className="block truncate text-xs"
-                style={{ color: "var(--muted)" }}
-              >
-                {suggestion.subtitle}
-              </span>
+              {suggestion.shortcut ? (
+                <kbd
+                  className="shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold"
+                  style={{
+                    borderColor: "var(--border)",
+                    color: "var(--muted)",
+                    background: "rgba(var(--shadow-color), 0.04)",
+                  }}
+                >
+                  {formatNavigationShortcut(suggestion.shortcut)}
+                </kbd>
+              ) : null}
             </span>
           </button>
         ))
