@@ -21,15 +21,16 @@ import {
   type PendingReleaseJob,
   type PendingReleaseSortKey,
 } from "@/lib/mock-data/User/pending-jobs";
-import { apiDelete, apiGet, apiPost } from "@/services/api";
-import { FileText, Play, Trash2 } from "lucide-react";
+import { apiDelete, apiGet } from "@/services/api";
+import { FileText, MonitorUp, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { FaMoneyCheck } from "react-icons/fa";
 
 type SortDir = "asc" | "desc";
 
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(300px,1.7fr)_minmax(220px,1fr)_110px_120px_minmax(180px,0.9fr)_160px]";
+  "[grid-template-columns:72px_minmax(300px,1.7fr)_minmax(220px,1fr)_100px_110px_150px_minmax(180px,0.9fr)_160px]";
 
 const JobsPendingReleaseTable = () => {
   const [jobs, setJobs] = useState<PendingReleaseJob[]>([]);
@@ -85,6 +86,8 @@ const JobsPendingReleaseTable = () => {
             return item.submittedMinutesAgo;
           case "readinessPercent":
             return item.readinessPercent;
+          case "releaseCode":
+            return item.releaseCode;
           default:
             return item.documentName.toLowerCase();
         }
@@ -106,6 +109,7 @@ const JobsPendingReleaseTable = () => {
   useEffect(() => {
     let mounted = true;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshJobs()
       .then(() => {
         if (!mounted) return;
@@ -259,6 +263,12 @@ const JobsPendingReleaseTable = () => {
                         </TableCell>
 
                         <TableCell>
+                          <span className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-mono text-base font-semibold tracking-[0.18em] text-[var(--title)]">
+                            {job.releaseCode || "------"}
+                          </span>
+                        </TableCell>
+
+                        <TableCell>
                           <UsageProgress value={job.readinessPercent} />
                         </TableCell>
 
@@ -283,6 +293,17 @@ const JobsPendingReleaseTable = () => {
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
+                <Link href="/sections/printer">
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    iconLeft={<MonitorUp className="h-5 w-5" />}
+                    className="h-14 px-6 text-base"
+                  >
+                    Open Printer Screen
+                  </Button>
+                </Link>
+
                 <Button
                   variant="outline"
                   size="lg"
@@ -301,40 +322,6 @@ const JobsPendingReleaseTable = () => {
                 >
                   Cancel Selected
                 </Button>
-
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  iconLeft={<Play className="h-5 w-5" />}
-                  className="h-14 px-6 text-base"
-                  disabled={selectedIds.length === 0 || submitting}
-                  onClick={() =>
-                    runAction(async () => {
-                      await apiPost(
-                        "/user/jobs/release-selected",
-                        { jobIds: selectedIds },
-                        "user",
-                      );
-                    })
-                  }
-                >
-                  Release Selected
-                </Button>
-
-                <Button
-                  variant="primary"
-                  size="lg"
-                  iconLeft={<Play className="h-5 w-5" />}
-                  className="h-14 px-6 text-base"
-                  disabled={submitting || jobs.length === 0}
-                  onClick={() =>
-                    runAction(async () => {
-                      await apiPost("/user/jobs/release-all", {}, "user");
-                    })
-                  }
-                >
-                  Release All
-                </Button>
               </div>
             </div>
           </div>
@@ -346,7 +333,7 @@ const JobsPendingReleaseTable = () => {
           <div>
             <h3 className="title-md">{openJobModal?.documentName}</h3>
             <p className="paragraph mt-1">
-              Review this pending print job and manage release actions.
+              This job is held in the queue. Use its release code at the printer screen.
             </p>
           </div>
 
@@ -396,6 +383,15 @@ const JobsPendingReleaseTable = () => {
 
             <div>
               <p className="text-sm font-medium text-[var(--muted)]">
+                Release Code
+              </p>
+              <p className="mt-1 font-mono text-3xl font-semibold tracking-[0.2em] text-[var(--title)]">
+                {openJobModal?.releaseCode || "------"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium text-[var(--muted)]">
                 Job Readiness
               </p>
               <div className="mt-2">
@@ -423,24 +419,14 @@ const JobsPendingReleaseTable = () => {
               Cancel Job
             </Button>
 
-            <Button
-              variant="primary"
-              iconLeft={<Play className="h-4 w-4" />}
-              disabled={submitting || !openJobModal}
-              onClick={() =>
-                openJobModal
-                  ? runAction(async () => {
-                      await apiPost(
-                        `/user/jobs/${openJobModal.id}/release`,
-                        {},
-                        "user",
-                      );
-                    })
-                  : undefined
-              }
-            >
-              Release Job
-            </Button>
+            <Link href="/sections/printer">
+              <Button
+                variant="primary"
+                iconLeft={<MonitorUp className="h-4 w-4" />}
+              >
+                Open Printer Screen
+              </Button>
+            </Link>
           </div>
         </div>
       </Modal>

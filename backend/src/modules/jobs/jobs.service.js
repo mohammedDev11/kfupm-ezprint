@@ -281,7 +281,7 @@ const createJobRecord = async ({ user, queue, printer, payload, actor, statusOve
       method: queue?.security?.releaseMethod || "Manual",
       releaseCode:
         queue?.security?.secureRelease !== false
-          ? String(Math.floor(100000 + Math.random() * 900000))
+          ? String(Math.floor(1000 + Math.random() * 9000))
           : "",
       releaseCodeExpiry:
         queue?.security?.secureRelease !== false
@@ -433,7 +433,7 @@ const refreshQueuePendingCount = async (queueId) => {
 
   const pendingJobs = await PrintJob.countDocuments({
     "printer.queueId": queueId,
-    "status.current": "Pending Release",
+    "status.current": { $in: ["Pending Release", "Held"] },
   });
 
   await Queue.findByIdAndUpdate(queueId, {
@@ -457,6 +457,8 @@ const mapCreatedJob = (job) => {
     status: job.status?.current,
     submittedAt: job.status?.submittedAt || job.createdAt,
     releaseMethod: job.release?.method || "PIN",
+    releaseCode: job.release?.releaseCode || "",
+    releaseCodeExpiry: job.release?.releaseCodeExpiry || null,
     fileStorage: job.document?.storagePath || "",
     errorMessage: job.errorMessage || "",
   };
@@ -494,7 +496,7 @@ const mapReleaseAdminJob = (job, user) => {
 };
 
 const assertJobOwnership = (job, actor, scope) => {
-  if (scope === "admin") {
+  if (scope === "admin" || scope === "printer") {
     return;
   }
 
@@ -650,7 +652,7 @@ const getPendingReleaseJobsData = async (userId) => {
   const user = await User.findById(userId);
   const jobs = await PrintJob.find({
     "user.userId": userId,
-    "status.current": "Pending Release",
+    "status.current": { $in: ["Pending Release", "Held"] },
   })
     .populate("printer.printerId")
     .sort({ "status.submittedAt": -1 });
@@ -677,8 +679,14 @@ const getPendingReleaseJobsData = async (userId) => {
         fileType: (job.document?.fileType || "pdf").toUpperCase(),
         printMode: getPrintModeLabel(job),
         estimatedReady:
-          readinessPercent >= 100 ? "Ready now" : "Syncing to printer",
+          job.status?.current === "Held"
+            ? "Stored on printer"
+            : readinessPercent >= 100
+              ? "Ready now"
+              : "Syncing to printer",
         readinessPercent,
+        releaseCode: job.release?.releaseCode || "",
+        releaseCodeExpiry: job.release?.releaseCodeExpiry || null,
       };
     }),
   };
@@ -828,7 +836,82 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
     },
   });
 
+  let dispatchResult = null;
+
+  try {
+    dispatchResult = await dispatchPrintFile({
+      printer,
+      filePath: storedFile.relativePath,
+      holdOnPrinter: true,
+      holdKey: job.release?.releaseCode,
+      jobName: job.documentName,
+      username: user.username,
+    });
+  } catch (error) {
+    job.status.current = "Pending Release";
+    job.status.readinessPercent = 100;
+    job.dispatch = {
+      ...job.dispatch,
+      method: env.printTransport,
+      targetHost: printer?.network?.ipAddress || env.printDefaultPrinterIp,
+      targetPort: env.printTransport === "socket" ? env.printSocketPort : 0,
+      destinationName: printer?.name || env.printDestination || env.printDefaultPrinterName,
+      attempts: (job.dispatch?.attempts || 0) + 1,
+      lastAttemptAt: now,
+      lastSuccessfulAt: job.dispatch?.lastSuccessfulAt || null,
+      bytesSent: 0,
+      jobReference: "",
+    };
+    job.errorMessage = error.message;
+    await job.save();
+    throw error;
+  }
+
+  if (job.cost?.totalCost > 0) {
+    await applyQuotaChange({
+      user,
+      amount: roundAmount(-job.cost.totalCost),
+      transactionType: "Print Deduction",
+      reason: "Held printer job deduction",
+      comment: `Quota deducted for held printer job ${job.documentName}`,
+      method: "Printer Hold",
+      reference: {
+        jobId: job._id,
+        jobIdString: job.jobId,
+      },
+      actor,
+    });
+  }
+
+  job.status.current = "Held";
+  job.status.dispatchedAt = now;
+  job.status.readinessPercent = 100;
+  job.cost.quotaDeducted = job.cost?.totalCost > 0;
+  job.dispatch = {
+    ...job.dispatch,
+    method: dispatchResult?.method || env.printTransport,
+    targetHost: dispatchResult?.targetHost || printer?.network?.ipAddress || "",
+    targetPort: dispatchResult?.targetPort || (env.printTransport === "socket" ? env.printSocketPort : 0),
+    destinationName: dispatchResult?.destinationName || printer?.name || "",
+    attempts: (job.dispatch?.attempts || 0) + 1,
+    lastAttemptAt: now,
+    lastSuccessfulAt: now,
+    bytesSent: dispatchResult?.bytesSent || 0,
+    jobReference: dispatchResult?.jobReference || "",
+  };
+  job.errorMessage = "";
+  await job.save();
+
   await recordJobSubmittedStats({ user, queue, now });
+  await recordSuccessfulPrintStats({
+    user,
+    queueId: queue?._id,
+    printerId: printer?._id,
+    groupId: user.groupId,
+    pages: totalPages,
+    totalCost: job.cost?.totalCost || 0,
+    now,
+  });
   await refreshQueuePendingCount(queue._id);
   await markJobQueuedNotification(user, job);
   await recordAuditLog({
@@ -848,6 +931,8 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
         queueName: queue?.name || "",
         printerName: printer?.name || "",
         storagePath: job.document.storagePath,
+        printerHold: true,
+        releaseCode: job.release?.releaseCode || "",
       },
     },
   });
@@ -1192,7 +1277,7 @@ const cancelPendingJobData = async (jobId, actor, { scope }) => {
 
 const getAdminPendingReleaseJobsData = async () => {
   const jobs = await PrintJob.find({
-    "status.current": "Pending Release",
+    "status.current": { $in: ["Pending Release", "Held"] },
   })
     .populate("printer.printerId")
     .sort({ "status.submittedAt": -1 });

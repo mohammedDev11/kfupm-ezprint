@@ -120,7 +120,7 @@ const ensureDefaultPrinterSetup = async () => {
     manualReleaseRequired: true,
     allowReleaseAllJobs: true,
     requirePrinterAuthentication: false,
-    releaseMethod: "Manual",
+    releaseMethod: "PIN",
   };
   queue.jobManagement = {
     ...queue.jobManagement,

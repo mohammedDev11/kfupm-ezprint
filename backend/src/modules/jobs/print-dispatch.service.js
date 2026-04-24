@@ -16,6 +16,13 @@ const sanitizeFileName = (value = "") =>
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 
+const sanitizePjlValue = (value = "", fallback = "Print Job") =>
+  String(value || fallback)
+    .replace(/["\r\n\t]/g, " ")
+    .replace(/[^\x20-\x7E]/g, "")
+    .trim()
+    .slice(0, 80) || fallback;
+
 const getSha256 = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
 
 const countPdfPages = (buffer) => {
@@ -129,6 +136,37 @@ const dispatchViaSocket = async ({ host, port, buffer, destinationName }) => {
   });
 };
 
+const buildHpPrivateJobBuffer = ({ buffer, jobName, username, holdKey }) => {
+  const safeJobName = sanitizePjlValue(jobName);
+  const safeUsername = sanitizePjlValue(username, "Guest");
+  const safeHoldKey = String(holdKey || "").replace(/\D/g, "").slice(0, 8);
+
+  if (!safeHoldKey) {
+    throw createHttpError(500, "A printer hold PIN is required for private job storage.");
+  }
+
+  const header = Buffer.from(
+    [
+      "\x1B%-12345X@PJL",
+      `@PJL JOB NAME="${safeJobName}"`,
+      `@PJL SET JOBNAME="${safeJobName}"`,
+      `@PJL SET USERNAME="${safeUsername}"`,
+      "@PJL SET HOLD=STORE",
+      "@PJL SET HOLDTYPE=PRIVATE",
+      `@PJL SET HOLDKEY="${safeHoldKey}"`,
+      "@PJL ENTER LANGUAGE=PDF",
+      "",
+    ].join("\r\n"),
+    "latin1",
+  );
+  const footer = Buffer.from(
+    `\x1B%-12345X@PJL EOJ NAME="${safeJobName}"\r\n\x1B%-12345X`,
+    "latin1",
+  );
+
+  return Buffer.concat([header, buffer, footer]);
+};
+
 const dispatchViaLp = async ({ filePath, destinationName }) => {
   if (!env.printDestination && !destinationName) {
     throw createHttpError(500, "PRINT_DESTINATION is required for lp transport.");
@@ -151,7 +189,15 @@ const dispatchViaLp = async ({ filePath, destinationName }) => {
   };
 };
 
-const dispatchPrintFile = async ({ printer, filePath, buffer }) => {
+const dispatchPrintFile = async ({
+  printer,
+  filePath,
+  buffer,
+  holdOnPrinter = false,
+  holdKey = "",
+  jobName = "",
+  username = "",
+}) => {
   if (env.printTransport === "lp") {
     return dispatchViaLp({
       filePath,
@@ -161,11 +207,19 @@ const dispatchPrintFile = async ({ printer, filePath, buffer }) => {
 
   const fileBuffer =
     buffer && Buffer.isBuffer(buffer) ? buffer : await fs.readFile(filePath);
+  const outputBuffer = holdOnPrinter
+    ? buildHpPrivateJobBuffer({
+        buffer: fileBuffer,
+        holdKey,
+        jobName,
+        username,
+      })
+    : fileBuffer;
 
   return dispatchViaSocket({
     host: printer?.network?.ipAddress || env.printDefaultPrinterIp,
     port: env.printSocketPort,
-    buffer: fileBuffer,
+    buffer: outputBuffer,
     destinationName: printer?.name || env.printDefaultPrinterName,
   });
 };

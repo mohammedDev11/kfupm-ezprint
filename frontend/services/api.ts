@@ -244,6 +244,40 @@ export const apiPatch = async <T>(
 export const apiDelete = async <T>(path: string, scope: Scope): Promise<T> =>
   request<T>(path, { method: "DELETE", scope });
 
+const publicRequest = async <T>(
+  path: string,
+  { method = "GET", body }: Omit<ApiRequestOptions, "scope"> = {},
+): Promise<T> => {
+  const headers = new Headers();
+  const requestOptions: RequestInit = {
+    method,
+    headers,
+    cache: "no-store",
+  };
+
+  if (body !== undefined) {
+    headers.set("Content-Type", "application/json");
+    requestOptions.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  const payload = await response.json();
+  return (payload?.data ?? payload) as T;
+};
+
+export const apiPublicGet = async <T>(path: string): Promise<T> =>
+  publicRequest<T>(path);
+
+export const apiPublicPost = async <T>(
+  path: string,
+  body: unknown,
+): Promise<T> => publicRequest<T>(path, { method: "POST", body });
+
 export const apiUpload = async <T>({
   path,
   scope,

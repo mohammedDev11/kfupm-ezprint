@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
 import { apiGet, apiUpload } from "@/services/api";
+import { KeyRound, MonitorUp } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -39,6 +41,8 @@ type UploadedJobResponse = {
     printerName: string;
     queueName: string;
     status: string;
+    releaseCode: string;
+    releaseCodeExpiry: string | null;
   };
   dispatch?: {
     method: string;
@@ -66,6 +70,7 @@ const Page = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [queuedJob, setQueuedJob] = useState<UploadedJobResponse["job"] | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -101,25 +106,24 @@ const Page = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!files.length) {
-      return;
-    }
-
-    if (!jobName) {
-      setJobName(files[0].name.replace(/\.[^.]+$/, ""));
-    }
-  }, [files, jobName]);
-
   const selectedQueue = useMemo(
     () => queues.find((queue) => queue.id === selectedQueueId) || null,
     [queues, selectedQueueId],
   );
 
+  const handleFilesChange = (nextFiles: File[]) => {
+    setFiles(nextFiles);
+
+    if (nextFiles.length && !jobName) {
+      setJobName(nextFiles[0].name.replace(/\.[^.]+$/, ""));
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setSuccess("");
+    setQueuedJob(null);
 
     const file = files[0];
 
@@ -158,15 +162,12 @@ const Page = () => {
       });
 
       setSuccess(
-        `Print job ${data.job.jobId} was queued in ${data.job.queueName || selectedQueue?.name || "the selected queue"} for release on ${data.job.printerName || selectedQueue?.printerName || "the assigned printer"}.`,
+        `Print job ${data.job.jobId} was queued in ${data.job.queueName || selectedQueue?.name || "the selected queue"}.`,
       );
+      setQueuedJob(data.job);
       setFiles([]);
       setJobName("");
       router.refresh();
-
-      setTimeout(() => {
-        router.push("/sections/user/pending-jobs");
-      }, 1200);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -188,7 +189,7 @@ const Page = () => {
       <form className="space-y-6" onSubmit={handleSubmit}>
         <FileUpload
           value={files}
-          onChange={setFiles}
+          onChange={handleFilesChange}
           multiple={false}
           maxFiles={1}
           accept={{ "application/pdf": [".pdf"] }}
@@ -353,9 +354,36 @@ const Page = () => {
         ) : null}
 
         {success ? (
-          <p className="rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-700">
-            {success}
-          </p>
+          <div className="rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">
+            <p className="text-sm font-semibold">{success}</p>
+            {queuedJob ? (
+              <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-md bg-white text-green-700">
+                    <KeyRound className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-green-700">
+                      Printer release code
+                    </p>
+                    <p className="font-mono text-3xl font-semibold tracking-[0.22em]">
+                      {queuedJob.releaseCode || "------"}
+                    </p>
+                  </div>
+                </div>
+
+                <Link href="/sections/printer">
+                  <Button
+                    variant="primary"
+                    iconLeft={<MonitorUp className="h-5 w-5" />}
+                    className="w-full lg:w-auto"
+                  >
+                    Open Printer Screen
+                  </Button>
+                </Link>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="flex justify-end">

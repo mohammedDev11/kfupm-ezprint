@@ -14,6 +14,7 @@ const logRoutes = require("../modules/logs/logs.routes");
 const quotaRoutes = require("../modules/quota/quota.routes");
 const quotaAdminRoutes = require("../modules/quota/quota.admin.routes");
 const reportRoutes = require("../modules/reports/reports.routes");
+const printerScreenRoutes = require("../modules/printer-screen/printer-screen.routes");
 
 const router = express.Router();
 
@@ -26,6 +27,7 @@ router.get("/", (req, res) => {
 
 router.use("/health", healthRoutes);
 router.use("/auth", authRoutes);
+router.use("/printer-screen", printerScreenRoutes);
 router.use("/user", userRoutes);
 router.use("/user/jobs", jobRoutes);
 router.use("/user/notifications", notificationRoutes);

@@ -6,7 +6,7 @@ const page = () => {
     <div>
       <PageIntro
         title="Jobs Pending Release"
-        description="Review your held print jobs, check the total cost, and release them when ready."
+        description="Review queued jobs, keep the release code, and release the document from the printer screen."
       />{" "}
       <JobsPendingReleaseTable />
     </div>

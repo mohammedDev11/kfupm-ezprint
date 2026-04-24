@@ -4,7 +4,8 @@ export type PendingReleaseSortKey =
   | "pages"
   | "cost"
   | "submittedAt"
-  | "readinessPercent";
+  | "readinessPercent"
+  | "releaseCode";
 
 export type PendingReleaseJob = {
   id: string;
@@ -19,6 +20,8 @@ export type PendingReleaseJob = {
   printMode: string;
   estimatedReady: string;
   readinessPercent: number;
+  releaseCode: string;
+  releaseCodeExpiry?: string | null;
 };
 
 export const pendingReleaseQuota = 24.5;
@@ -32,6 +35,7 @@ export const pendingReleaseTableColumns: {
   { key: "printerName", label: "Printer", sortable: true },
   { key: "pages", label: "Pages", sortable: true },
   { key: "cost", label: "Cost", sortable: true },
+  { key: "releaseCode", label: "Release Code", sortable: true },
   { key: "readinessPercent", label: "Ready", sortable: true },
   { key: "submittedAt", label: "Submitted", sortable: true },
 ];
@@ -50,6 +54,7 @@ export const pendingReleaseJobs: PendingReleaseJob[] = [
     printMode: "Black & White · Duplex",
     estimatedReady: "Ready now",
     readinessPercent: 100,
+    releaseCode: "482913",
   },
   {
     id: "job-002",
@@ -64,6 +69,7 @@ export const pendingReleaseJobs: PendingReleaseJob[] = [
     printMode: "Black & White · Single-sided",
     estimatedReady: "Ready now",
     readinessPercent: 100,
+    releaseCode: "719204",
   },
   {
     id: "job-003",
@@ -78,5 +84,6 @@ export const pendingReleaseJobs: PendingReleaseJob[] = [
     printMode: "Color · Single-sided",
     estimatedReady: "Syncing to printer",
     readinessPercent: 82,
+    releaseCode: "305881",
   },
 ];
