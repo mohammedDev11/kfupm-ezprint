@@ -10,6 +10,7 @@ type ExpandedButtonProps = {
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   variant?: "default" | "ghost" | "surface" | "danger";
   iconSize?: number;
+  disabled?: boolean;
 };
 
 const ExpandedButton: React.FC<ExpandedButtonProps> = ({
@@ -19,6 +20,7 @@ const ExpandedButton: React.FC<ExpandedButtonProps> = ({
   onClick,
   variant = "default",
   iconSize = 18,
+  disabled = false,
 }) => {
   const baseStyles =
     "group inline-flex items-center overflow-hidden rounded-md border transition-all duration-500 cursor-pointer";
@@ -38,7 +40,13 @@ const ExpandedButton: React.FC<ExpandedButtonProps> = ({
     <button
       type="button"
       onClick={onClick}
-      className={cn(baseStyles, variantStyles[variant], "px-2 py-1", className)}
+      disabled={disabled}
+      className={cn(
+        baseStyles,
+        variantStyles[variant],
+        "px-2 py-1 disabled:pointer-events-none disabled:opacity-50",
+        className,
+      )}
     >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center">
         <Icon size={iconSize} />

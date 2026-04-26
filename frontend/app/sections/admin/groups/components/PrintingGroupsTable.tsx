@@ -1,7 +1,21 @@
 "use client";
 
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  CalendarClock,
+  CircleDollarSign,
+  FileOutput,
+  Info,
+  Lock,
+  Maximize2,
+  Minimize2,
+  Plus,
+  RefreshCw,
+  Shield,
+  Trash2,
+  Users,
+  WalletCards,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Table,
@@ -18,8 +32,16 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import {
+  Dropdown,
+  DropdownContent,
+  DropdownItem,
+  DropdownTrigger,
+} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
@@ -27,6 +49,8 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
 
 type SortDir = "asc" | "desc";
 type GroupSortKey = "name" | "members" | "initialQuota" | "restricted" | "schedule";
+type GroupActionValue = "delete-selected" | "export-groups";
+type ExportMethod = TableExportFormat;
 
 type GroupSummary = {
   total: number;
@@ -99,30 +123,7 @@ const emptyForm: GroupFormState = {
 };
 
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(240px,1.4fr)_minmax(120px,0.7fr)_minmax(160px,0.8fr)_minmax(150px,0.8fr)_minmax(180px,0.9fr)_minmax(170px,0.9fr)]";
-
-function SummaryCard({
-  label,
-  value,
-  helper,
-}: {
-  label: string;
-  value: string | number;
-  helper: string;
-}) {
-  return (
-    <div
-      className="rounded-2xl border p-5"
-      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
-      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
-    </div>
-  );
-}
+  "[grid-template-columns:72px_minmax(260px,1.5fr)_minmax(120px,0.7fr)_minmax(170px,0.85fr)_minmax(150px,0.8fr)_minmax(220px,1fr)]";
 
 const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
 
@@ -161,8 +162,11 @@ export default function PrintingGroupsTable() {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [form, setForm] = useState<GroupFormState>(emptyForm);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
+  const [actionModal, setActionModal] = useState<GroupActionValue | null>(null);
+  const [exportMethod, setExportMethod] = useState<ExportMethod>("PDF");
 
-  const loadGroups = async (showSpinner = false) => {
+  const loadGroups = useCallback(async (showSpinner = false) => {
     if (showSpinner) {
       setLoading(true);
     }
@@ -194,11 +198,11 @@ export default function PrintingGroupsTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void loadGroups(true);
-  }, []);
+    void Promise.resolve().then(() => loadGroups(true));
+  }, [loadGroups]);
 
   const handleSort = (key: GroupSortKey) => {
     if (sortKey === key) {
@@ -363,10 +367,15 @@ export default function PrintingGroupsTable() {
     });
   };
 
+  const selectedGroups = useMemo(
+    () => filteredGroups.filter((group) => selectedIds.includes(group.id)),
+    [filteredGroups, selectedIds],
+  );
+
   const exportGroups = (format: TableExportFormat) => {
     const rows =
       selectedIds.length > 0
-        ? filteredGroups.filter((group) => selectedIds.includes(group.id))
+        ? selectedGroups
         : filteredGroups;
 
     exportTableData({
@@ -388,32 +397,77 @@ export default function PrintingGroupsTable() {
     });
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Groups" value={summary.total} helper="Group records in MongoDB" />
-        <SummaryCard label="Restricted" value={summary.restricted} helper="Printing-restricted groups" />
-        <SummaryCard label="Default" value={summary.selectedByDefault} helper="Selected by default in access rules" />
-        <SummaryCard label="Members" value={summary.totalMembers} helper="Total members across groups" />
-      </div>
+  const handleExportChange = (value: string) => {
+    setExportMethod(value as ExportMethod);
+    setActionModal("export-groups");
+  };
 
-      <Table>
-        <TableTop>
+  const handleActionChange = (value: string) => {
+    setActionModal(value as GroupActionValue);
+  };
+
+  const handleDeleteSelected = () =>
+    runAction(async () => {
+      await Promise.all(
+        selectedIds.map((id) => apiDelete(`/admin/groups/${id}`, "admin")),
+      );
+      setSelectedIds([]);
+      setActionModal(null);
+    });
+
+  const handleExportConfirmed = () => {
+    exportGroups(exportMethod);
+    setActionModal(null);
+  };
+
+  const kpiCards = [
+    {
+      title: "Total Groups",
+      value: summary.total.toLocaleString(),
+      helper: `${filteredGroups.length.toLocaleString()} visible in current view`,
+      icon: <Users className="h-5 w-5" />,
+    },
+    {
+      title: "Restricted Groups",
+      value: summary.restricted.toLocaleString(),
+      helper: "Printing-restricted groups",
+      icon: <Lock className="h-5 w-5" />,
+    },
+    {
+      title: "Default Groups",
+      value: summary.selectedByDefault.toLocaleString(),
+      helper: "Selected by default in access rules",
+      icon: <Shield className="h-5 w-5" />,
+    },
+    {
+      title: "Total Members",
+      value: summary.totalMembers.toLocaleString(),
+      helper: "Members across loaded groups",
+      icon: <Users className="h-5 w-5" />,
+    },
+  ];
+
+  const renderGroupsTable = (expanded = false) => (
+      <Table
+        className={`flex min-h-[520px] flex-col rounded-[24px] ${
+          expanded ? "h-dvh rounded-none" : "max-h-[calc(100vh-20rem)]"
+        }`}
+      >
+        <TableTop className="shrink-0 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl">
           <TableTitleBlock
             title="Printing Groups"
-            description={`Showing ${filteredGroups.length} group${filteredGroups.length === 1 ? "" : "s"} from the live backend module.`}
           />
 
           <TableControls>
             <TableSearch
-              id="search-groups"
+              id={expanded ? "search-groups-expanded" : "search-groups"}
               label="Search groups"
               value={search}
               onChange={setSearch}
             />
 
             <Button
-              variant="secondary"
+              variant="outline"
               iconLeft={<RefreshCw className="h-4 w-4" />}
               className="h-14 px-6 text-base"
               disabled={busy}
@@ -422,10 +476,27 @@ export default function PrintingGroupsTable() {
               Refresh
             </Button>
 
-            <TableExportDropdown
-              disabled={filteredGroups.length === 0}
-              onExport={exportGroups}
-            />
+            <Dropdown onValueChange={handleExportChange}>
+              <DropdownTrigger
+                className={`h-14 min-w-[160px] px-6 text-base ${
+                  filteredGroups.length === 0 ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
+                Export
+              </DropdownTrigger>
+
+              <DropdownContent align="right" widthClassName="w-[220px]">
+                <DropdownItem value="CSV" className="py-4 text-lg">
+                  CSV
+                </DropdownItem>
+                <DropdownItem value="PDF" className="py-4 text-lg">
+                  PDF
+                </DropdownItem>
+                <DropdownItem value="Excel" className="py-4 text-lg">
+                  Excel
+                </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
 
             <Button
               variant="primary"
@@ -437,22 +508,31 @@ export default function PrintingGroupsTable() {
               Add Group
             </Button>
 
-            <Button
-              variant="outline"
-              iconLeft={<Trash2 className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
-              disabled={busy || selectedIds.length === 0}
-              onClick={() =>
-                runAction(async () => {
-                  await Promise.all(
-                    selectedIds.map((id) => apiDelete(`/admin/groups/${id}`, "admin")),
-                  );
-                  setSelectedIds([]);
-                })
-              }
+            <Dropdown onValueChange={handleActionChange}>
+              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
+                Actions
+              </DropdownTrigger>
+
+              <DropdownContent align="right" widthClassName="w-[260px]">
+                <DropdownItem value="delete-selected" className="py-4 text-lg">
+                  Delete selected
+                </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
+
+            <button
+              type="button"
+              onClick={() => setIsTableExpanded(!expanded)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+              aria-label={expanded ? "Collapse groups table" : "Expand groups table"}
+              title={expanded ? "Collapse" : "Expand"}
             >
-              Delete Selected
-            </Button>
+              {expanded ? (
+                <Minimize2 className="h-5 w-5" />
+              ) : (
+                <Maximize2 className="h-5 w-5" />
+              )}
+            </button>
           </TableControls>
         </TableTop>
 
@@ -464,8 +544,8 @@ export default function PrintingGroupsTable() {
           </div>
         ) : null}
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1120px]">
+        <TableMain className="min-h-0 flex-1">
+          <TableGrid minWidthClassName="flex h-full min-w-[1120px] flex-col">
             <TableHeader columnsClassName={columnsClassName}>
               <TableCell className="justify-center">
                 <TableCheckbox
@@ -508,9 +588,9 @@ export default function PrintingGroupsTable() {
                 direction={sortDir}
                 onClick={() => handleSort("schedule")}
               />
-              <TableHeaderCell label="Actions" />
             </TableHeader>
 
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <TableBody>
               {loading ? (
                 <TableEmptyState text="Loading groups..." />
@@ -544,59 +624,53 @@ export default function PrintingGroupsTable() {
                     </TableCell>
 
                     <TableCell>
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                          group.restricted === "Restricted"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}
-                      >
-                        {group.restricted}
-                      </span>
+                      <StatusBadge
+                        label={group.restricted}
+                        tone={group.restricted === "Restricted" ? "danger" : "success"}
+                        className="px-3 py-1 text-xs"
+                      />
                     </TableCell>
 
                     <TableCell className="text-[var(--title)]">
                       {formatMoney(group.scheduleAmount)} / {group.period}
                     </TableCell>
-
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openEditForm(group.id);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void runAction(async () => {
-                              await apiDelete(`/admin/groups/${group.id}`, "admin");
-                            });
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
                   </div>
                 ))
               )}
             </TableBody>
+            </div>
           </TableGrid>
         </TableMain>
       </Table>
+  );
+
+  return (
+    <>
+      {isTableExpanded ? (
+        <FullscreenTablePortal open={isTableExpanded}>
+          {renderGroupsTable(true)}
+        </FullscreenTablePortal>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {kpiCards.map((card, index) => (
+              <KpiMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                helper={card.helper}
+                icon={card.icon}
+                index={index}
+              />
+            ))}
+          </div>
+
+          {renderGroupsTable()}
+        </div>
+      )}
 
       <Modal open={isFormOpen} onClose={() => setIsFormOpen(false)}>
-        <div className="space-y-4 pr-8">
+        <div className="w-[min(92vw,820px)] space-y-5 pr-4">
           <div>
             <h3 className="title-md">
               {editingGroupId ? "Edit Group" : "Create Group"}
@@ -607,7 +681,7 @@ export default function PrintingGroupsTable() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium text-[var(--muted)]">Name</label>
               <Input
@@ -616,6 +690,7 @@ export default function PrintingGroupsTable() {
                   setForm((current) => ({ ...current, name: event.target.value }))
                 }
                 placeholder="Group name"
+                className="h-14"
               />
             </div>
 
@@ -632,6 +707,7 @@ export default function PrintingGroupsTable() {
                   }))
                 }
                 placeholder="Optional group description"
+                className="h-14"
               />
             </div>
 
@@ -649,6 +725,7 @@ export default function PrintingGroupsTable() {
                     initialQuota: event.target.value,
                   }))
                 }
+                className="h-14"
               />
             </div>
 
@@ -666,6 +743,7 @@ export default function PrintingGroupsTable() {
                     scheduleAmount: event.target.value,
                   }))
                 }
+                className="h-14"
               />
             </div>
 
@@ -673,32 +751,39 @@ export default function PrintingGroupsTable() {
               <span className="text-sm font-medium text-[var(--muted)]">
                 Reset Period
               </span>
-              <select
+              <Dropdown
                 value={form.resetPeriod}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    resetPeriod: event.target.value,
+                    resetPeriod: value,
                   }))
                 }
-                className="h-12 rounded-md border px-4 text-sm outline-none"
-                style={{
-                  borderColor: "var(--border)",
-                  background: "var(--surface)",
-                  color: "var(--title)",
-                }}
+                fullWidth
               >
-                {["None", "Monthly", "Semester", "Annual"].map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                <DropdownTrigger className="h-14 w-full px-4 text-base">
+                  {form.resetPeriod}
+                </DropdownTrigger>
+                <DropdownContent widthClassName="w-full">
+                  {["None", "Monthly", "Semester", "Annual"].map((option) => (
+                    <DropdownItem key={option} value={option}>
+                      {option}
+                    </DropdownItem>
+                  ))}
+                </DropdownContent>
+              </Dropdown>
             </label>
 
             <label
-              className="flex items-center gap-3 rounded-md border px-4 py-3"
-              style={{ borderColor: "var(--border)" }}
+              className="flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3"
+              style={{
+                borderColor: form.restricted
+                  ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                  : "var(--border)",
+                background: form.restricted
+                  ? "rgba(var(--brand-rgb), 0.1)"
+                  : "var(--surface)",
+              }}
             >
               <input
                 type="checkbox"
@@ -709,7 +794,23 @@ export default function PrintingGroupsTable() {
                     restricted: event.target.checked,
                   }))
                 }
+                className="sr-only"
               />
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-md border transition"
+                style={{
+                  borderColor: form.restricted
+                    ? "var(--color-brand-500)"
+                    : "var(--border)",
+                  background: form.restricted
+                    ? "var(--color-brand-500)"
+                    : "transparent",
+                }}
+              >
+                {form.restricted ? (
+                  <span className="h-2 w-2 rounded-full bg-white" />
+                ) : null}
+              </span>
               <span className="text-sm font-medium text-[var(--title)]">
                 Restrict printing for this group
               </span>
@@ -735,46 +836,211 @@ export default function PrintingGroupsTable() {
         </div>
       </Modal>
 
+      <Modal open={Boolean(actionModal)} onClose={() => setActionModal(null)}>
+        {actionModal === "delete-selected" ? (
+          <div className="w-[min(92vw,720px)] space-y-5 pr-4">
+            <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="title-md flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-[var(--color-brand-500)]" />
+                Delete selected groups
+              </h3>
+              <p className="paragraph mt-2">
+                Review the selected groups before removing them.
+              </p>
+              <p className="paragraph mt-2">
+                Total selected:{" "}
+                <span className="font-semibold">{selectedGroups.length}</span>
+              </p>
+            </div>
+
+            <div className="max-h-[320px] space-y-3 overflow-y-auto pr-2">
+              {selectedGroups.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  No groups selected.
+                </div>
+              ) : (
+                selectedGroups.map((group) => (
+                  <div
+                    key={group.id}
+                    className="rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <p className="font-semibold text-[var(--title)]">{group.name}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {group.members} members · {group.restricted}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActionModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteSelected}
+                disabled={busy || selectedGroups.length === 0}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {actionModal === "export-groups" ? (
+          <div className="w-[min(92vw,720px)] space-y-5 pr-4">
+            <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="title-md flex items-center gap-2">
+                <FileOutput className="h-5 w-5 text-[var(--color-brand-500)]" />
+                Export groups
+              </h3>
+              <p className="paragraph mt-2">
+                Export {selectedIds.length > 0 ? "selected" : "visible"} groups
+                as {exportMethod}.
+              </p>
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="text-sm text-[var(--muted)]">
+                Rows included:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {(selectedIds.length > 0
+                    ? selectedGroups.length
+                    : filteredGroups.length
+                  ).toLocaleString()}
+                </span>
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActionModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportConfirmed}
+                disabled={filteredGroups.length === 0}
+              >
+                Export
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
       <Modal open={Boolean(detailsGroup)} onClose={() => setDetailsGroup(null)}>
-        <div className="space-y-4 pr-8">
-          <div>
-            <h3 className="title-md">{detailsGroup?.name}</h3>
-            <p className="paragraph mt-1">
-              Real group details returned by the backend module.
-            </p>
+        <div className="w-[min(92vw,980px)] space-y-5 pr-4">
+          <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="title-md">{detailsGroup?.name}</h3>
+              <p className="paragraph mt-1">
+                Group policy, quota schedule, access state, and membership.
+              </p>
+            </div>
+
+            {detailsGroup ? (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  const groupId = detailsGroup.id;
+                  setDetailsGroup(null);
+                  void openEditForm(groupId);
+                }}
+              >
+                Edit Group
+              </Button>
+            ) : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {[
-              ["Description", detailsGroup?.description || "No description"],
-              ["Type", detailsGroup?.groupType || "Custom"],
-              ["Members", detailsGroup?.members ?? 0],
-              ["Initial Quota", detailsGroup ? formatMoney(detailsGroup.initialQuota) : "0 SAR"],
-              [
-                "Scheduled Amount",
-                detailsGroup ? formatMoney(detailsGroup.scheduleAmount) : "0 SAR",
-              ],
-              ["Reset Period", detailsGroup?.resetPeriod || "None"],
-              ["Restricted", detailsGroup?.restricted || "Unrestricted"],
-              [
-                "Cost Limit",
-                detailsGroup ? formatMoney(detailsGroup.costLimit || 0) : "0 SAR",
-              ],
-            ].map(([label, value]) => (
+              {
+                label: "Description",
+                value: detailsGroup?.description || "No description",
+                icon: <Info className="h-4 w-4" />,
+              },
+              {
+                label: "Type",
+                value: detailsGroup?.groupType || "Custom",
+                icon: <Shield className="h-4 w-4" />,
+              },
+              {
+                label: "Members",
+                value: detailsGroup?.members ?? 0,
+                icon: <Users className="h-4 w-4" />,
+              },
+              {
+                label: "Initial Quota",
+                value: detailsGroup ? formatMoney(detailsGroup.initialQuota) : "0 SAR",
+                icon: <CircleDollarSign className="h-4 w-4" />,
+              },
+              {
+                label: "Schedule",
+                value: detailsGroup
+                  ? `${formatMoney(detailsGroup.scheduleAmount)} / ${detailsGroup.resetPeriod || detailsGroup.period}`
+                  : "0 SAR / None",
+                icon: <CalendarClock className="h-4 w-4" />,
+              },
+              {
+                label: "Status",
+                value: detailsGroup?.restricted || "Unrestricted",
+                icon: <Lock className="h-4 w-4" />,
+              },
+              {
+                label: "Cost Limit",
+                value: detailsGroup ? formatMoney(detailsGroup.costLimit || 0) : "0 SAR",
+                icon: <WalletCards className="h-4 w-4" />,
+              },
+            ].map((item) => (
               <div
-                key={label}
-                className="rounded-xl border p-4"
+                key={item.label}
+                className="rounded-2xl border p-4"
                 style={{
                   borderColor: "var(--border)",
                   background: "var(--surface-2)",
                 }}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                  {label}
-                </p>
-                <p className="mt-2 text-sm font-semibold text-[var(--title)]">
-                  {String(value)}
-                </p>
+                <div className="flex items-start gap-3">
+                  <span
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--color-brand-500)]"
+                    style={{ background: "rgba(var(--brand-rgb), 0.1)" }}
+                  >
+                    {item.icon}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                      {item.label}
+                    </p>
+                    <div className="mt-2 text-sm font-semibold text-[var(--title)]">
+                      {item.label === "Status" ? (
+                        <StatusBadge
+                          label={String(item.value)}
+                          tone={item.value === "Restricted" ? "danger" : "success"}
+                          className="px-3 py-1 text-xs"
+                        />
+                      ) : (
+                        String(item.value)
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -806,6 +1072,6 @@ export default function PrintingGroupsTable() {
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }

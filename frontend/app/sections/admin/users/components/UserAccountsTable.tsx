@@ -15,6 +15,8 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import ExpandedButton from "@/components/ui/button/ExpandedButton";
@@ -39,18 +41,22 @@ import {
 import { exportTableData } from "@/lib/export";
 import { apiGet } from "@/services/api";
 import {
+  BriefcaseBusiness,
   FileOutput,
+  FileSpreadsheet,
   Filter,
   Lock,
   LockOpen,
   Mail,
+  Maximize2,
+  Minimize2,
   Phone,
   RotateCcw,
-  SearchX,
   Shield,
   SlidersHorizontal,
   Trash2,
   UserRound,
+  Users,
   Wallet,
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -120,7 +126,7 @@ function InfoRow({
   );
 }
 
-function FilterCheckbox({
+function FilterChip({
   label,
   checked,
   onChange,
@@ -133,24 +139,18 @@ function FilterCheckbox({
     <button
       type="button"
       onClick={onChange}
-      className="flex items-center justify-between rounded-xl border px-4 py-3 text-left transition"
+      className="inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-semibold transition"
       style={{
-        borderColor: "var(--border)",
-        background: checked ? "rgba(55, 125, 255, 0.08)" : "var(--surface-2)",
+        borderColor: checked
+          ? "color-mix(in srgb, var(--color-brand-500) 34%, var(--border))"
+          : "var(--border)",
+        background: checked
+          ? "rgba(var(--brand-rgb), 0.12)"
+          : "color-mix(in srgb, var(--surface-2) 82%, transparent)",
+        color: checked ? "var(--color-brand-600)" : "var(--paragraph)",
       }}
     >
-      <span className="text-sm font-medium text-[var(--title)]">{label}</span>
-
-      <span
-        className={`flex h-5 w-5 items-center justify-center rounded border transition ${
-          checked ? "border-brand-500 bg-brand-500" : ""
-        }`}
-        style={{
-          borderColor: checked ? "var(--color-brand-500)" : "var(--border)",
-        }}
-      >
-        {checked ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
-      </span>
+      {label}
     </button>
   );
 }
@@ -173,6 +173,7 @@ const UserAccountsTable = () => {
   const [editingNotes, setEditingNotes] = useState("");
 
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [actionModal, setActionModal] = useState<ActionValue | null>(null);
 
   const [filterRestricted, setFilterRestricted] = useState<
@@ -185,6 +186,7 @@ const UserAccountsTable = () => {
   const [filterStandings, setFilterStandings] = useState<UserStanding[]>([]);
   const [minimumQuota, setMinimumQuota] = useState("");
   const [maximumQuota, setMaximumQuota] = useState("");
+  const [departmentSearch, setDepartmentSearch] = useState("");
 
   const [exportMethod, setExportMethod] = useState<ExportMethod>("PDF");
   const [quotaToAssign, setQuotaToAssign] = useState("");
@@ -213,25 +215,6 @@ const UserAccountsTable = () => {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (openUserModal) {
-      setEditingRestricted(openUserModal.restricted);
-      setEditingQuota(String(openUserModal.quota));
-      setEditingNotes(openUserModal.notes);
-    }
-  }, [openUserModal]);
-
-  useEffect(() => {
-    if (actionModal === "export-users") {
-      setExportMethod("PDF");
-    }
-
-    if (actionModal === "assign-quota") {
-      setQuotaToAssign("");
-      setQuotaComment("");
-    }
-  }, [actionModal]);
 
   const roleOptions: UserRole[] = ["Student", "Faculty", "Staff", "Admin"];
   const departmentOptions: UserDepartment[] = [
@@ -292,6 +275,14 @@ const UserAccountsTable = () => {
     setFilterStandings([]);
     setMinimumQuota("");
     setMaximumQuota("");
+    setDepartmentSearch("");
+  };
+
+  const openUserDetails = (user: UserAccountItem) => {
+    setEditingRestricted(user.restricted);
+    setEditingQuota(String(user.quota));
+    setEditingNotes(user.notes);
+    setOpenUserModal(user);
   };
 
   const hasActiveFilters =
@@ -301,6 +292,19 @@ const UserAccountsTable = () => {
     filterStandings.length > 0 ||
     minimumQuota.trim() !== "" ||
     maximumQuota.trim() !== "";
+
+  const activeFilterLabels = [
+    ...filterRestricted,
+    ...filterRoles,
+    ...filterDepartments,
+    ...filterStandings,
+    minimumQuota.trim() ? `Min ${minimumQuota}` : "",
+    maximumQuota.trim() ? `Max ${maximumQuota}` : "",
+  ].filter(Boolean);
+
+  const visibleDepartmentOptions = departmentOptions.filter((department) =>
+    department.toLowerCase().includes(departmentSearch.trim().toLowerCase()),
+  );
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -401,6 +405,48 @@ const UserAccountsTable = () => {
     [users, selectedIds],
   );
 
+  const userStats = useMemo(() => {
+    const totalPages = users.reduce((total, user) => total + user.pages, 0);
+    const totalJobs = users.reduce((total, user) => total + user.jobs, 0);
+    const restrictedUsers = users.filter(
+      (user) => user.restricted === "Restricted",
+    ).length;
+
+    return {
+      totalUsers: users.length,
+      restrictedUsers,
+      totalPages,
+      totalJobs,
+    };
+  }, [users]);
+
+  const kpiCards = [
+    {
+      title: "Total Users",
+      value: userStats.totalUsers.toLocaleString(),
+      helper: `${filteredUsers.length.toLocaleString()} visible in current view`,
+      icon: <Users className="h-5 w-5" />,
+    },
+    {
+      title: "Restricted Users",
+      value: userStats.restrictedUsers.toLocaleString(),
+      helper: "Accounts currently restricted",
+      icon: <Lock className="h-5 w-5" />,
+    },
+    {
+      title: "Total Pages",
+      value: userStats.totalPages.toLocaleString(),
+      helper: "Printed pages from loaded users",
+      icon: <FileSpreadsheet className="h-5 w-5" />,
+    },
+    {
+      title: "Total Jobs",
+      value: userStats.totalJobs.toLocaleString(),
+      helper: "Jobs from loaded users",
+      icon: <BriefcaseBusiness className="h-5 w-5" />,
+    },
+  ];
+
   const allVisibleIds = filteredUsers.map((user) => user.id);
   const isAllSelected =
     allVisibleIds.length > 0 &&
@@ -453,7 +499,17 @@ const UserAccountsTable = () => {
       return;
     }
 
+    if (nextValue === "assign-quota") {
+      setQuotaToAssign("");
+      setQuotaComment("");
+    }
+
     setActionModal(nextValue);
+  };
+
+  const handleExportChange = (value: string) => {
+    setExportMethod(value as ExportMethod);
+    setActionModal("export-users");
   };
 
   const handleSaveUserModal = () => {
@@ -546,18 +602,15 @@ const UserAccountsTable = () => {
     setActionModal(null);
   };
 
-  const actionTitleMap: Record<ActionValue, string> = {
-    "delete-selected": "Delete selected",
-    "export-users": "Export users",
-    "assign-quota": "Assign quota",
-    "restrict-selected": "Restrict selected",
-    "unrestrict-selected": "Unrestrict selected",
-  };
-
-  return (
-    <>
-      <Table>
-        <TableTop>
+  const renderUsersTable = (expanded = false) => (
+      <Table
+        className={`flex min-h-[520px] flex-col rounded-[24px] ${
+          expanded ? "h-dvh rounded-none" : "max-h-[calc(100vh-20rem)]"
+        }`}
+      >
+        <TableTop
+          className="shrink-0 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl"
+        >
           <TableTitleBlock
             title="User Accounts"
             description={
@@ -571,7 +624,7 @@ const UserAccountsTable = () => {
 
           <TableControls>
             <TableSearch
-              id="search-users"
+              id={expanded ? "search-users-expanded" : "search-users"}
               label="Search users"
               value={search}
               onChange={setSearch}
@@ -586,6 +639,26 @@ const UserAccountsTable = () => {
               Filter
             </Button>
 
+            <Dropdown onValueChange={handleExportChange}>
+              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+                Export
+              </DropdownTrigger>
+
+              <DropdownContent align="right" widthClassName="w-[220px]">
+                <DropdownItem value="CSV" className="py-4 text-lg">
+                  CSV
+                </DropdownItem>
+
+                <DropdownItem value="PDF" className="py-4 text-lg">
+                  PDF
+                </DropdownItem>
+
+                <DropdownItem value="Excel" className="py-4 text-lg">
+                  Excel
+                </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
+
             <Dropdown onValueChange={handleActionChange}>
               <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
                 Actions
@@ -594,10 +667,6 @@ const UserAccountsTable = () => {
               <DropdownContent align="right" widthClassName="w-[280px]">
                 <DropdownItem value="delete-selected" className="py-4 text-lg">
                   Delete selected
-                </DropdownItem>
-
-                <DropdownItem value="export-users" className="py-4 text-lg">
-                  Export users
                 </DropdownItem>
 
                 <DropdownItem value="assign-quota" className="py-4 text-lg">
@@ -619,6 +688,20 @@ const UserAccountsTable = () => {
                 </DropdownItem>
               </DropdownContent>
             </Dropdown>
+
+            <button
+              type="button"
+              onClick={() => setIsTableExpanded(!expanded)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+              aria-label={expanded ? "Collapse users table" : "Expand users table"}
+              title={expanded ? "Collapse" : "Expand"}
+            >
+              {expanded ? (
+                <Minimize2 className="h-5 w-5" />
+              ) : (
+                <Maximize2 className="h-5 w-5" />
+              )}
+            </button>
           </TableControls>
         </TableTop>
 
@@ -630,8 +713,8 @@ const UserAccountsTable = () => {
           </div>
         ) : null}
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1200px]">
+        <TableMain className="min-h-0 flex-1">
+          <TableGrid minWidthClassName="flex h-full min-w-[1200px] flex-col">
             <TableHeader columnsClassName={columnsClassName}>
               <TableCell className="justify-center">
                 <TableCheckbox
@@ -652,6 +735,7 @@ const UserAccountsTable = () => {
               ))}
             </TableHeader>
 
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableEmptyState text="No users found" />
@@ -662,7 +746,7 @@ const UserAccountsTable = () => {
                   return (
                     <div
                       key={user.id}
-                      onClick={() => setOpenUserModal(user)}
+                      onClick={() => openUserDetails(user)}
                       className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
                     >
                       <TableCell className="justify-center">
@@ -700,9 +784,34 @@ const UserAccountsTable = () => {
                 })
               )}
             </TableBody>
+            </div>
           </TableGrid>
         </TableMain>
       </Table>
+  );
+
+  return (
+    <>
+      <FullscreenTablePortal open={isTableExpanded}>
+        {renderUsersTable(true)}
+      </FullscreenTablePortal>
+
+      <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {kpiCards.map((card, index) => (
+            <KpiMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                helper={card.helper}
+                icon={card.icon}
+                index={index}
+              />
+            ))}
+          </div>
+
+          {renderUsersTable()}
+        </div>
 
       <Modal
         open={Boolean(openUserModal)}
@@ -742,11 +851,11 @@ const UserAccountsTable = () => {
                     style={{
                       background:
                         editingRestricted === "Unrestricted"
-                          ? "rgba(34, 197, 94, 0.12)"
+                          ? "color-mix(in srgb, var(--color-support-500) 12%, transparent)"
                           : "transparent",
                       color:
                         editingRestricted === "Unrestricted"
-                          ? "var(--color-success-600)"
+                          ? "color-mix(in srgb, var(--color-support-700) 78%, var(--title))"
                           : "var(--muted)",
                     }}
                   >
@@ -763,11 +872,11 @@ const UserAccountsTable = () => {
                     style={{
                       background:
                         editingRestricted === "Restricted"
-                          ? "rgba(239, 68, 68, 0.12)"
+                          ? "rgba(var(--brand-rgb), 0.12)"
                           : "transparent",
                       color:
                         editingRestricted === "Restricted"
-                          ? "var(--color-danger-500)"
+                          ? "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))"
                           : "var(--muted)",
                     }}
                   >
@@ -904,35 +1013,71 @@ const UserAccountsTable = () => {
         open={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
       >
-        <div className="w-[min(92vw,900px)] space-y-6 pr-4">
-          <div className="flex items-start justify-between gap-4 border-b pb-5">
+        <div className="w-[min(92vw,860px)] space-y-4 pr-4">
+          <div className="flex items-start justify-between gap-4 border-b pb-4">
             <div>
               <h3 className="title-md flex items-center gap-2">
                 <Filter className="h-5 w-5" />
                 Filter Users
               </h3>
-              <p className="paragraph mt-1">
-                Narrow the table by user status, role, department, standing, and
-                quota range.
-              </p>
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div
+            className="rounded-2xl border p-3"
+            style={{
+              borderColor: "var(--border)",
+              background: "color-mix(in srgb, var(--surface-2) 82%, transparent)",
+            }}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-wrap gap-2">
+                {activeFilterLabels.length > 0 ? (
+                  activeFilterLabels.slice(0, 8).map((label, index) => (
+                    <span
+                      key={`${label}-${index}`}
+                      className="rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{
+                        background: "rgba(var(--brand-rgb), 0.1)",
+                        color: "var(--color-brand-600)",
+                      }}
+                    >
+                      {label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-[var(--muted)]">
+                    No filters applied
+                  </span>
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                iconLeft={<RotateCcw className="h-4 w-4" />}
+                onClick={resetFilters}
+              >
+                Clear all
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
             <div
-              className="rounded-2xl border p-5"
+              className="rounded-2xl border p-4"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--surface-2)",
               }}
             >
-              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Restricted Status
+              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Status
               </h4>
 
-              <div className="grid gap-3">
+              <div className="flex flex-wrap gap-2">
                 {restrictedOptions.map((status) => (
-                  <FilterCheckbox
+                  <FilterChip
                     key={status}
                     label={status}
                     checked={filterRestricted.includes(status)}
@@ -949,19 +1094,19 @@ const UserAccountsTable = () => {
             </div>
 
             <div
-              className="rounded-2xl border p-5"
+              className="rounded-2xl border p-4"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--surface-2)",
               }}
             >
-              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                 Role
               </h4>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
                 {roleOptions.map((role) => (
-                  <FilterCheckbox
+                  <FilterChip
                     key={role}
                     label={role}
                     checked={filterRoles.includes(role)}
@@ -974,19 +1119,27 @@ const UserAccountsTable = () => {
             </div>
 
             <div
-              className="rounded-2xl border p-5"
+              className="rounded-2xl border p-4"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--surface-2)",
               }}
             >
-              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                 Department
               </h4>
 
-              <div className="grid gap-3">
-                {departmentOptions.map((department) => (
-                  <FilterCheckbox
+              <Input
+                value={departmentSearch}
+                onChange={(e) => setDepartmentSearch(e.target.value)}
+                placeholder="Search departments"
+                className="mb-3"
+              />
+
+              <div className="max-h-32 overflow-y-auto pr-1">
+                <div className="flex flex-wrap gap-2">
+                {visibleDepartmentOptions.map((department) => (
+                  <FilterChip
                     key={department}
                     label={department}
                     checked={filterDepartments.includes(department)}
@@ -999,23 +1152,24 @@ const UserAccountsTable = () => {
                     }
                   />
                 ))}
+                </div>
               </div>
             </div>
 
             <div
-              className="rounded-2xl border p-5"
+              className="rounded-2xl border p-4"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--surface-2)",
               }}
             >
-              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                 Standing
               </h4>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
                 {standingOptions.map((standing) => (
-                  <FilterCheckbox
+                  <FilterChip
                     key={standing}
                     label={standing}
                     checked={filterStandings.includes(standing)}
@@ -1033,13 +1187,13 @@ const UserAccountsTable = () => {
           </div>
 
           <div
-            className="rounded-2xl border p-5"
+            className="rounded-2xl border p-4"
             style={{
               borderColor: "var(--border)",
               background: "var(--surface-2)",
             }}
           >
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
               Quota Range
             </h4>
 
@@ -1075,21 +1229,13 @@ const UserAccountsTable = () => {
           </div>
 
           <div
-            className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
             style={{ borderColor: "var(--border)" }}
           >
-            <div className="paragraph flex items-center gap-2">
-              {hasActiveFilters ? (
-                <>
-                  <Filter className="h-4 w-4" />
-                  Active filters applied
-                </>
-              ) : (
-                <>
-                  <SearchX className="h-4 w-4" />
-                  No filters applied
-                </>
-              )}
+            <div className="text-sm text-[var(--muted)]">
+              {hasActiveFilters
+                ? `${filteredUsers.length} users match current filters`
+                : "Showing all users"}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -1098,7 +1244,7 @@ const UserAccountsTable = () => {
                 iconLeft={<RotateCcw className="h-4 w-4" />}
                 onClick={resetFilters}
               >
-                Reset
+                Clear all
               </Button>
 
               <Button onClick={() => setIsFilterModalOpen(false)}>

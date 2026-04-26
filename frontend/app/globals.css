@@ -167,6 +167,16 @@ body {
   font-family: var(--font-sans);
 }
 
+body.fullscreen-table-mode {
+  overflow: hidden;
+}
+
+body.fullscreen-table-mode header,
+body.fullscreen-table-mode aside,
+body.fullscreen-table-mode .fixed.inset-x-0.top-0 {
+  display: none !important;
+}
+
 ::selection {
   background: rgba(var(--brand-rgb), 0.22);
   color: var(--foreground);
