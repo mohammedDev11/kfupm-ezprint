@@ -59,7 +59,8 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FiRefreshCw } from "react-icons/fi";
 
 type SortDir = "asc" | "desc";
 type ActionValue =
@@ -192,29 +193,27 @@ const UserAccountsTable = () => {
   const [quotaToAssign, setQuotaToAssign] = useState("");
   const [quotaComment, setQuotaComment] = useState("");
 
-  useEffect(() => {
-    let mounted = true;
-
-    apiGet<{ users: UserAccountItem[] }>("/admin/users", "admin")
-      .then((data) => {
-        if (!mounted) return;
-        setUsers(Array.isArray(data?.users) ? data.users : []);
-        setLoadError("");
-      })
-      .catch((requestError) => {
-        if (!mounted) return;
-        setUsers([]);
-        setLoadError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Unable to load users.",
-        );
-      });
-
-    return () => {
-      mounted = false;
-    };
+  const loadUsers = useCallback(async () => {
+    try {
+      const data = await apiGet<{ users: UserAccountItem[] }>(
+        "/admin/users",
+        "admin",
+      );
+      setUsers(Array.isArray(data?.users) ? data.users : []);
+      setLoadError("");
+    } catch (requestError) {
+      setUsers([]);
+      setLoadError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load users.",
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadUsers);
+  }, [loadUsers]);
 
   const roleOptions: UserRole[] = ["Student", "Faculty", "Staff", "Admin"];
   const departmentOptions: UserDepartment[] = [
@@ -628,6 +627,16 @@ const UserAccountsTable = () => {
               label="Search users"
               value={search}
               onChange={setSearch}
+            />
+
+            <ExpandedButton
+              id={expanded ? "admin-users-refresh-expanded" : "admin-users-refresh"}
+              label="Refresh"
+              icon={FiRefreshCw}
+              variant="surface"
+              onClick={() => void loadUsers()}
+              className="h-14 rounded-md px-2 py-0"
+              iconSize={17}
             />
 
             <Button

@@ -50,7 +50,7 @@ const Modal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100000] flex items-center justify-center overflow-y-auto p-4 py-[clamp(1rem,5vh,4rem)]"
+      className="fixed inset-0 z-[1000010] flex items-center justify-center overflow-y-auto p-4 py-[clamp(1rem,5vh,4rem)]"
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
