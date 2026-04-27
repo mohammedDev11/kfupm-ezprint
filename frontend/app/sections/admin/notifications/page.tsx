@@ -1,9 +1,22 @@
 "use client";
 
-import { Bell, RefreshCw, Settings2, ShieldAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
+import {
+  Bell,
+  CheckCircle2,
+  Inbox,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  Settings2,
+  ShieldAlert,
+  SlidersHorizontal,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import PageIntro from "@/components/shared/page/Text/PageIntro";
+import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -20,7 +33,15 @@ import {
   TableTop,
 } from "@/components/shared/table/Table";
 import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
+import StatusBadge, { StatusTone } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import RefreshButton from "@/components/ui/button/RefreshButton";
+import {
+  Dropdown,
+  DropdownContent,
+  DropdownTrigger,
+} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
@@ -55,21 +76,9 @@ type AdminNotificationsResponse = {
 
 const REFRESH_SECONDS = 30;
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(260px,1.4fr)_minmax(150px,0.8fr)_minmax(140px,0.8fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(180px,0.9fr)_minmax(210px,1fr)]";
-
-const toneBySeverity: Record<AdminNotification["severity"], string> = {
-  info: "bg-slate-100 text-slate-700",
-  warning: "bg-amber-100 text-amber-700",
-  error: "bg-red-100 text-red-700",
-  critical: "bg-red-200 text-red-800",
-};
-
-const toneByStatus: Record<AdminNotification["status"], string> = {
-  unread: "bg-amber-100 text-amber-700",
-  read: "bg-slate-100 text-slate-700",
-  resolved: "bg-emerald-100 text-emerald-700",
-  dismissed: "bg-slate-200 text-slate-700",
-};
+  "[grid-template-columns:72px_minmax(300px,1.45fr)_minmax(160px,0.78fr)_minmax(150px,0.72fr)_minmax(130px,0.62fr)_minmax(130px,0.62fr)_minmax(180px,0.82fr)_minmax(250px,1fr)]";
+const getExportTimestamp = () =>
+  new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
 const severityRank: Record<AdminNotification["severity"], number> = {
   info: 0,
@@ -101,6 +110,18 @@ const filterOptions = {
   source: ["all", "Printer", "Device", "Queue", "System", "Report Scheduler", "Admin"],
 };
 
+const notificationTableColumns: Array<{
+  key: NotificationSortKey;
+  label: string;
+}> = [
+  { key: "title", label: "Notification" },
+  { key: "type", label: "Type" },
+  { key: "source", label: "Source" },
+  { key: "severity", label: "Severity" },
+  { key: "status", label: "Status" },
+  { key: "createdAt", label: "Created" },
+];
+
 const formatLabel = (value: string) =>
   value
     .replaceAll("_", " ")
@@ -121,62 +142,65 @@ const compareValues = (a: string | number, b: string | number, direction: SortDi
     : String(b).localeCompare(String(a));
 };
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-}: {
-  title: string;
-  value: number;
-  helper: string;
-}) {
-  return (
-    <div
-      className="rounded-2xl border p-5"
-      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {title}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
-      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
-    </div>
-  );
+function getSeverityTone(severity: AdminNotification["severity"]): StatusTone {
+  if (severity === "info") return "success";
+  if (severity === "warning") return "warning";
+  return "danger";
 }
 
-function SelectField({
-  label,
+function getStatusTone(status: AdminNotification["status"]): StatusTone {
+  if (status === "resolved" || status === "read") return "success";
+  if (status === "unread") return "warning";
+  return "inactive";
+}
+
+function FilterChipGroup({
+  title,
   value,
   options,
   onChange,
+  getLabel = formatLabel,
 }: {
-  label: string;
+  title: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  getLabel?: (value: string) => string;
 }) {
   return (
-    <label className="flex min-w-[180px] flex-col gap-2">
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 rounded-md border px-4 text-sm outline-none"
-        style={{
-          borderColor: "var(--border)",
-          background: "var(--surface)",
-          color: "var(--title)",
-        }}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option === "all" ? `All ${label}` : formatLabel(option)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+        {title}
+      </p>
+
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((option) => {
+          const isSelected = value === option;
+
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onChange(option)}
+              className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+              style={{
+                background: isSelected
+                  ? "rgba(var(--brand-rgb), 0.1)"
+                  : "var(--surface-2)",
+                borderColor: isSelected
+                  ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                  : "var(--border)",
+                color: isSelected
+                  ? "var(--color-brand-600)"
+                  : "var(--paragraph)",
+              }}
+            >
+              {option === "all" ? "All" : getLabel(option)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -197,14 +221,16 @@ export default function NotificationsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [secondsLeft, setSecondsLeft] = useState(REFRESH_SECONDS);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [detailsNotification, setDetailsNotification] =
     useState<AdminNotification | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportMethod, setExportMethod] = useState<TableExportFormat>("PDF");
 
-  const loadNotifications = async (showSpinner = false) => {
+  const loadNotifications = useCallback(async (showSpinner = false) => {
     if (showSpinner) {
       setLoading(true);
     }
@@ -241,28 +267,27 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadNotifications(true);
   }, []);
 
   useEffect(() => {
-    const refreshTimer = window.setInterval(() => {
-      setSecondsLeft((current) => {
-        if (current <= 1) {
-          void loadNotifications(false);
-          return REFRESH_SECONDS;
-        }
+    const initialLoad = window.setTimeout(() => {
+      void loadNotifications(true);
+    }, 0);
 
-        return current - 1;
-      });
-    }, 1000);
+    return () => {
+      window.clearTimeout(initialLoad);
+    };
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      void loadNotifications(false);
+    }, REFRESH_SECONDS * 1000);
 
     return () => {
       window.clearInterval(refreshTimer);
     };
-  }, []);
+  }, [loadNotifications]);
 
   const handleSort = (key: NotificationSortKey) => {
     if (sortKey === key) {
@@ -363,6 +388,14 @@ export default function NotificationsPage() {
     setSelectedIds((current) => Array.from(new Set([...current, ...visibleIds])));
   };
 
+  const selectedNotifications = useMemo(
+    () =>
+      notifications.filter((notification) =>
+        selectedIds.includes(notification.id),
+      ),
+    [notifications, selectedIds],
+  );
+
   const runAction = async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -370,7 +403,6 @@ export default function NotificationsPage() {
     try {
       await action();
       await loadNotifications(false);
-      setSecondsLeft(REFRESH_SECONDS);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -383,31 +415,482 @@ export default function NotificationsPage() {
   };
 
   const exportNotifications = (format: TableExportFormat) => {
-    const rows =
-      selectedIds.length > 0
-        ? filteredNotifications.filter((notification) =>
-            selectedIds.includes(notification.id),
-          )
-        : filteredNotifications;
+    if (selectedNotifications.length === 0) return;
 
     exportTableData({
       title: "Admin Notifications",
-      filename: "alpha-queue-admin-notifications",
+      filename: `notifications-export-${getExportTimestamp()}`,
       format,
       columns: [
-        { label: "Title", value: (row: AdminNotification) => row.title },
-        { label: "Message", value: (row) => row.message },
+        { label: "Notification", value: (row: AdminNotification) => row.title },
         { label: "Type", value: (row) => formatLabel(row.type) },
         { label: "Source", value: (row) => row.source },
         { label: "Severity", value: (row) => formatLabel(row.severity) },
         { label: "Status", value: (row) => formatLabel(row.status) },
         { label: "Created", value: (row) => row.createdAt },
-        { label: "Affected Device", value: (row) => row.affected_device || "" },
-        { label: "Error Details", value: (row) => row.error_details || "" },
       ],
-      rows,
+      rows: selectedNotifications,
     });
   };
+
+  const handleExportChange = (format: TableExportFormat) => {
+    setExportMethod(format);
+    setIsExportModalOpen(true);
+  };
+
+  const handleExportConfirmed = () => {
+    exportNotifications(exportMethod);
+    setIsExportModalOpen(false);
+  };
+
+  const removeSelectedNotificationFromExport = (id: string) => {
+    setSelectedIds((current) => current.filter((item) => item !== id));
+  };
+
+  const sourceOptions = useMemo(() => {
+    const loadedSources = notifications
+      .map((notification) => notification.source)
+      .filter(Boolean);
+
+    return Array.from(new Set([...filterOptions.source, ...loadedSources]));
+  }, [notifications]);
+
+  const activeFilterCount = [
+    typeFilter,
+    severityFilter,
+    statusFilter,
+    sourceFilter,
+  ].filter((value) => value !== "all").length;
+
+  const kpiCards = [
+    {
+      title: "Total",
+      value: summary.total.toLocaleString(),
+      helper: "Backend-tracked notifications",
+      icon: <Bell className="h-5 w-5" />,
+    },
+    {
+      title: "Unread",
+      value: summary.unread.toLocaleString(),
+      helper: "Still waiting for admin action",
+      icon: <Inbox className="h-5 w-5" />,
+    },
+    {
+      title: "Critical",
+      value: summary.critical.toLocaleString(),
+      helper: "Highest severity alerts",
+      icon: <ShieldAlert className="h-5 w-5" />,
+    },
+    {
+      title: "Resolved",
+      value: summary.resolved.toLocaleString(),
+      helper: "Already handled in the system",
+      icon: <CheckCircle2 className="h-5 w-5" />,
+    },
+  ];
+
+  const handleBulkAction = (value: string) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || busy) return;
+
+    if (value === "mark-read") {
+      void runAction(async () => {
+        await apiPatch(
+          "/admin/notifications/bulk/read",
+          { notificationIds: ids },
+          "admin",
+        );
+        setSelectedIds([]);
+      });
+    }
+
+    if (value === "resolve") {
+      void runAction(async () => {
+        await Promise.all(
+          ids.map((id) => apiPatch(`/admin/notifications/${id}/resolve`, {}, "admin")),
+        );
+        setSelectedIds([]);
+      });
+    }
+
+    if (value === "dismiss") {
+      void runAction(async () => {
+        await Promise.all(
+          ids.map((id) => apiPatch(`/admin/notifications/${id}/dismiss`, {}, "admin")),
+        );
+        setSelectedIds([]);
+      });
+    }
+
+    if (value === "delete") {
+      void runAction(async () => {
+        await apiPost(
+          "/admin/notifications/bulk/delete",
+          { notificationIds: ids },
+          "admin",
+        );
+        setSelectedIds([]);
+      });
+    }
+  };
+
+  const renderNotificationsTable = (expanded = false) => (
+    <Table
+      className={`flex min-h-[520px] flex-col ${
+        expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
+      }`}
+    >
+      <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
+        <TableTitleBlock title="Admin Notifications" />
+
+        <TableControls>
+          <TableSearch
+            id={expanded ? "search-admin-notifications-expanded" : "search-admin-notifications"}
+            label="Search notifications"
+            value={search}
+            onChange={setSearch}
+          />
+
+          <RefreshButton
+            className="h-14"
+            disabled={busy}
+            onClick={() => {
+              void loadNotifications(false);
+            }}
+          />
+
+          <Dropdown>
+            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 ? (
+                  <span
+                    className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                    style={{
+                      background: "rgba(var(--brand-rgb), 0.12)",
+                      color: "var(--color-brand-600)",
+                    }}
+                  >
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </span>
+            </DropdownTrigger>
+
+            <DropdownContent
+              align="right"
+              widthClassName="w-[420px] max-w-[calc(100vw-2rem)]"
+              className="max-h-[calc(100vh-8rem)] overflow-y-auto"
+            >
+              <div className="space-y-4 p-2">
+                <FilterChipGroup
+                  title="Type"
+                  value={typeFilter}
+                  options={filterOptions.type}
+                  onChange={setTypeFilter}
+                />
+
+                <FilterChipGroup
+                  title="Severity"
+                  value={severityFilter}
+                  options={filterOptions.severity}
+                  onChange={setSeverityFilter}
+                />
+
+                <FilterChipGroup
+                  title="Status"
+                  value={statusFilter}
+                  options={filterOptions.status}
+                  onChange={setStatusFilter}
+                />
+
+                <FilterChipGroup
+                  title="Source"
+                  value={sourceFilter}
+                  options={sourceOptions}
+                  onChange={setSourceFilter}
+                  getLabel={(value) => value}
+                />
+
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full text-sm"
+                    onClick={() => {
+                      setTypeFilter("all");
+                      setSeverityFilter("all");
+                      setStatusFilter("all");
+                      setSourceFilter("all");
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                ) : null}
+              </div>
+            </DropdownContent>
+          </Dropdown>
+
+          <TableExportDropdown
+            disabled={selectedIds.length === 0}
+            onExport={handleExportChange}
+          />
+
+          <ListBox
+            value=""
+            options={[
+              {
+                value: "mark-read",
+                label: "Mark selected read",
+                disabled: selectedIds.length === 0,
+              },
+              {
+                value: "resolve",
+                label: "Resolve selected",
+                disabled: selectedIds.length === 0,
+              },
+              {
+                value: "dismiss",
+                label: "Dismiss selected",
+                disabled: selectedIds.length === 0,
+              },
+              {
+                value: "delete",
+                label: "Delete selected",
+                disabled: selectedIds.length === 0,
+              },
+            ]}
+            onValueChange={handleBulkAction}
+            placeholder={
+              <span className="inline-flex items-center gap-2">
+                <MoreHorizontal className="h-4 w-4" />
+                <span>Actions</span>
+                {selectedIds.length > 0 ? (
+                  <span
+                    className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                    style={{
+                      background: "rgba(var(--brand-rgb), 0.12)",
+                      color: "var(--color-brand-600)",
+                    }}
+                  >
+                    {selectedIds.length}
+                  </span>
+                ) : null}
+              </span>
+            }
+            disabled={busy || selectedIds.length === 0}
+            className="w-full md:w-auto"
+            triggerClassName="h-14 min-w-[180px] px-6 text-base"
+            align="right"
+            ariaLabel="Notification actions"
+          />
+
+          <button
+            type="button"
+            onClick={() => setIsTableExpanded(!expanded)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+            aria-label={expanded ? "Collapse notifications table" : "Expand notifications table"}
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? (
+              <Minimize2 className="h-5 w-5" />
+            ) : (
+              <Maximize2 className="h-5 w-5" />
+            )}
+          </button>
+        </TableControls>
+      </TableTop>
+
+      {error ? (
+        <div className="shrink-0 px-6 pb-2">
+          <p
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{
+              borderColor:
+                "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+              background:
+                "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+              color:
+                "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+            }}
+          >
+            {error}
+          </p>
+        </div>
+      ) : null}
+
+      <TableMain className="min-h-0 flex-1">
+        <TableGrid minWidthClassName="flex h-full min-w-[1500px] flex-col">
+          <TableHeader columnsClassName={columnsClassName}>
+            <TableCell className="justify-center">
+              <TableCheckbox
+                checked={allVisibleSelected}
+                onToggle={toggleSelectAllVisible}
+              />
+            </TableCell>
+
+            {notificationTableColumns.map((column) => (
+              <TableHeaderCell
+                key={column.key}
+                label={column.label}
+                sortable
+                active={sortKey === column.key}
+                direction={sortDir}
+                onClick={() => handleSort(column.key)}
+              />
+            ))}
+
+            <TableHeaderCell label="Actions" />
+          </TableHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <TableBody>
+              {loading ? (
+                <TableEmptyState text="Loading notifications..." />
+              ) : filteredNotifications.length === 0 ? (
+                <TableEmptyState text="No notifications matched the current filters." />
+              ) : (
+                filteredNotifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    onClick={() => setDetailsNotification(notification)}
+                    className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
+                  >
+                    <TableCell className="justify-center">
+                      <TableCheckbox
+                        checked={selectedIds.includes(notification.id)}
+                        onToggle={() => toggleSelectedId(notification.id)}
+                      />
+                    </TableCell>
+
+                    <TableCell className="min-w-0 flex-col items-start">
+                      <p className="max-w-full truncate font-semibold text-[var(--title)]">
+                        {notification.title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm text-[var(--muted)]">
+                        {notification.message}
+                      </p>
+                    </TableCell>
+
+                    <TableCell className="min-w-0 text-sm font-medium text-[var(--title)]">
+                      <span className="block truncate">
+                        {formatLabel(notification.type)}
+                      </span>
+                    </TableCell>
+
+                    <TableCell className="min-w-0 text-sm font-medium text-[var(--title)]">
+                      <span className="block truncate">{notification.source}</span>
+                    </TableCell>
+
+                    <TableCell>
+                      <StatusBadge
+                        label={formatLabel(notification.severity)}
+                        tone={getSeverityTone(notification.severity)}
+                        className="px-3 py-1.5 text-xs"
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <StatusBadge
+                        label={formatLabel(notification.status)}
+                        tone={getStatusTone(notification.status)}
+                        className="px-3 py-1.5 text-xs"
+                      />
+                    </TableCell>
+
+                    <TableCell className="text-sm font-medium text-[var(--title)]">
+                      {notification.createdAt}
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        {notification.status === "unread" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiPatch(
+                                  `/admin/notifications/${notification.id}/read`,
+                                  {},
+                                  "admin",
+                                );
+                              });
+                            }}
+                          >
+                            Mark Read
+                          </Button>
+                        ) : null}
+
+                        {notification.status !== "resolved" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiPatch(
+                                  `/admin/notifications/${notification.id}/resolve`,
+                                  {},
+                                  "admin",
+                                );
+                              });
+                            }}
+                          >
+                            Resolve
+                          </Button>
+                        ) : null}
+
+                        {notification.status !== "dismissed" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(async () => {
+                                await apiPatch(
+                                  `/admin/notifications/${notification.id}/dismiss`,
+                                  {},
+                                  "admin",
+                                );
+                              });
+                            }}
+                          >
+                            Dismiss
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void runAction(async () => {
+                              await apiDelete(
+                                `/admin/notifications/${notification.id}`,
+                                "admin",
+                              );
+                            });
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </div>
+                ))
+              )}
+            </TableBody>
+          </div>
+        </TableGrid>
+      </TableMain>
+    </Table>
+  );
 
   return (
     <div className="space-y-6">
@@ -442,365 +925,23 @@ export default function NotificationsPage() {
       {tab === "Notifications" ? (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              title="Total"
-              value={summary.total}
-              helper="Backend-tracked notifications"
-            />
-            <SummaryCard
-              title="Unread"
-              value={summary.unread}
-              helper="Still waiting for admin action"
-            />
-            <SummaryCard
-              title="Critical"
-              value={summary.critical}
-              helper="Highest severity alerts"
-            />
-            <SummaryCard
-              title="Resolved"
-              value={summary.resolved}
-              helper="Already handled in the system"
-            />
+            {kpiCards.map((card, index) => (
+              <KpiMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                helper={card.helper}
+                icon={card.icon}
+                index={index}
+              />
+            ))}
           </div>
 
-          <Table>
-            <TableTop>
-              <TableTitleBlock
-                title="Admin Notifications"
-                description={`Showing ${filteredNotifications.length} notification${filteredNotifications.length === 1 ? "" : "s"} from the live backend feed.`}
-              />
+          <FullscreenTablePortal open={isTableExpanded}>
+            {renderNotificationsTable(true)}
+          </FullscreenTablePortal>
 
-              <TableControls>
-                <TableSearch
-                  id="search-admin-notifications"
-                  label="Search notifications"
-                  value={search}
-                  onChange={setSearch}
-                />
-
-                <TableExportDropdown
-                  disabled={filteredNotifications.length === 0}
-                  onExport={exportNotifications}
-                />
-              </TableControls>
-            </TableTop>
-
-            <div className="px-6 pb-6">
-              <div className="flex flex-wrap gap-3">
-                <SelectField
-                  label="Type"
-                  value={typeFilter}
-                  options={filterOptions.type}
-                  onChange={setTypeFilter}
-                />
-                <SelectField
-                  label="Severity"
-                  value={severityFilter}
-                  options={filterOptions.severity}
-                  onChange={setSeverityFilter}
-                />
-                <SelectField
-                  label="Status"
-                  value={statusFilter}
-                  options={filterOptions.status}
-                  onChange={setStatusFilter}
-                />
-                <SelectField
-                  label="Source"
-                  value={sourceFilter}
-                  options={filterOptions.source}
-                  onChange={setSourceFilter}
-                />
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button
-                  variant="secondary"
-                  iconLeft={<RefreshCw className="h-4 w-4" />}
-                  disabled={busy}
-                  onClick={() =>
-                    runAction(async () => {
-                      await loadNotifications(false);
-                    })
-                  }
-                >
-                  Refresh ({secondsLeft}s)
-                </Button>
-
-                <Button
-                  variant="outline"
-                  disabled={busy || selectedIds.length === 0}
-                  onClick={() =>
-                    runAction(async () => {
-                      await apiPatch(
-                        "/admin/notifications/bulk/read",
-                        { notificationIds: selectedIds },
-                        "admin",
-                      );
-                      setSelectedIds([]);
-                    })
-                  }
-                >
-                  Mark Selected Read
-                </Button>
-
-                <Button
-                  variant="outline"
-                  disabled={busy || selectedIds.length === 0}
-                  onClick={() =>
-                    runAction(async () => {
-                      await Promise.all(
-                        selectedIds.map((id) =>
-                          apiPatch(`/admin/notifications/${id}/resolve`, {}, "admin"),
-                        ),
-                      );
-                      setSelectedIds([]);
-                    })
-                  }
-                >
-                  Resolve Selected
-                </Button>
-
-                <Button
-                  variant="outline"
-                  disabled={busy || selectedIds.length === 0}
-                  onClick={() =>
-                    runAction(async () => {
-                      await Promise.all(
-                        selectedIds.map((id) =>
-                          apiPatch(`/admin/notifications/${id}/dismiss`, {}, "admin"),
-                        ),
-                      );
-                      setSelectedIds([]);
-                    })
-                  }
-                >
-                  Dismiss Selected
-                </Button>
-
-                <Button
-                  variant="outline"
-                  disabled={busy || selectedIds.length === 0}
-                  onClick={() =>
-                    runAction(async () => {
-                      await apiPost(
-                        "/admin/notifications/bulk/delete",
-                        { notificationIds: selectedIds },
-                        "admin",
-                      );
-                      setSelectedIds([]);
-                    })
-                  }
-                >
-                  Delete Selected
-                </Button>
-              </div>
-
-              {error ? (
-                <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              ) : null}
-            </div>
-
-            <TableMain>
-              <TableGrid minWidthClassName="min-w-[1480px]">
-                <TableHeader columnsClassName={columnsClassName}>
-                  <TableCell className="justify-center">
-                    <TableCheckbox
-                      checked={allVisibleSelected}
-                      onToggle={toggleSelectAllVisible}
-                    />
-                  </TableCell>
-                  <TableHeaderCell
-                    label="Notification"
-                    sortable
-                    active={sortKey === "title"}
-                    direction={sortDir}
-                    onClick={() => handleSort("title")}
-                  />
-                  <TableHeaderCell
-                    label="Type"
-                    sortable
-                    active={sortKey === "type"}
-                    direction={sortDir}
-                    onClick={() => handleSort("type")}
-                  />
-                  <TableHeaderCell
-                    label="Source"
-                    sortable
-                    active={sortKey === "source"}
-                    direction={sortDir}
-                    onClick={() => handleSort("source")}
-                  />
-                  <TableHeaderCell
-                    label="Severity"
-                    sortable
-                    active={sortKey === "severity"}
-                    direction={sortDir}
-                    onClick={() => handleSort("severity")}
-                  />
-                  <TableHeaderCell
-                    label="Status"
-                    sortable
-                    active={sortKey === "status"}
-                    direction={sortDir}
-                    onClick={() => handleSort("status")}
-                  />
-                  <TableHeaderCell
-                    label="Created"
-                    sortable
-                    active={sortKey === "createdAt"}
-                    direction={sortDir}
-                    onClick={() => handleSort("createdAt")}
-                  />
-                  <TableHeaderCell label="Actions" />
-                </TableHeader>
-
-                <TableBody>
-                  {loading ? (
-                    <TableEmptyState text="Loading notifications..." />
-                  ) : filteredNotifications.length === 0 ? (
-                    <TableEmptyState text="No notifications matched the current filters." />
-                  ) : (
-                    filteredNotifications.map((notification) => (
-                      <div
-                        key={notification.id}
-                        onClick={() => setDetailsNotification(notification)}
-                        className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
-                      >
-                        <TableCell className="justify-center">
-                          <TableCheckbox
-                            checked={selectedIds.includes(notification.id)}
-                            onToggle={() => toggleSelectedId(notification.id)}
-                          />
-                        </TableCell>
-
-                        <TableCell className="flex-col items-start">
-                          <p className="font-semibold text-[var(--title)]">
-                            {notification.title}
-                          </p>
-                          <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-                            {notification.message}
-                          </p>
-                        </TableCell>
-
-                        <TableCell className="text-[var(--title)]">
-                          {formatLabel(notification.type)}
-                        </TableCell>
-
-                        <TableCell className="text-[var(--title)]">
-                          {notification.source}
-                        </TableCell>
-
-                        <TableCell>
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${toneBySeverity[notification.severity]}`}
-                          >
-                            {formatLabel(notification.severity)}
-                          </span>
-                        </TableCell>
-
-                        <TableCell>
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${toneByStatus[notification.status]}`}
-                          >
-                            {formatLabel(notification.status)}
-                          </span>
-                        </TableCell>
-
-                        <TableCell className="text-[var(--title)]">
-                          {notification.createdAt}
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="flex flex-wrap gap-2">
-                            {notification.status === "unread" ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busy}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void runAction(async () => {
-                                    await apiPatch(
-                                      `/admin/notifications/${notification.id}/read`,
-                                      {},
-                                      "admin",
-                                    );
-                                  });
-                                }}
-                              >
-                                Mark Read
-                              </Button>
-                            ) : null}
-
-                            {notification.status !== "resolved" ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busy}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void runAction(async () => {
-                                    await apiPatch(
-                                      `/admin/notifications/${notification.id}/resolve`,
-                                      {},
-                                      "admin",
-                                    );
-                                  });
-                                }}
-                              >
-                                Resolve
-                              </Button>
-                            ) : null}
-
-                            {notification.status !== "dismissed" ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busy}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void runAction(async () => {
-                                    await apiPatch(
-                                      `/admin/notifications/${notification.id}/dismiss`,
-                                      {},
-                                      "admin",
-                                    );
-                                  });
-                                }}
-                              >
-                                Dismiss
-                              </Button>
-                            ) : null}
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={busy}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void runAction(async () => {
-                                  await apiDelete(
-                                    `/admin/notifications/${notification.id}`,
-                                    "admin",
-                                  );
-                                });
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </div>
-                    ))
-                  )}
-                </TableBody>
-              </TableGrid>
-            </TableMain>
-          </Table>
+          {renderNotificationsTable()}
         </div>
       ) : (
         <div
@@ -861,6 +1002,26 @@ export default function NotificationsPage() {
         </div>
       )}
 
+      <Modal open={isExportModalOpen} onClose={() => setIsExportModalOpen(false)}>
+        <SelectedRowsExportModal
+          title="Export selected notifications"
+          description="Review the notifications to export, remove any row if needed, then choose the export format."
+          rows={selectedNotifications}
+          emptyText="Select rows to export."
+          exportMethod={exportMethod}
+          onExportMethodChange={setExportMethod}
+          onRemove={removeSelectedNotificationFromExport}
+          onCancel={() => setIsExportModalOpen(false)}
+          onExport={handleExportConfirmed}
+          getId={(notification) => notification.id}
+          getTitle={(notification) => notification.title}
+          getSubtitle={(notification) =>
+            `${formatLabel(notification.type)} - ${notification.source} - ${formatLabel(notification.status)}`
+          }
+          idPrefix="notifications"
+        />
+      </Modal>
+
       <Modal
         open={Boolean(detailsNotification)}
         onClose={() => setDetailsNotification(null)}
@@ -915,7 +1076,17 @@ export default function NotificationsPage() {
           </div>
 
           {detailsNotification?.severity === "critical" ? (
-            <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm"
+              style={{
+                borderColor:
+                  "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+                color:
+                  "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+              }}
+            >
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4" />
                 Critical notification

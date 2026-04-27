@@ -126,6 +126,8 @@ const columnsClassName =
   "[grid-template-columns:72px_minmax(260px,1.5fr)_minmax(120px,0.7fr)_minmax(170px,0.85fr)_minmax(150px,0.8fr)_minmax(220px,1fr)]";
 
 const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
+const getExportTimestamp = () =>
+  new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
 const restrictedRank: Record<GroupItem["restricted"], number> = {
   Restricted: 1,
@@ -377,7 +379,7 @@ export default function PrintingGroupsTable() {
 
     exportTableData({
       title: "Printing Groups",
-      filename: "alpha-queue-groups",
+      filename: `groups-export-${getExportTimestamp()}`,
       format,
       columns: [
         { label: "Group", value: (row: GroupItem) => row.name },

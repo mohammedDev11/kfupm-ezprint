@@ -17,17 +17,17 @@ const exportMeta: Record<
 > = {
   PDF: {
     label: "PDF",
-    className: "bg-red-500 text-white hover:bg-red-600",
+    className: "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-transparent hover:bg-[var(--color-brand-500)] hover:text-white",
     Icon: FileOutput,
   },
   Excel: {
     label: "Excel",
-    className: "bg-emerald-500 text-white hover:bg-emerald-600",
+    className: "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-transparent hover:bg-[var(--color-brand-500)] hover:text-white",
     Icon: FileSpreadsheet,
   },
   CSV: {
     label: "CSV",
-    className: "bg-brand-500 text-white hover:bg-brand-600",
+    className: "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-transparent hover:bg-[var(--color-brand-500)] hover:text-white",
     Icon: FileCode2,
   },
 };
@@ -45,7 +45,7 @@ export default function ReportExportButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "group inline-flex items-center overflow-hidden rounded-md p-2 shadow-sm transition-all duration-500 hover:scale-[1.03]",
+        "group inline-flex items-center overflow-hidden rounded-md p-2 shadow-sm transition-all duration-500 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]",
         meta.className,
         className,
       )}

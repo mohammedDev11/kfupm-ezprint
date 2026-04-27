@@ -76,6 +76,8 @@ const columnsClassName =
   "[grid-template-columns:72px_minmax(220px,1.1fr)_minmax(320px,1.6fr)_minmax(160px,0.9fr)_minmax(170px,0.9fr)_minmax(120px,0.7fr)_minmax(100px,0.6fr)]";
 
 const formatMoney = (value: number) => value.toFixed(2);
+const getExportTimestamp = () =>
+  new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
 function RestrictedBadge({ status }: { status: UserRestrictedStatus }) {
   const isUnrestricted = status === "Unrestricted";
@@ -581,7 +583,7 @@ const UserAccountsTable = () => {
 
     exportTableData({
       title: "User Accounts",
-      filename: "alpha-queue-user-accounts",
+      filename: `users-export-${getExportTimestamp()}`,
       format: exportMethod,
       columns: [
         { label: "Username", value: (user: UserAccountItem) => user.username },

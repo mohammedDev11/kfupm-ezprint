@@ -1,9 +1,21 @@
 "use client";
 
-import { Plus, SlidersHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  BriefcaseBusiness,
+  FileStack,
+  Maximize2,
+  Minimize2,
+  Plus,
+  Printer,
+  SlidersHorizontal,
+  Wifi,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 //import MainButton from "@/app/Mohammed/components/MainButton";
 import SegmentToggle from "@/components/shared/actions/SegmentToggle";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import {
   Table,
   TableControls,
@@ -15,31 +27,63 @@ import Button from "@/components/ui/button/Button";
 import {
   Dropdown,
   DropdownContent,
-  DropdownItem,
   DropdownTrigger,
 } from "@/components/ui/dropdown/Dropdown";
+import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
-  printerFilterOptions,
-  type PrinterFilterValue,
+  type PrinterCapability,
   type PrinterItem,
+  type PrinterStatus,
 } from "@/lib/mock-data/Admin/printers";
 import { apiGet } from "@/services/api";
 import PrinterDetailsModal from "./AddPrinterModal";
 import PrinterCard from "./PrinterCard";
 import AddPrinterModal from "./PrinterDetailsModal";
 
+type PrinterStatusFilter = "all" | "online" | "offline" | "error";
+type PrinterFeatureFilter = Extract<
+  PrinterCapability,
+  "Color" | "B&W" | "Duplex" | "Secure Release"
+>;
+
+const statusFilterOptions: {
+  value: PrinterStatusFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "online", label: "Online" },
+  { value: "offline", label: "Offline" },
+  { value: "error", label: "Error" },
+];
+
+const featureFilterOptions: {
+  value: PrinterFeatureFilter;
+  label: string;
+}[] = [
+  { value: "Color", label: "Color" },
+  { value: "B&W", label: "B&W" },
+  { value: "Duplex", label: "Duplex" },
+  { value: "Secure Release", label: "Secure Release" },
+];
+
+const errorStatuses: PrinterStatus[] = ["Low Toner", "Paper Jam"];
+
 const PrintersGrid = () => {
   const [printers, setPrinters] = useState<PrinterItem[]>([]);
   const [search, setSearch] = useState("");
   const [columns, setColumns] = useState<"2" | "3">("2");
-  const [filter, setFilter] = useState<PrinterFilterValue>("all");
+  const [statusFilter, setStatusFilter] = useState<PrinterStatusFilter>("all");
+  const [featureFilters, setFeatureFilters] = useState<PrinterFeatureFilter[]>(
+    [],
+  );
   const [loadError, setLoadError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterItem | null>(
     null,
   );
 
-  useEffect(() => {
+  const loadPrinters = useCallback(() => {
     apiGet<{ printers: PrinterItem[] }>("/admin/printers", "admin")
       .then((data) => {
         setPrinters(Array.isArray(data?.printers) ? data.printers : []);
@@ -54,6 +98,10 @@ const PrintersGrid = () => {
         );
       });
   }, []);
+
+  useEffect(() => {
+    loadPrinters();
+  }, [loadPrinters]);
 
   const filteredPrinters = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -81,95 +129,266 @@ const PrintersGrid = () => {
 
       const matchesSearch = !term || haystack.includes(term);
 
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "online" && printer.status === "Online") ||
-        (filter === "offline" && printer.status === "Offline") ||
-        (filter === "low-toner" && printer.status === "Low Toner") ||
-        (filter === "paper-jam" && printer.status === "Paper Jam") ||
-        (filter === "color" && printer.capabilities.includes("Color")) ||
-        (filter === "bw" && printer.capabilities.includes("B&W")) ||
-        (filter === "duplex" && printer.capabilities.includes("Duplex")) ||
-        (filter === "secure-release" &&
-          printer.capabilities.includes("Secure Release"));
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "online" && printer.status === "Online") ||
+        (statusFilter === "offline" && printer.status === "Offline") ||
+        (statusFilter === "error" && errorStatuses.includes(printer.status));
+      const matchesFeatures =
+        featureFilters.length === 0 ||
+        featureFilters.every((feature) => printer.capabilities.includes(feature));
 
-      return matchesSearch && matchesFilter;
+      return matchesSearch && matchesStatus && matchesFeatures;
     });
-  }, [printers, search, filter]);
+  }, [featureFilters, printers, search, statusFilter]);
 
   const gridClassName =
     columns === "2"
       ? "grid grid-cols-1 gap-6 xl:grid-cols-2"
       : "grid grid-cols-1 gap-6 xl:grid-cols-2 2xl:grid-cols-3";
 
-  return (
-    <>
-      <Table>
-        <TableTop>
-          <TableTitleBlock
-            title="Printers"
-            description={`${filteredPrinters.length} printers`}
+  const activeFilterCount =
+    (statusFilter === "all" ? 0 : 1) + featureFilters.length;
+
+  const printerStats = useMemo(() => {
+    const onlinePrinters = printers.filter(
+      (printer) => printer.status === "Online",
+    ).length;
+    const issuePrinters = printers.filter(
+      (printer) =>
+        printer.status === "Offline" || errorStatuses.includes(printer.status),
+    ).length;
+    const totalPagesPrinted = printers.reduce(
+      (sum, printer) => sum + printer.totalPagesPrinted,
+      0,
+    );
+    const totalJobsSubmitted = printers.reduce(
+      (sum, printer) => sum + printer.totalJobsSubmitted,
+      0,
+    );
+
+    return {
+      totalPrinters: printers.length,
+      onlinePrinters,
+      issuePrinters,
+      totalPagesPrinted,
+      totalJobsSubmitted,
+    };
+  }, [printers]);
+
+  const kpiCards = [
+    {
+      title: "Total Printers",
+      value: printerStats.totalPrinters.toLocaleString(),
+      helper: `${filteredPrinters.length.toLocaleString()} visible in current view`,
+      icon: <Printer className="h-5 w-5" />,
+    },
+    {
+      title: "Online Printers",
+      value: printerStats.onlinePrinters.toLocaleString(),
+      helper: "Devices currently reporting online",
+      icon: <Wifi className="h-5 w-5" />,
+    },
+    {
+      title: "Offline / Issues",
+      value: printerStats.issuePrinters.toLocaleString(),
+      helper: "Offline, low toner, or paper jam devices",
+      icon: <AlertTriangle className="h-5 w-5" />,
+    },
+    {
+      title: "Pages Printed",
+      value: printerStats.totalPagesPrinted.toLocaleString(),
+      helper: `${printerStats.totalJobsSubmitted.toLocaleString()} jobs submitted`,
+      icon: <FileStack className="h-5 w-5" />,
+    },
+    {
+      title: "Jobs Submitted",
+      value: printerStats.totalJobsSubmitted.toLocaleString(),
+      helper: "Total jobs across loaded printers",
+      icon: <BriefcaseBusiness className="h-5 w-5" />,
+    },
+  ];
+
+  const toggleFeatureFilter = (feature: PrinterFeatureFilter) => {
+    setFeatureFilters((current) =>
+      current.includes(feature)
+        ? current.filter((item) => item !== feature)
+        : [...current, feature],
+    );
+  };
+
+  const renderPrintersSection = (expanded = false) => (
+    <Table
+      className={`flex flex-col ${
+        expanded ? "h-dvh !rounded-none" : "min-h-[520px]"
+      }`}
+    >
+      <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
+        <TableTitleBlock
+          title="Printers"
+          description={`${filteredPrinters.length} printers`}
+        />
+
+        <TableControls>
+          <SegmentToggle
+            value={columns}
+            onChange={(value) => setColumns(value as "2" | "3")}
+            options={[
+              { value: "2", label: "2" },
+              { value: "3", label: "3" },
+            ]}
           />
 
-          <TableControls>
-            <SegmentToggle
-              value={columns}
-              onChange={(value) => setColumns(value as "2" | "3")}
-              options={[
-                { value: "2", label: "2" },
-                { value: "3", label: "3" },
-              ]}
-            />
+          <TableSearch
+            value={search}
+            onChange={setSearch}
+            label="Search printers..."
+            id={expanded ? "printers-search-expanded" : "printers-search"}
+            wrapperClassName="w-full md:w-[320px]"
+          />
 
-            <TableSearch
-              value={search}
-              onChange={setSearch}
-              label="Search printers..."
-              id="printers-search"
-              wrapperClassName="w-full md:w-[320px]"
-            />
+          <RefreshButton className="h-14" onClick={loadPrinters} />
 
-            <Dropdown
-              value={filter}
-              onValueChange={(value) => setFilter(value as PrinterFilterValue)}
-            >
-              <DropdownTrigger className="h-14 min-w-[190px] rounded-2xl px-4">
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span>
-                    {printerFilterOptions.find((item) => item.value === filter)
-                      ?.label ?? "Filter"}
+          <Dropdown>
+            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 ? (
+                  <span
+                    className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                    style={{
+                      background: "rgba(var(--brand-rgb), 0.12)",
+                      color: "var(--color-brand-600)",
+                    }}
+                  >
+                    {activeFilterCount}
                   </span>
+                ) : null}
+              </span>
+            </DropdownTrigger>
+
+            <DropdownContent align="right" widthClassName="w-[360px]">
+              <div className="space-y-4 p-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Status
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {statusFilterOptions.map((option) => {
+                      const isSelected = statusFilter === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setStatusFilter(option.value)}
+                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                          style={{
+                            background: isSelected
+                              ? "rgba(var(--brand-rgb), 0.1)"
+                              : "var(--surface-2)",
+                            borderColor: isSelected
+                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                              : "var(--border)",
+                            color: isSelected
+                              ? "var(--color-brand-600)"
+                              : "var(--paragraph)",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </DropdownTrigger>
 
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                {printerFilterOptions.map((item) => (
-                  <DropdownItem key={item.value} value={item.value}>
-                    {item.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Features
+                  </p>
 
-            {/*<MainButton
-              label="Add Printer"
-              icon={<Plus className="h-5 w-5" />}
-              onClick={() => setAddOpen(true)}
-            />*/}
-            <Button
-              variant="primary"
-              iconLeft={<Plus className="h-5 w-5" />}
-              className="rounded-2xl px-6 py-3"
-              onClick={() => setAddOpen(true)}
-            >
-              Add Printer
-            </Button>
-          </TableControls>
-        </TableTop>
+                  <div className="grid grid-cols-2 gap-2">
+                    {featureFilterOptions.map((option) => {
+                      const isSelected = featureFilters.includes(option.value);
 
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => toggleFeatureFilter(option.value)}
+                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                          style={{
+                            background: isSelected
+                              ? "rgba(var(--brand-rgb), 0.1)"
+                              : "var(--surface-2)",
+                            borderColor: isSelected
+                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                              : "var(--border)",
+                            color: isSelected
+                              ? "var(--color-brand-600)"
+                              : "var(--paragraph)",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full text-sm"
+                    onClick={() => {
+                      setStatusFilter("all");
+                      setFeatureFilters([]);
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                ) : null}
+              </div>
+            </DropdownContent>
+          </Dropdown>
+
+          {/*<MainButton
+            label="Add Printer"
+            icon={<Plus className="h-5 w-5" />}
+            onClick={() => setAddOpen(true)}
+          />*/}
+          <Button
+            variant="primary"
+            iconLeft={<Plus className="h-5 w-5" />}
+            className="h-14 rounded-md px-6 text-base"
+            onClick={() => setAddOpen(true)}
+          >
+            Add Printer
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!expanded)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+            aria-label={
+              expanded ? "Collapse printers section" : "Expand printers section"
+            }
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? (
+              <Minimize2 className="h-5 w-5" />
+            ) : (
+              <Maximize2 className="h-5 w-5" />
+            )}
+          </button>
+        </TableControls>
+      </TableTop>
+
+      <div className={expanded ? "min-h-0 flex-1 overflow-y-auto p-6" : "p-6"}>
         {loadError ? (
-          <div className="px-6 pb-2">
+          <div className="pb-4">
             <p
               className="rounded-2xl border px-4 py-3 text-sm"
               style={{
@@ -183,31 +402,54 @@ const PrintersGrid = () => {
           </div>
         ) : null}
 
-        <div className="p-6">
-          {filteredPrinters.length === 0 ? (
-            <div
-              className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            >
-              No printers found.
-            </div>
-          ) : (
-            <div className={gridClassName}>
-              {filteredPrinters.map((printer) => (
-                <PrinterCard
-                  key={printer.id}
-                  printer={printer}
-                  columns={columns === "2" ? 2 : 3}
-                  onClick={() => setSelectedPrinter(printer)}
-                  onConfigure={(item) => {
-                    console.log("Configure printer:", item);
-                  }}
-                />
-              ))}
-            </div>
-          )}
+        {filteredPrinters.length === 0 ? (
+          <div
+            className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            No printers found.
+          </div>
+        ) : (
+          <div className={gridClassName}>
+            {filteredPrinters.map((printer) => (
+              <PrinterCard
+                key={printer.id}
+                printer={printer}
+                columns={columns === "2" ? 2 : 3}
+                onClick={() => setSelectedPrinter(printer)}
+                onConfigure={(item) => {
+                  console.log("Configure printer:", item);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </Table>
+  );
+
+  return (
+    <>
+      <FullscreenTablePortal open={isExpanded}>
+        {renderPrintersSection(true)}
+      </FullscreenTablePortal>
+
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {kpiCards.map((card, index) => (
+            <KpiMetricCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              helper={card.helper}
+              icon={card.icon}
+              index={index}
+            />
+          ))}
         </div>
-      </Table>
+
+        {renderPrintersSection()}
+      </div>
 
       <AddPrinterModal open={addOpen} onClose={() => setAddOpen(false)} />
 

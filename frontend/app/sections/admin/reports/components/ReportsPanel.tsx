@@ -7,17 +7,13 @@ import {
   FileText,
   Folder,
   Printer,
-  RefreshCw,
   Users,
 } from "lucide-react";
 
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import Card from "@/components/ui/card/Card";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import RefreshButton from "@/components/ui/button/RefreshButton";
+import ListBox from "@/components/ui/listbox/ListBox";
 import { cn } from "@/lib/cn";
 import {
   exportTableData,
@@ -92,6 +88,9 @@ type ReportDefinition<T> = {
   columns: TableExportColumn<T>[];
   filename: string;
 };
+
+type ReportRowData = Record<string, string | number | undefined>;
+type ReportsCatalog = Record<ReportCategoryId, ReportDefinition<ReportRowData>[]>;
 
 type CategoryDefinition = {
   id: ReportCategoryId;
@@ -186,36 +185,17 @@ function ReportTabs({
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-}) {
-  return (
-    <div
-      className="rounded-2xl border p-5"
-      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {title}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
-      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
-    </div>
-  );
-}
-
 function ReportRow<T>({
   report,
   period,
+  periodOptions,
+  onPeriodChange,
   onExport,
 }: {
   report: ReportDefinition<T>;
   period: string;
+  periodOptions: string[];
+  onPeriodChange: (period: string) => void;
   onExport: (report: ReportDefinition<T>, format: TableExportFormat) => void;
 }) {
   return (
@@ -240,16 +220,16 @@ function ReportRow<T>({
       </div>
 
       <div className="flex flex-col gap-4 lg:items-end">
-        <div
-          className="inline-flex items-center rounded-xl border px-4 py-3 text-sm font-semibold"
-          style={{
-            borderColor: "var(--border)",
-            background: "var(--surface-2)",
-            color: "var(--title)",
-          }}
-        >
-          {period}
-        </div>
+        <ListBox
+          value={period}
+          onValueChange={onPeriodChange}
+          options={periodOptions}
+          className="w-full sm:w-[190px]"
+          triggerClassName="h-11 px-4 text-sm"
+          contentClassName="min-w-[220px]"
+          align="right"
+          ariaLabel={`${report.title} reporting period`}
+        />
 
         <div className="flex flex-wrap items-center gap-3">
           {(["PDF", "Excel", "CSV"] as TableExportFormat[]).map((format) => (
@@ -266,6 +246,32 @@ function ReportRow<T>({
 }
 
 const toMoney = (value: number) => `${value.toFixed(2)} SAR`;
+
+const toReportRows = <T extends object>(rows: T[] = []): ReportRowData[] =>
+  rows.map((row) => ({ ...row }) as ReportRowData);
+
+const reportValue = (row: ReportRowData, key: string) => row[key] ?? "";
+
+const reportMoney = (row: ReportRowData, key: string) =>
+  toMoney(Number(row[key] ?? 0));
+
+const getOverviewIcon = (title: string, index: number) => {
+  const normalizedTitle = title.toLowerCase();
+  const fallbackIcons = [BarChart3, Printer, Users, CreditCard];
+  const Icon = normalizedTitle.includes("user")
+    ? Users
+    : normalizedTitle.includes("printer")
+      ? Printer
+      : normalizedTitle.includes("queue")
+        ? Folder
+        : normalizedTitle.includes("cost") || normalizedTitle.includes("quota")
+          ? CreditCard
+          : normalizedTitle.includes("page") || normalizedTitle.includes("job")
+            ? FileText
+            : fallbackIcons[index % fallbackIcons.length];
+
+  return <Icon className="h-4 w-4" />;
+};
 
 export default function ReportsPanel() {
   const [activeCategory, setActiveCategory] = useState<ReportCategoryId>("summary");
@@ -314,14 +320,14 @@ export default function ReportsPanel() {
   }, [period, refreshTick]);
 
   const reportCatalog = useMemo(() => {
-    const overviewRows =
+    const overviewRows: ReportRowData[] =
       summary?.overviewCards.map((card) => ({
         metric: card.title,
         value: card.value,
         helper: card.helperText,
       })) || [];
 
-    const reports: Record<ReportCategoryId, ReportDefinition<any>[]> = {
+    const reports: ReportsCatalog = {
       summary: [
         {
           id: "system-overview",
@@ -331,9 +337,9 @@ export default function ReportsPanel() {
           rows: overviewRows,
           filename: "alpha-queue-system-overview",
           columns: [
-            { label: "Metric", value: (row) => row.metric },
-            { label: "Value", value: (row) => row.value },
-            { label: "Helper", value: (row) => row.helper },
+            { label: "Metric", value: (row) => reportValue(row, "metric") },
+            { label: "Value", value: (row) => reportValue(row, "value") },
+            { label: "Helper", value: (row) => reportValue(row, "helper") },
           ],
         },
         {
@@ -341,13 +347,13 @@ export default function ReportsPanel() {
           title: "Job Status Breakdown",
           description:
             "Current job volumes, pages, and cost grouped by backend job status.",
-          rows: summary?.jobStatusBreakdown || [],
+          rows: toReportRows(summary?.jobStatusBreakdown),
           filename: "alpha-queue-job-status-breakdown",
           columns: [
-            { label: "Status", value: (row) => row.status },
-            { label: "Jobs", value: (row) => row.count },
-            { label: "Pages", value: (row) => row.pages },
-            { label: "Cost", value: (row) => toMoney(row.cost) },
+            { label: "Status", value: (row) => reportValue(row, "status") },
+            { label: "Jobs", value: (row) => reportValue(row, "count") },
+            { label: "Pages", value: (row) => reportValue(row, "pages") },
+            { label: "Cost", value: (row) => reportMoney(row, "cost") },
           ],
         },
       ],
@@ -357,13 +363,13 @@ export default function ReportsPanel() {
           title: "Top Printers",
           description:
             "Highest-volume printers for the selected reporting period.",
-          rows: summary?.topPrinters || [],
+          rows: toReportRows(summary?.topPrinters),
           filename: "alpha-queue-top-printers",
           columns: [
-            { label: "Printer", value: (row) => row.printerName },
-            { label: "Jobs", value: (row) => row.jobs },
-            { label: "Pages", value: (row) => row.pages },
-            { label: "Cost", value: (row) => toMoney(row.cost) },
+            { label: "Printer", value: (row) => reportValue(row, "printerName") },
+            { label: "Jobs", value: (row) => reportValue(row, "jobs") },
+            { label: "Pages", value: (row) => reportValue(row, "pages") },
+            { label: "Cost", value: (row) => reportMoney(row, "cost") },
           ],
         },
       ],
@@ -373,13 +379,13 @@ export default function ReportsPanel() {
           title: "Top Users",
           description:
             "Users with the highest activity based on the live print job records.",
-          rows: summary?.topUsers || [],
+          rows: toReportRows(summary?.topUsers),
           filename: "alpha-queue-top-users",
           columns: [
-            { label: "Username", value: (row) => row.username },
-            { label: "Jobs", value: (row) => row.jobs },
-            { label: "Pages", value: (row) => row.pages },
-            { label: "Cost", value: (row) => toMoney(row.cost) },
+            { label: "Username", value: (row) => reportValue(row, "username") },
+            { label: "Jobs", value: (row) => reportValue(row, "jobs") },
+            { label: "Pages", value: (row) => reportValue(row, "pages") },
+            { label: "Cost", value: (row) => reportMoney(row, "cost") },
           ],
         },
       ],
@@ -389,14 +395,14 @@ export default function ReportsPanel() {
           title: "Group Activity",
           description:
             "Group activity totals from the backend group summary.",
-          rows: summary?.groupSummary || [],
+          rows: toReportRows(summary?.groupSummary),
           filename: "alpha-queue-group-activity",
           columns: [
-            { label: "Group", value: (row) => row.name },
-            { label: "Members", value: (row) => row.members },
-            { label: "Jobs", value: (row) => row.jobs },
-            { label: "Pages", value: (row) => row.pages },
-            { label: "Cost", value: (row) => toMoney(row.cost) },
+            { label: "Group", value: (row) => reportValue(row, "name") },
+            { label: "Members", value: (row) => reportValue(row, "members") },
+            { label: "Jobs", value: (row) => reportValue(row, "jobs") },
+            { label: "Pages", value: (row) => reportValue(row, "pages") },
+            { label: "Cost", value: (row) => reportMoney(row, "cost") },
           ],
         },
       ],
@@ -406,12 +412,12 @@ export default function ReportsPanel() {
           title: "Quota Summary",
           description:
             "Quota transaction totals and counts grouped by transaction type.",
-          rows: summary?.quotaSummary || [],
+          rows: toReportRows(summary?.quotaSummary),
           filename: "alpha-queue-quota-summary",
           columns: [
-            { label: "Type", value: (row) => row.type },
-            { label: "Transactions", value: (row) => row.count },
-            { label: "Total", value: (row) => toMoney(row.total) },
+            { label: "Type", value: (row) => reportValue(row, "type") },
+            { label: "Transactions", value: (row) => reportValue(row, "count") },
+            { label: "Total", value: (row) => reportMoney(row, "total") },
           ],
         },
       ],
@@ -443,49 +449,49 @@ export default function ReportsPanel() {
         <ReportTabs value={activeCategory} onChange={setActiveCategory} />
 
         <div className="flex flex-wrap items-center gap-3">
-          <Dropdown value={period} onValueChange={setPeriod}>
-            <DropdownTrigger className="h-12 min-w-[190px] px-4 text-sm">
-              {period}
-            </DropdownTrigger>
+          <ListBox
+            value={period}
+            onValueChange={setPeriod}
+            options={periods}
+            className="w-full sm:w-[190px]"
+            triggerClassName="h-12 px-4 text-sm"
+            contentClassName="min-w-[220px]"
+            align="right"
+            ariaLabel="Reporting period"
+          />
 
-            <DropdownContent align="right" widthClassName="w-[220px]">
-              {periods.map((item) => (
-                <DropdownItem key={item} value={item}>
-                  {item}
-                </DropdownItem>
-              ))}
-            </DropdownContent>
-          </Dropdown>
-
-          <button
-            type="button"
+          <RefreshButton
+            className="h-12"
             onClick={() => setRefreshTick((current) => current + 1)}
-            className="inline-flex h-12 items-center gap-2 rounded-md border px-4 text-sm font-semibold transition"
-            style={{
-              borderColor: "var(--border)",
-              background: "var(--surface)",
-              color: "var(--title)",
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
+          />
         </div>
       </div>
 
       {error ? (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{
+            borderColor:
+              "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+            background:
+              "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+            color:
+              "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+          }}
+        >
           {error}
         </div>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {(summary?.overviewCards || []).map((card) => (
-          <SummaryCard
+        {(summary?.overviewCards || []).map((card, index) => (
+          <KpiMetricCard
             key={card.id}
             title={card.title}
             value={card.value}
             helper={card.helperText}
+            icon={getOverviewIcon(card.title, index)}
+            index={index}
           />
         ))}
       </div>
@@ -585,6 +591,8 @@ export default function ReportsPanel() {
                   key={report.id}
                   report={report}
                   period={period}
+                  periodOptions={periods}
+                  onPeriodChange={setPeriod}
                   onExport={handleExport}
                 />
               ))}

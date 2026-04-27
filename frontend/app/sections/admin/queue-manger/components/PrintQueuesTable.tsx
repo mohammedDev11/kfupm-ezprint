@@ -1016,6 +1016,8 @@
 
 import { cn } from "@/lib/cn";
 import SegmentToggle from "@/components/shared/actions/SegmentToggle";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import {
   Table,
   TableBody,
@@ -1033,33 +1035,49 @@ import {
 } from "@/components/shared/table/Table";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
   Dropdown,
   DropdownContent,
   DropdownItem,
   DropdownTrigger,
 } from "@/components/ui/dropdown/Dropdown";
+import FloatingInput from "@/components/ui/input/FloatingInput";
 import FormFieldInput from "@/components/ui/input/FormFieldInput";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import {
   queueDepartmentOptions,
   queueFormDefaults,
   queueModalTabs,
   queueRoleOptions,
-  queueStatusMeta,
   queueTableColumns,
-  queueTypeMeta,
   type QueueModalTab,
   type QueueSortKey,
   type QueueStatus,
   type QueueTableItem,
 } from "@/lib/mock-data/Admin/queues";
 import { apiGet } from "@/services/api";
-import { Plus, X } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  Clock3,
+  ListChecks,
+  Maximize2,
+  Minimize2,
+  PauseCircle,
+  Plus,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { RiAddLine } from "react-icons/ri";
 
 type SortDir = "asc" | "desc";
+type QueueStatusFilter = "all" | "active" | "paused";
+type QueueTypeFilter = "all" | "managed" | "secure-release";
+type PendingJobsFilter = "all" | "has-pending" | "no-pending";
 
 const columnsClassName =
   "[grid-template-columns:72px_minmax(250px,1.5fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(200px,1.1fr)_minmax(150px,0.8fr)_minmax(130px,0.7fr)_minmax(120px,0.7fr)_minmax(150px,0.9fr)]";
@@ -1102,36 +1120,103 @@ const typeOptions = [
 
 const statusOptions: QueueStatus[] = ["Active", "Inactive", "Disabled"];
 
+const queueStatusFilterOptions: Array<{
+  value: QueueStatusFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+];
+
+const queueTypeFilterOptions: Array<{
+  value: QueueTypeFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All" },
+  { value: "managed", label: "Managed Queue" },
+  { value: "secure-release", label: "Secure Release" },
+];
+
+const pendingJobsFilterOptions: Array<{
+  value: PendingJobsFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All" },
+  { value: "has-pending", label: "Has Pending Jobs" },
+  { value: "no-pending", label: "No Pending Jobs" },
+];
+
 const formatRetention = (hours: number) => `${hours}h`;
 
-const getQueueTypeMeta = (type: string) =>
-  type === "Secure Release Queue"
+const isSecureReleaseQueue = (queue: QueueTableItem) =>
+  queue.secureRelease || queue.type.toLowerCase().includes("secure release");
+
+const queueTypeBadgeStyle = (secureRelease: boolean): React.CSSProperties =>
+  secureRelease
     ? {
-        label: "Secure Release Queue",
-        className: "bg-brand-100 text-brand-600",
+        borderColor:
+          "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+        background:
+          "color-mix(in srgb, var(--color-brand-500) 11%, var(--surface))",
+        color: "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
       }
-    : queueTypeMeta[type as keyof typeof queueTypeMeta] || {
-        label: type || "Unknown",
-        className: "bg-[var(--surface-2)] text-[var(--paragraph)]",
+    : {
+        borderColor:
+          "color-mix(in srgb, var(--color-support-500) 22%, transparent)",
+        background:
+          "color-mix(in srgb, var(--color-support-500) 10%, var(--surface))",
+        color: "color-mix(in srgb, var(--color-support-700) 76%, var(--title))",
       };
 
-const getQueueStatusMeta = (status: string) =>
-  queueStatusMeta[status as keyof typeof queueStatusMeta] || {
+const getQueueStatusMeta = (status: string) => {
+  if (status === "Active") {
+    return { label: "Active", tone: "success" as const };
+  }
+
+  if (status === "Inactive") {
+    return { label: "Paused", tone: "warning" as const };
+  }
+
+  if (status === "Disabled") {
+    return { label: "Disabled", tone: "inactive" as const };
+  }
+
+  return {
     label: status || "Unknown",
     tone: "inactive" as const,
   };
+};
 
-function QueueTypeBadge({ type }: { type: string }) {
-  const meta = getQueueTypeMeta(type);
+function QueueTypeBadge({
+  type,
+  compact = false,
+  secureRelease,
+}: {
+  type: string;
+  compact?: boolean;
+  secureRelease?: boolean;
+}) {
+  const isSecure =
+    secureRelease ?? type.toLowerCase().includes("secure release");
+  const label = compact
+    ? isSecure
+      ? "Secure Release"
+      : "Managed Queue"
+    : type;
 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium",
-        meta.className,
+        "inline-flex items-center justify-center rounded-full border font-semibold",
+        compact
+          ? "max-w-[150px] px-3 py-1 text-xs leading-5"
+          : "max-w-[220px] px-3 py-1.5 text-sm",
       )}
+      style={queueTypeBadgeStyle(isSecure)}
+      title={type}
     >
-      {meta.label}
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -1219,20 +1304,16 @@ function AccessRuleField({
         {label}
       </label>
 
-      <div className="flex gap-3">
-        <Dropdown value={value} onValueChange={onValueChange}>
-          <DropdownTrigger className="h-14 w-full px-4 text-left">
-            {value || placeholder}
-          </DropdownTrigger>
-
-          <DropdownContent widthClassName="w-full">
-            {options.map((option) => (
-              <DropdownItem key={option} value={option}>
-                {option}
-              </DropdownItem>
-            ))}
-          </DropdownContent>
-        </Dropdown>
+      <div className="flex items-start gap-3">
+        <ListBox
+          value={value}
+          onValueChange={onValueChange}
+          options={options}
+          placeholder={placeholder}
+          triggerClassName="h-14 px-4"
+          maxHeightClassName="max-h-60"
+          ariaLabel={label}
+        />
 
         <button
           type="button"
@@ -1355,7 +1436,12 @@ function PrinterSelectionList({
   return (
     <div className="max-h-[280px] overflow-y-auto rounded-md border border-[var(--border)] p-3 scrollbar-none">
       <div className="space-y-3">
-        {printerOptions.map((printer) => {
+        {printerOptions.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">
+            No printers found.
+          </p>
+        ) : (
+          printerOptions.map((printer) => {
           const checked = selectedPrinters.includes(printer.name);
 
           return (
@@ -1380,7 +1466,7 @@ function PrinterSelectionList({
               </span>
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );
@@ -1413,14 +1499,23 @@ function QueueEditorModal({
   const [selectedGroup, setSelectedGroup] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedRestrictedUser, setSelectedRestrictedUser] = useState("");
+  const [printerSearch, setPrinterSearch] = useState("");
+  const selectedPrinterNames = draft?.assignedPrinters;
+  const filteredPrinterOptions = useMemo(() => {
+    const term = printerSearch.trim().toLowerCase();
+    const selectedNames = new Set(selectedPrinterNames ?? []);
 
-  useEffect(() => {
-    setDraft(queue);
-    setSelectedRole("");
-    setSelectedGroup("");
-    setSelectedDepartment("");
-    setSelectedRestrictedUser("");
-  }, [queue]);
+    if (!term) {
+      return printerOptions;
+    }
+
+    return printerOptions.filter(
+      (printer) =>
+        selectedNames.has(printer.name) ||
+        printer.name.toLowerCase().includes(term) ||
+        printer.location.toLowerCase().includes(term),
+    );
+  }, [printerOptions, printerSearch, selectedPrinterNames]);
 
   if (!draft) return null;
 
@@ -1583,9 +1678,18 @@ function QueueEditorModal({
 
           {activeTab === "printers" && (
             <div className="space-y-5">
+              <FloatingInput
+                id={`queue-printer-search-${draft.id}`}
+                label="Search printers..."
+                value={printerSearch}
+                onChange={(event) => setPrinterSearch(event.target.value)}
+                icon={<Search className="h-5 w-5" />}
+                wrapperClassName="h-14"
+              />
+
               <EditField label="Assigned Printers">
                 <PrinterSelectionList
-                  printerOptions={printerOptions}
+                  printerOptions={filteredPrinterOptions}
                   selectedPrinters={draft.assignedPrinters}
                   onToggle={togglePrinter}
                 />
@@ -1715,6 +1819,11 @@ const PrintQueuesTable = () => {
 
   const [sortKey, setSortKey] = useState<QueueSortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [statusFilter, setStatusFilter] = useState<QueueStatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<QueueTypeFilter>("all");
+  const [pendingJobsFilter, setPendingJobsFilter] =
+    useState<PendingJobsFilter>("all");
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -1725,20 +1834,22 @@ const PrintQueuesTable = () => {
   const [addQueueTab, setAddQueueTab] = useState<QueueModalTab>("basic-info");
   const [newQueue, setNewQueue] = useState<QueueTableItem | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-
+  const loadQueues = useCallback((shouldUpdate: () => boolean = () => true) => {
     Promise.allSettled([
       apiGet<AdminQueuesResponse>("/admin/queues", "admin"),
       apiGet<AdminPrintersResponse>("/admin/printers", "admin"),
       apiGet<AdminGroupsResponse>("/admin/groups", "admin"),
     ]).then(([queuesResult, printersResult, groupsResult]) => {
-      if (!mounted) {
+      if (!shouldUpdate()) {
         return;
       }
 
       if (queuesResult.status === "fulfilled") {
-        setQueues(Array.isArray(queuesResult.value?.queues) ? queuesResult.value.queues : []);
+        setQueues(
+          Array.isArray(queuesResult.value?.queues)
+            ? queuesResult.value.queues
+            : [],
+        );
         setLoadError("");
       } else {
         setQueues([]);
@@ -1774,11 +1885,17 @@ const PrintQueuesTable = () => {
         setGroupOptions([]);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadQueues(() => mounted);
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadQueues]);
 
   const handleSort = (key: QueueSortKey) => {
     if (sortKey === key) {
@@ -1795,14 +1912,34 @@ const PrintQueuesTable = () => {
 
     return [...queues]
       .filter((queue) => {
-        if (!term) return true;
-
-        return (
+        const matchesSearch =
+          !term ||
           queue.name.toLowerCase().includes(term) ||
           queue.type.toLowerCase().includes(term) ||
           queue.status.toLowerCase().includes(term) ||
           queue.assignedPrinters.join(" ").toLowerCase().includes(term) ||
-          queue.allowedGroups.join(" ").toLowerCase().includes(term)
+          queue.allowedGroups.join(" ").toLowerCase().includes(term);
+
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "active" && queue.status === "Active") ||
+          (statusFilter === "paused" && queue.status !== "Active");
+
+        const matchesType =
+          typeFilter === "all" ||
+          (typeFilter === "secure-release" && isSecureReleaseQueue(queue)) ||
+          (typeFilter === "managed" && !isSecureReleaseQueue(queue));
+
+        const matchesPendingJobs =
+          pendingJobsFilter === "all" ||
+          (pendingJobsFilter === "has-pending" && queue.pendingJobs > 0) ||
+          (pendingJobsFilter === "no-pending" && queue.pendingJobs === 0);
+
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesType &&
+          matchesPendingJobs
         );
       })
       .sort((a, b) => {
@@ -1840,7 +1977,76 @@ const PrintQueuesTable = () => {
           ? String(aValue).localeCompare(String(bValue))
           : String(bValue).localeCompare(String(aValue));
       });
-  }, [queues, search, sortDir, sortKey]);
+  }, [
+    pendingJobsFilter,
+    queues,
+    search,
+    sortDir,
+    sortKey,
+    statusFilter,
+    typeFilter,
+  ]);
+
+  const queueStats = useMemo(() => {
+    const activeQueues = queues.filter(
+      (queue) => queue.status === "Active",
+    ).length;
+    const pausedQueues = queues.filter(
+      (queue) => queue.status !== "Active",
+    ).length;
+    const totalPendingJobs = queues.reduce(
+      (total, queue) => total + queue.pendingJobs,
+      0,
+    );
+    const secureReleaseQueues = queues.filter(isSecureReleaseQueue).length;
+
+    return {
+      activeQueues,
+      pausedQueues,
+      secureReleaseQueues,
+      totalPendingJobs,
+      totalQueues: queues.length,
+    };
+  }, [queues]);
+
+  const activeFilterCount = [
+    statusFilter !== "all",
+    typeFilter !== "all",
+    pendingJobsFilter !== "all",
+  ].filter(Boolean).length;
+
+  const kpiCards = [
+    {
+      title: "Total Queues",
+      value: queueStats.totalQueues.toLocaleString(),
+      helper: `${filteredQueues.length.toLocaleString()} visible in current view`,
+      icon: <ListChecks className="h-4 w-4" />,
+    },
+    {
+      title: "Active Queues",
+      value: queueStats.activeQueues.toLocaleString(),
+      helper: "Ready to accept jobs",
+      icon: <CheckCircle2 className="h-4 w-4" />,
+    },
+    {
+      title: "Paused Queues",
+      value: queueStats.pausedQueues.toLocaleString(),
+      helper: "Inactive or disabled queues",
+      icon: <PauseCircle className="h-4 w-4" />,
+    },
+    {
+      title: "Pending Jobs",
+      value: queueStats.totalPendingJobs.toLocaleString(),
+      helper: "Jobs waiting across queues",
+      icon: <Clock3 className="h-4 w-4" />,
+    },
+    {
+      title: "Secure Release",
+      value: queueStats.secureReleaseQueues.toLocaleString(),
+      helper: "Queues requiring release controls",
+      icon: <ShieldCheck className="h-4 w-4" />,
+    },
+  ];
 
   const visibleIds = filteredQueues.map((queue) => queue.id);
 
@@ -1896,64 +2102,237 @@ const PrintQueuesTable = () => {
     setNewQueue(null);
   };
 
-  return (
-    <>
-      <Table>
-        <TableTop>
-          <TableTitleBlock
-            title="Print Queues"
-            description={`${filteredQueues.length} queues configured`}
+  const renderQueuesTable = (expanded = false) => (
+    <Table
+      className={`flex min-h-[520px] flex-col ${
+        expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
+      }`}
+    >
+      <TableTop
+        className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}
+      >
+        <TableTitleBlock title="Print Queues" />
+
+        <TableControls>
+          <TableSearch
+            id={
+              expanded ? "search-print-queues-expanded" : "search-print-queues"
+            }
+            label="Search queues..."
+            value={search}
+            onChange={setSearch}
           />
 
-          <TableControls>
-            <TableSearch
-              id="search-print-queues"
-              label="Search queues..."
-              value={search}
-              onChange={setSearch}
-            />
+          <RefreshButton className="h-14" onClick={() => loadQueues()} />
 
-            <Button
-              variant="primary"
-              className="h-14 px-6 text-base"
-              iconLeft={<RiAddLine className="h-5 w-5" />}
-              onClick={openAddModal}
-            >
-              Add Queue
-            </Button>
-          </TableControls>
-        </TableTop>
+          <Dropdown>
+            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 ? (
+                  <span
+                    className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                    style={{
+                      background: "rgba(var(--brand-rgb), 0.12)",
+                      color: "var(--color-brand-600)",
+                    }}
+                  >
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </span>
+            </DropdownTrigger>
 
-        {loadError ? (
-          <div className="px-6 pb-2">
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-              {loadError}
-            </p>
-          </div>
-        ) : null}
+            <DropdownContent align="right" widthClassName="w-[380px]">
+              <div className="space-y-4 p-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Status
+                  </p>
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1350px]">
-            <TableHeader columnsClassName={columnsClassName}>
-              <TableCell className="justify-center">
-                <TableCheckbox
-                  checked={isAllSelected}
-                  onToggle={toggleSelectAll}
-                />
-              </TableCell>
+                  <div className="grid grid-cols-3 gap-2">
+                    {queueStatusFilterOptions.map((option) => {
+                      const isSelected = statusFilter === option.value;
 
-              {queueTableColumns.map((column) => (
-                <TableHeaderCell
-                  key={column.key}
-                  label={column.label}
-                  sortable={column.sortable}
-                  active={sortKey === column.key}
-                  direction={sortDir}
-                  onClick={() => handleSort(column.key)}
-                />
-              ))}
-            </TableHeader>
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setStatusFilter(option.value)}
+                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                          style={{
+                            background: isSelected
+                              ? "rgba(var(--brand-rgb), 0.1)"
+                              : "var(--surface-2)",
+                            borderColor: isSelected
+                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                              : "var(--border)",
+                            color: isSelected
+                              ? "var(--color-brand-600)"
+                              : "var(--paragraph)",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Type
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {queueTypeFilterOptions.map((option) => {
+                      const isSelected = typeFilter === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setTypeFilter(option.value)}
+                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                          style={{
+                            background: isSelected
+                              ? "rgba(var(--brand-rgb), 0.1)"
+                              : "var(--surface-2)",
+                            borderColor: isSelected
+                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                              : "var(--border)",
+                            color: isSelected
+                              ? "var(--color-brand-600)"
+                              : "var(--paragraph)",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Pending Jobs
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {pendingJobsFilterOptions.map((option) => {
+                      const isSelected = pendingJobsFilter === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setPendingJobsFilter(option.value)}
+                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                          style={{
+                            background: isSelected
+                              ? "rgba(var(--brand-rgb), 0.1)"
+                              : "var(--surface-2)",
+                            borderColor: isSelected
+                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                              : "var(--border)",
+                            color: isSelected
+                              ? "var(--color-brand-600)"
+                              : "var(--paragraph)",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full text-sm"
+                    onClick={() => {
+                      setStatusFilter("all");
+                      setTypeFilter("all");
+                      setPendingJobsFilter("all");
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                ) : null}
+              </div>
+            </DropdownContent>
+          </Dropdown>
+
+          <Button
+            variant="primary"
+            className="h-14 px-6 text-base"
+            iconLeft={<RiAddLine className="h-5 w-5" />}
+            onClick={openAddModal}
+          >
+            Add Queue
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => setIsTableExpanded(!expanded)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+            aria-label={
+              expanded ? "Collapse queues table" : "Expand queues table"
+            }
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? (
+              <Minimize2 className="h-5 w-5" />
+            ) : (
+              <Maximize2 className="h-5 w-5" />
+            )}
+          </button>
+        </TableControls>
+      </TableTop>
+
+      {loadError ? (
+        <div className="px-6 pb-2">
+          <p
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{
+              borderColor:
+                "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+              background:
+                "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+              color:
+                "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+            }}
+          >
+            {loadError}
+          </p>
+        </div>
+      ) : null}
+
+      <TableMain className="min-h-0 flex-1">
+        <TableGrid minWidthClassName="flex h-full min-w-[1350px] flex-col">
+          <TableHeader columnsClassName={columnsClassName}>
+            <TableCell className="justify-center">
+              <TableCheckbox
+                checked={isAllSelected}
+                onToggle={toggleSelectAll}
+              />
+            </TableCell>
+
+            {queueTableColumns.map((column) => (
+              <TableHeaderCell
+                key={column.key}
+                label={column.label}
+                sortable={column.sortable}
+                active={sortKey === column.key}
+                direction={sortDir}
+                onClick={() => handleSort(column.key)}
+              />
+            ))}
+          </TableHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <TableBody>
               {filteredQueues.length === 0 ? (
                 <TableEmptyState text="No queues found" />
@@ -1985,7 +2364,11 @@ const PrintQueuesTable = () => {
                       </TableCell>
 
                       <TableCell>
-                        <QueueTypeBadge type={queue.type} />
+                        <QueueTypeBadge
+                          type={queue.type}
+                          compact
+                          secureRelease={isSecureReleaseQueue(queue)}
+                        />
                       </TableCell>
 
                       <TableCell className="paragraph">
@@ -2025,11 +2408,37 @@ const PrintQueuesTable = () => {
                 })
               )}
             </TableBody>
-          </TableGrid>
-        </TableMain>
-      </Table>
+          </div>
+        </TableGrid>
+      </TableMain>
+    </Table>
+  );
+
+  return (
+    <>
+      <FullscreenTablePortal open={isTableExpanded}>
+        {renderQueuesTable(true)}
+      </FullscreenTablePortal>
+
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {kpiCards.map((card, index) => (
+            <KpiMetricCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              helper={card.helper}
+              icon={card.icon}
+              index={index}
+            />
+          ))}
+        </div>
+
+        {renderQueuesTable()}
+      </div>
 
       <QueueEditorModal
+        key={openQueue?.id ?? "edit-queue-closed"}
         open={Boolean(openQueue)}
         title="Edit Queue"
         queue={openQueue}
@@ -2042,6 +2451,7 @@ const PrintQueuesTable = () => {
       />
 
       <QueueEditorModal
+        key={newQueue?.id ?? "add-queue-closed"}
         open={isAddModalOpen && Boolean(newQueue)}
         title="Add Queue"
         queue={newQueue}

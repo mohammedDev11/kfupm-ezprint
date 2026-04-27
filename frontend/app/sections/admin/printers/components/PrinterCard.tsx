@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { MoreHorizontal, Printer, SlidersHorizontal } from "lucide-react";
+import { Printer, SlidersHorizontal } from "lucide-react";
 //import MainButton from "@/app/Mohammed/components/MainButton";
 import Button from "@/components/ui/button/Button";
 import { cn } from "@/lib/cn";
@@ -14,11 +14,27 @@ type PrinterCardProps = {
   onConfigure?: (printer: PrinterItem) => void;
 };
 
-const statusClasses: Record<PrinterStatus, string> = {
-  Online: "bg-success-100 text-success-600",
-  Offline: "bg-danger-50 text-danger-500",
-  "Low Toner": "bg-warning-50 text-warning-600",
-  "Paper Jam": "bg-warning-50 text-warning-600",
+const statusStyles: Record<PrinterStatus, React.CSSProperties> = {
+  Online: {
+    borderColor: "color-mix(in srgb, var(--color-support-500) 24%, transparent)",
+    background: "color-mix(in srgb, var(--color-support-500) 12%, var(--surface))",
+    color: "color-mix(in srgb, var(--color-support-700) 76%, var(--title))",
+  },
+  Offline: {
+    borderColor: "var(--border)",
+    background: "color-mix(in srgb, var(--surface-3) 44%, var(--surface))",
+    color: "var(--muted)",
+  },
+  "Low Toner": {
+    borderColor: "color-mix(in srgb, var(--color-warning-500) 24%, transparent)",
+    background: "color-mix(in srgb, var(--color-warning-500) 12%, var(--surface))",
+    color: "color-mix(in srgb, var(--color-warning-600) 78%, var(--title))",
+  },
+  "Paper Jam": {
+    borderColor: "color-mix(in srgb, var(--color-brand-600) 24%, transparent)",
+    background: "color-mix(in srgb, var(--color-brand-500) 13%, var(--surface))",
+    color: "color-mix(in srgb, var(--color-brand-700) 76%, var(--title))",
+  },
 };
 
 const formatCompactNumber = (value: number) => {
@@ -96,10 +112,8 @@ const PrinterCard = ({
 
       <div className="mt-6 flex flex-wrap gap-3">
         <span
-          className={cn(
-            "inline-flex items-center rounded-full px-4 py-2 text-base font-semibold",
-            statusClasses[printer.status]
-          )}
+          className="inline-flex items-center rounded-full border px-4 py-2 text-base font-semibold"
+          style={statusStyles[printer.status]}
         >
           {printer.status}
         </span>
