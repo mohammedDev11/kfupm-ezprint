@@ -6,14 +6,24 @@ import {
   CircleAlert,
   Crown,
   Link2,
+  Maximize2,
+  Minimize2,
   Plus,
   Shield,
   Trash2,
   UserRound,
-  FileOutput,
+  WalletCards,
 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
 
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -31,6 +41,7 @@ import {
 } from "@/components/shared/table/Table";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
   Dropdown,
   DropdownContent,
@@ -40,10 +51,12 @@ import {
 import Input from "@/components/ui/input/Input";
 import Modal from "@/components/ui/modal/Modal";
 import SegmentToggle from "@/components/shared/actions/SegmentToggle";
+import { exportTableData, TableExportFormat } from "@/lib/export";
 import {
   sharedAccountsData,
   sharedAccountsTableColumns,
   sharedAccountStatusSortOrder,
+  sharedAccountStatusMeta,
   SharedAccountItem,
   SharedAccountSortKey,
   SharedAccountStatus,
@@ -65,8 +78,23 @@ type SegmentValue =
   | "edit-notes"
   | "delete-grouping";
 
+type MiniPillTone = "neutral" | "brand" | "success" | "warning";
+type ExportMethod = TableExportFormat;
+
+export type SharedAccountsTableHandle = {
+  openCreateModal: () => void;
+};
+
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(220px,1.2fr)_minmax(190px,1fr)_minmax(120px,0.7fr)_minmax(220px,1.1fr)_minmax(180px,1fr)_minmax(140px,0.8fr)_minmax(200px,1fr)]";
+  "[grid-template-columns:72px_minmax(220px,1.2fr)_minmax(190px,1fr)_minmax(210px,0.85fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_minmax(140px,0.8fr)_minmax(200px,1fr)]";
+
+const cloneSharedAccountsData = () =>
+  sharedAccountsData.map((group) => ({
+    ...group,
+    linkedRoles: [...group.linkedRoles],
+    linkedAccounts: group.linkedAccounts.map((account) => ({ ...account })),
+    logs: group.logs.map((log) => ({ ...log })),
+  }));
 
 function SharedStatusBadge({
   status,
@@ -76,33 +104,26 @@ function SharedStatusBadge({
   const compactClassName =
     "whitespace-nowrap rounded-full !gap-2 !px-3 !py-1.5 !text-sm [&>span:first-child]:h-auto [&>span:first-child]:w-auto";
 
-  if (status === "Active") {
-    return (
-      <StatusBadge
-        label="Active"
-        tone="success"
-        icon={<CheckCircle2 className="h-4 w-4" />}
-        className={compactClassName}
-      />
-    );
-  }
+  const normalizedStatus: SharedAccountStatus =
+    status === "Active" || status === "Needs Review" || status === "Archived"
+      ? status
+      : "Archived";
 
-  if (status === "Suspended" || status === "Needs Review") {
-    return (
-      <StatusBadge
-        label="Suspended"
-        tone="danger"
-        icon={<CircleAlert className="h-4 w-4" />}
-        className={compactClassName}
-      />
+  const meta = sharedAccountStatusMeta[normalizedStatus];
+  const icon =
+    normalizedStatus === "Active" ? (
+      <CheckCircle2 className="h-4 w-4" />
+    ) : normalizedStatus === "Needs Review" ? (
+      <CircleAlert className="h-4 w-4" />
+    ) : (
+      <Archive className="h-4 w-4" />
     );
-  }
 
   return (
     <StatusBadge
-      label="Inactive"
-      tone="inactive"
-      icon={<Archive className="h-4 w-4" />}
+      label={meta.label}
+      tone={meta.tone}
+      icon={icon}
       className={compactClassName}
     />
   );
@@ -113,23 +134,50 @@ function MiniPill({
   tone = "neutral",
 }: {
   label: string;
-  tone?: "neutral" | "brand" | "success";
+  tone?: MiniPillTone;
 }) {
-  const className =
-    tone === "brand"
-      ? "border-transparent bg-brand-500 text-white"
-      : tone === "success"
-      ? "border-transparent bg-success-100 text-success-600"
-      : "border-[var(--border)] bg-[var(--surface-2)] text-[var(--title)]";
+  const toneStyles: Record<MiniPillTone, React.CSSProperties> = {
+    brand: {
+      borderColor: "color-mix(in srgb, var(--color-brand-500) 28%, transparent)",
+      background: "rgba(var(--brand-rgb), 0.12)",
+      color: "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+    },
+    success: {
+      borderColor:
+        "color-mix(in srgb, var(--color-support-500) 24%, transparent)",
+      background:
+        "color-mix(in srgb, var(--color-support-500) 12%, var(--surface))",
+      color: "color-mix(in srgb, var(--color-support-700) 76%, var(--title))",
+    },
+    warning: {
+      borderColor:
+        "color-mix(in srgb, var(--color-warning-500) 24%, transparent)",
+      background:
+        "color-mix(in srgb, var(--color-warning-500) 12%, var(--surface))",
+      color: "color-mix(in srgb, var(--color-warning-600) 78%, var(--title))",
+    },
+    neutral: {
+      borderColor: "var(--border)",
+      background: "var(--surface-2)",
+      color: "var(--title)",
+    },
+  };
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold ${className}`}
+      className="inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold"
+      style={toneStyles[tone]}
     >
       {label}
     </span>
   );
 }
+
+const getLinkedStatusTone = (status: string): MiniPillTone => {
+  if (status === "Active") return "success";
+  if (status === "Suspended") return "warning";
+  return "neutral";
+};
 
 function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -165,8 +213,11 @@ function DetailField({
   );
 }
 
-const SharedAccountsTable = () => {
-  const [groups, setGroups] = useState<SharedAccountItem[]>(sharedAccountsData);
+const SharedAccountsTable = forwardRef<SharedAccountsTableHandle>(
+function SharedAccountsTable(_props, ref) {
+  const [groups, setGroups] = useState<SharedAccountItem[]>(
+    cloneSharedAccountsData,
+  );
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SharedAccountSortKey>("personName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -178,7 +229,9 @@ const SharedAccountsTable = () => {
   const [segment, setSegment] = useState<SegmentValue>("details");
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [actionValue, setActionValue] = useState<ActionValue | null>(null);
+  const [exportMethod, setExportMethod] = useState<ExportMethod>("PDF");
 
   const [createFullName, setCreateFullName] = useState("");
   const [createIdentifier, setCreateIdentifier] = useState("");
@@ -192,13 +245,13 @@ const SharedAccountsTable = () => {
   const [newLinkedRole, setNewLinkedRole] = useState("");
   const [newPrimaryId, setNewPrimaryId] = useState("");
 
-  useEffect(() => {
-    if (!selectedGroup) return;
-    setNotesDraft(selectedGroup.notes);
-    setLinkedSearch("");
-    const primary = selectedGroup.linkedAccounts.find((item) => item.isPrimary);
-    setNewPrimaryId(primary?.id ?? "");
-  }, [selectedGroup]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      openCreateModal: () => setIsCreateModalOpen(true),
+    }),
+    [],
+  );
 
   const handleSort = (key: SharedAccountSortKey) => {
     if (sortKey === key) {
@@ -266,6 +319,53 @@ const SharedAccountsTable = () => {
     [groups, selectedIds]
   );
 
+  const accountStats = useMemo(() => {
+    const linkedAccounts = groups.flatMap((group) => group.linkedAccounts);
+    const totalBalance = linkedAccounts.reduce(
+      (sum, account) => sum + account.balance,
+      0
+    );
+    const activeAccounts = groups.filter(
+      (group) => group.status === "Active"
+    ).length;
+    const reviewOrArchived = groups.length - activeAccounts;
+
+    return {
+      totalAccounts: groups.length,
+      activeAccounts,
+      reviewOrArchived,
+      linkedAccounts: linkedAccounts.length,
+      totalBalance,
+    };
+  }, [groups]);
+
+  const kpiCards = [
+    {
+      title: "Total Shared Accounts",
+      value: accountStats.totalAccounts.toLocaleString(),
+      helper: `${filteredGroups.length.toLocaleString()} visible in current view`,
+      icon: <WalletCards className="h-5 w-5" />,
+    },
+    {
+      title: "Active Accounts",
+      value: accountStats.activeAccounts.toLocaleString(),
+      helper: "Shared groups currently active",
+      icon: <CheckCircle2 className="h-5 w-5" />,
+    },
+    {
+      title: "Review / Archived",
+      value: accountStats.reviewOrArchived.toLocaleString(),
+      helper: "Groups needing review or archived",
+      icon: <Archive className="h-5 w-5" />,
+    },
+    {
+      title: "Linked Balance",
+      value: `${accountStats.totalBalance.toFixed(2)} SAR`,
+      helper: `${accountStats.linkedAccounts.toLocaleString()} linked accounts tracked`,
+      icon: <Link2 className="h-5 w-5" />,
+    },
+  ];
+
   const allVisibleIds = filteredGroups.map((group) => group.id);
   const isAllSelected =
     allVisibleIds.length > 0 &&
@@ -290,6 +390,44 @@ const SharedAccountsTable = () => {
 
   const removeSelectedGroupFromAction = (id: string) => {
     setSelectedIds((prev) => prev.filter((item) => item !== id));
+  };
+
+  const exportSharedAccounts = (format: TableExportFormat) => {
+    if (selectedGroups.length === 0) return;
+
+    exportTableData({
+      title: "Shared Accounts",
+      filename: "alpha-queue-shared-accounts",
+      format,
+      columns: [
+        { label: "Person Name", value: (row: SharedAccountItem) => row.personName },
+        { label: "Identifier", value: (row) => row.identifier },
+        { label: "Primary Account", value: (row) => row.primaryAccount },
+        { label: "Linked Accounts", value: (row) => row.linkedCount },
+        { label: "Linked Roles", value: (row) => row.linkedRoles },
+        { label: "Department", value: (row) => row.department },
+        { label: "Status", value: (row) => row.status },
+        { label: "Last Activity", value: (row) => row.lastActivity },
+        { label: "Notes", value: (row) => row.notes },
+      ],
+      rows: selectedGroups,
+    });
+  };
+
+  const handleExportChange = (value: string) => {
+    setExportMethod(value as ExportMethod);
+    setActionValue("export-groups");
+  };
+
+  const handleExportConfirmed = () => {
+    exportSharedAccounts(exportMethod);
+    setActionValue(null);
+  };
+
+  const refreshSharedAccounts = () => {
+    setGroups(cloneSharedAccountsData());
+    setSelectedIds([]);
+    setSelectedGroup(null);
   };
 
   const selectedLinkedAccounts = useMemo(() => {
@@ -331,12 +469,21 @@ const SharedAccountsTable = () => {
     { value: "delete-grouping", label: "Delete Grouping" },
   ];
 
+  const prepareSelectedGroupDrafts = (group: SharedAccountItem) => {
+    setNotesDraft(group.notes);
+    setLinkedSearch("");
+    const primary = group.linkedAccounts.find((item) => item.isPrimary);
+    setNewPrimaryId(primary?.id ?? "");
+  };
+
   const openGroupModal = (group: SharedAccountItem) => {
+    prepareSelectedGroupDrafts(group);
     setSelectedGroup(group);
     setSegment("details");
   };
 
   const syncSelectedGroup = (updatedGroup: SharedAccountItem) => {
+    prepareSelectedGroupDrafts(updatedGroup);
     setSelectedGroup(updatedGroup);
     setGroups((prev) =>
       prev.map((group) => (group.id === updatedGroup.id ? updatedGroup : group))
@@ -517,8 +664,7 @@ const SharedAccountsTable = () => {
     if (!actionValue) return;
 
     if (actionValue === "refresh-data") {
-      setGroups([...sharedAccountsData]);
-      setSelectedIds([]);
+      refreshSharedAccounts();
       setActionValue(null);
       return;
     }
@@ -531,7 +677,7 @@ const SharedAccountsTable = () => {
           selectedIds.includes(group.id)
             ? {
                 ...group,
-                status: "Inactive" as SharedAccountStatus,
+                status: "Archived" as SharedAccountStatus,
                 updatedAt: "2026-04-10 10:30 AM",
                 logs: [
                   {
@@ -550,26 +696,24 @@ const SharedAccountsTable = () => {
       );
 
       if (selectedGroup && selectedIds.includes(selectedGroup.id)) {
-        setSelectedGroup((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: "Inactive" as SharedAccountStatus,
-                updatedAt: "2026-04-10 10:30 AM",
-                logs: [
-                  {
-                    id: `log-${Date.now()}-selected`,
-                    title: "Group Archived",
-                    description:
-                      "Shared account group archived from admin table.",
-                    by: "Mohammed Alshammasi",
-                    date: "2026-04-10 10:30 AM",
-                  },
-                  ...prev.logs,
-                ],
-              }
-            : prev
-        );
+        const updatedSelectedGroup: SharedAccountItem = {
+          ...selectedGroup,
+          status: "Archived" as SharedAccountStatus,
+          updatedAt: "2026-04-10 10:30 AM",
+          logs: [
+            {
+              id: `log-${Date.now()}-selected`,
+              title: "Group Archived",
+              description: "Shared account group archived from admin table.",
+              by: "Mohammed Alshammasi",
+              date: "2026-04-10 10:30 AM",
+            },
+            ...selectedGroup.logs,
+          ],
+        };
+
+        prepareSelectedGroupDrafts(updatedSelectedGroup);
+        setSelectedGroup(updatedSelectedGroup);
       }
 
       setActionValue(null);
@@ -593,6 +737,7 @@ const SharedAccountsTable = () => {
     }
 
     if (actionValue === "export-groups") {
+      handleExportConfirmed();
       setActionValue(null);
       return;
     }
@@ -716,12 +861,14 @@ const SharedAccountsTable = () => {
                 Linked Accounts
               </h4>
 
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
-                <div className="w-full min-w-0 sm:min-w-[260px]">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="w-full min-w-0 sm:min-w-[280px]">
                   <Input
                     value={linkedSearch}
                     onChange={(e) => setLinkedSearch(e.target.value)}
                     placeholder="Search linked accounts..."
+                    wrapperClassName="h-14"
+                    className="h-full py-0"
                   />
                 </div>
 
@@ -765,11 +912,7 @@ const SharedAccountsTable = () => {
                           <MiniPill label={account.role} />
                           <MiniPill
                             label={account.status}
-                            tone={
-                              account.status === "Active"
-                                ? "success"
-                                : "neutral"
-                            }
+                            tone={getLinkedStatusTone(account.status)}
                           />
                         </div>
 
@@ -837,33 +980,42 @@ const SharedAccountsTable = () => {
             <Input
               value={selectedGroup.personName}
               readOnly
-              className="!py-7 !text-2xl"
+              wrapperClassName="h-14"
+              className="h-full !py-0 !text-base"
             />
             <Input
               value={selectedGroup.identifier}
               readOnly
-              className="!py-7 !text-2xl"
+              wrapperClassName="h-14"
+              className="h-full !py-0 !text-base"
             />
             <Input
               value={newLinkedUsername}
               onChange={(e) => setNewLinkedUsername(e.target.value)}
               placeholder="Linked username"
-              className="!py-7 !text-2xl"
+              wrapperClassName="h-14"
+              className="h-full !py-0 !text-base"
             />
             <Input
               value={newLinkedRole}
               onChange={(e) => setNewLinkedRole(e.target.value)}
               placeholder="Role"
-              className="!py-7 !text-2xl"
+              wrapperClassName="h-14"
+              className="h-full !py-0 !text-base"
             />
           </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSegment("details")}>
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              className="h-14 px-6 text-base"
+              onClick={() => setSegment("details")}
+            >
               Cancel
             </Button>
             <Button
               iconLeft={<Plus className="h-4 w-4" />}
+              className="h-14 px-6 text-base"
               onClick={addLinkedAccount}
             >
               Add Linked Account
@@ -896,11 +1048,14 @@ const SharedAccountsTable = () => {
                   className="flex w-full min-w-0 items-center justify-between gap-4 rounded-[28px] border px-7 py-6 text-left transition hover:opacity-90"
                   style={{
                     background: isSelected
-                      ? "rgba(55, 125, 255, 0.08)"
+                      ? "color-mix(in srgb, var(--color-brand-500) 14%, var(--surface))"
                       : "var(--surface-2)",
                     borderColor: isSelected
-                      ? "var(--color-brand-500)"
+                      ? "color-mix(in srgb, var(--color-brand-500) 64%, var(--border))"
                       : "var(--border)",
+                    boxShadow: isSelected
+                      ? "inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 36%, transparent)"
+                      : "none",
                   }}
                 >
                   <div className="min-w-0">
@@ -931,11 +1086,20 @@ const SharedAccountsTable = () => {
             })}
           </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSegment("details")}>
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              className="h-12 px-6 text-base"
+              onClick={() => setSegment("details")}
+            >
               Cancel
             </Button>
-            <Button onClick={changePrimaryAccount}>Save Primary Account</Button>
+            <Button
+              className="h-12 px-6 text-base"
+              onClick={changePrimaryAccount}
+            >
+              Save Primary Account
+            </Button>
           </div>
         </div>
       );
@@ -1006,13 +1170,14 @@ const SharedAccountsTable = () => {
             <Input
               value={notesDraft}
               onChange={(e) => setNotesDraft(e.target.value)}
-              className="!py-7 !text-2xl"
+              wrapperClassName="h-12"
+              className="h-full !py-0 !text-base"
               placeholder="Add shared account notes"
             />
           </div>
 
-          <div className="flex justify-end">
-            <Button className="px-8" onClick={saveNotes}>
+          <div className="flex items-center justify-end">
+            <Button className="h-12 px-6 text-base" onClick={saveNotes}>
               Save Notes
             </Button>
           </div>
@@ -1024,7 +1189,9 @@ const SharedAccountsTable = () => {
       return (
         <div className="min-w-0 space-y-8 overflow-x-hidden">
           <div>
-            <h3 className="title-lg text-red-500">Delete Grouping</h3>
+            <h3 className="title-lg text-[var(--color-brand-600)]">
+              Delete Grouping
+            </h3>
             <p className="paragraph mt-3 !text-lg">
               This will permanently remove the shared account grouping record.
             </p>
@@ -1057,12 +1224,17 @@ const SharedAccountsTable = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSegment("details")}>
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              className="h-12 px-6 text-base"
+              onClick={() => setSegment("details")}
+            >
               Cancel
             </Button>
             <Button
               iconLeft={<Trash2 className="h-4 w-4" />}
+              className="h-12 px-6 text-base"
               onClick={deleteGrouping}
             >
               Delete Grouping
@@ -1078,19 +1250,23 @@ const SharedAccountsTable = () => {
   return (
     <>
       <style jsx global>{`
-        div.relative.max-h-\\[90vh\\].w-fit.max-w-\\[min\\(96vw\\,1100px\\)\\].overflow-y-auto.rounded-2xl.p-6.shadow-xl:has(
-            .shared-accounts-modal-shell
-          ) {
-          width: min(96vw, 1100px) !important;
-          max-width: min(96vw, 1100px) !important;
+        .shared-accounts-details-modal {
+          width: min(1100px, calc(100vw - 2rem)) !important;
+          max-width: min(1100px, calc(100vw - 2rem)) !important;
+          margin-inline: auto;
           overflow-x: hidden !important;
           scrollbar-width: none;
           -ms-overflow-style: none;
         }
 
-        div.relative.max-h-\\[90vh\\].w-fit.max-w-\\[min\\(96vw\\,1100px\\)\\].overflow-y-auto.rounded-2xl.p-6.shadow-xl:has(
-            .shared-accounts-modal-shell
-          )::-webkit-scrollbar {
+        @media (min-width: 640px) {
+          .shared-accounts-details-modal {
+            width: min(1100px, calc(100vw - 3rem)) !important;
+            max-width: min(1100px, calc(100vw - 3rem)) !important;
+          }
+        }
+
+        .shared-accounts-details-modal::-webkit-scrollbar {
           display: none;
         }
 
@@ -1109,145 +1285,31 @@ const SharedAccountsTable = () => {
         }
       `}</style>
 
-      <Table>
-        <TableTop>
-          <TableTitleBlock
-            title="Shared Accounts"
-            description={`Manage grouped identities and linked account relationships.${
-              selectedIds.length > 0 ? ` ${selectedIds.length} selected.` : ""
-            }`}
-          />
+      <FullscreenTablePortal open={isTableExpanded}>
+        {renderSharedAccountsTable(true)}
+      </FullscreenTablePortal>
 
-          <TableControls>
-            <TableSearch
-              id="search-shared-accounts"
-              label="Search shared accounts"
-              value={search}
-              onChange={setSearch}
-              wrapperClassName="w-full md:w-[420px]"
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {kpiCards.map((card, index) => (
+            <KpiMetricCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              helper={card.helper}
+              icon={card.icon}
+              index={index}
             />
+          ))}
+        </div>
 
-            <Button
-              iconLeft={<Plus className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              Create Shared Account Group
-            </Button>
-
-            <Dropdown
-              onValueChange={(value) => setActionValue(value as ActionValue)}
-            >
-              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[260px]">
-                <DropdownItem value="export-groups" className="py-4 text-lg">
-                  Export Groups
-                </DropdownItem>
-                <DropdownItem value="archive-group" className="py-4 text-lg">
-                  Archive Group
-                </DropdownItem>
-                <DropdownItem value="delete-group" className="py-4 text-lg">
-                  Delete Group
-                </DropdownItem>
-                <DropdownItem value="refresh-data" className="py-4 text-lg">
-                  Refresh Data
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
-          </TableControls>
-        </TableTop>
-
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1522px]">
-            <TableHeader columnsClassName={columnsClassName}>
-              <TableCell className="justify-center">
-                <TableCheckbox
-                  checked={isAllSelected}
-                  onToggle={toggleSelectAll}
-                />
-              </TableCell>
-
-              {sharedAccountsTableColumns.map((column) => (
-                <TableHeaderCell
-                  key={column.key}
-                  label={column.label}
-                  sortable={column.sortable}
-                  active={sortKey === column.key}
-                  direction={sortDir}
-                  onClick={() => column.sortable && handleSort(column.key)}
-                />
-              ))}
-            </TableHeader>
-
-            <TableBody>
-              {filteredGroups.length === 0 ? (
-                <TableEmptyState text="No shared accounts found" />
-              ) : (
-                filteredGroups.map((group) => {
-                  const isSelected = selectedIds.includes(group.id);
-
-                  return (
-                    <div
-                      key={group.id}
-                      onClick={() => openGroupModal(group)}
-                      className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
-                    >
-                      <TableCell
-                        className="justify-center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <TableCheckbox
-                          checked={isSelected}
-                          onToggle={() => toggleRowSelection(group.id)}
-                        />
-                      </TableCell>
-
-                      <TableCell className="text-[32px] font-semibold text-[var(--title)] sm:text-base">
-                        {group.personName}
-                      </TableCell>
-
-                      <TableCell className="paragraph font-semibold text-[var(--title)]">
-                        {group.primaryAccount}
-                      </TableCell>
-
-                      <TableCell className="paragraph font-semibold text-[var(--title)]">
-                        {group.linkedCount}
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          {group.linkedRoles.map((role) => (
-                            <MiniPill key={role} label={role} />
-                          ))}
-                        </div>
-                      </TableCell>
-
-                      <TableCell className="paragraph">
-                        {group.department}
-                      </TableCell>
-
-                      <TableCell>
-                        <SharedStatusBadge status={group.status} />
-                      </TableCell>
-
-                      <TableCell className="paragraph">
-                        {group.lastActivity}
-                      </TableCell>
-                    </div>
-                  );
-                })
-              )}
-            </TableBody>
-          </TableGrid>
-        </TableMain>
-      </Table>
+        {renderSharedAccountsTable()}
+      </div>
 
       <Modal
         open={Boolean(selectedGroup)}
         onClose={() => setSelectedGroup(null)}
+        className="shared-accounts-details-modal"
       >
         {selectedGroup ? (
           <div className="shared-accounts-modal-shell w-full max-w-full min-w-0 space-y-8 overflow-x-hidden pr-2">
@@ -1368,15 +1430,28 @@ const SharedAccountsTable = () => {
       </Modal>
 
       <Modal open={Boolean(actionValue)} onClose={() => setActionValue(null)}>
+        {actionValue === "export-groups" ? (
+          <SelectedRowsExportModal
+            title="Export selected shared accounts"
+            description="Review the shared accounts to export, remove any row if needed, then choose the export format."
+            rows={selectedGroups}
+            emptyText="No shared accounts selected."
+            exportMethod={exportMethod}
+            onExportMethodChange={setExportMethod}
+            onRemove={removeSelectedGroupFromAction}
+            onCancel={() => setActionValue(null)}
+            onExport={handleExportConfirmed}
+            getId={(group) => group.id}
+            getTitle={(group) => group.personName}
+            getSubtitle={(group) =>
+              `${group.primaryAccount} • ${group.department}`
+            }
+            idPrefix="shared-accounts"
+          />
+        ) : (
         <div className="w-[min(92vw,720px)] max-w-full min-w-0 space-y-5 overflow-x-hidden">
           <div>
             <h3 className="title-md flex items-center gap-2">
-              {actionValue === "export-groups" && (
-                <>
-                  <FileOutput className="h-5 w-5 text-brand-500" />
-                  Export Groups
-                </>
-              )}
               {actionValue === "archive-group" && (
                 <>
                   <Archive className="h-5 w-5 text-[var(--muted)]" />
@@ -1385,7 +1460,7 @@ const SharedAccountsTable = () => {
               )}
               {actionValue === "delete-group" && (
                 <>
-                  <Trash2 className="h-5 w-5 text-red-500" />
+                  <Trash2 className="h-5 w-5 text-[var(--color-brand-500)]" />
                   Delete Group
                 </>
               )}
@@ -1393,8 +1468,6 @@ const SharedAccountsTable = () => {
             </h3>
 
             <p className="paragraph mt-2">
-              {actionValue === "export-groups" &&
-                "Review the selected groups below before wiring this action to your export service."}
               {actionValue === "archive-group" &&
                 "The selected groups below will be archived."}
               {actionValue === "delete-group" &&
@@ -1471,17 +1544,199 @@ const SharedAccountsTable = () => {
             >
               {actionValue === "refresh-data"
                 ? "Refresh"
-                : actionValue === "export-groups"
-                ? "Export"
                 : actionValue === "archive-group"
                 ? "Archive"
                 : "Delete"}
             </Button>
           </div>
         </div>
+        )}
       </Modal>
     </>
   );
-};
+
+  function renderSharedAccountsTable(expanded = false) {
+    return (
+      <Table
+        className={`flex min-h-[520px] flex-col ${
+          expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
+        }`}
+      >
+        <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
+          <TableTitleBlock title="Shared Accounts" />
+
+          <TableControls>
+            <TableSearch
+              id={
+                expanded
+                  ? "search-shared-accounts-expanded"
+                  : "search-shared-accounts"
+              }
+              label="Search shared accounts"
+              value={search}
+              onChange={setSearch}
+              wrapperClassName="w-full md:w-[420px]"
+            />
+
+            <RefreshButton
+              className="h-14"
+              onClick={refreshSharedAccounts}
+            />
+
+            <Dropdown onValueChange={handleExportChange}>
+              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+                Export
+              </DropdownTrigger>
+
+              <DropdownContent align="right" widthClassName="w-[220px]">
+                <DropdownItem value="CSV" className="py-4 text-lg">
+                  CSV
+                </DropdownItem>
+                <DropdownItem value="PDF" className="py-4 text-lg">
+                  PDF
+                </DropdownItem>
+                <DropdownItem value="Excel" className="py-4 text-lg">
+                  Excel
+                </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
+
+            <Dropdown
+              onValueChange={(value) => setActionValue(value as ActionValue)}
+            >
+              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
+                Actions
+              </DropdownTrigger>
+
+              <DropdownContent align="right" widthClassName="w-[260px]">
+                <DropdownItem value="export-groups" className="py-4 text-lg">
+                  Export Shared Accounts
+                </DropdownItem>
+                <DropdownItem value="archive-group" className="py-4 text-lg">
+                  Archive Group
+                </DropdownItem>
+                <DropdownItem value="delete-group" className="py-4 text-lg">
+                  Delete Group
+                </DropdownItem>
+                <DropdownItem value="refresh-data" className="py-4 text-lg">
+                  Refresh Data
+                </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
+
+            <button
+              type="button"
+              onClick={() => setIsTableExpanded(!expanded)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+              aria-label={
+                expanded
+                  ? "Collapse shared accounts table"
+                  : "Expand shared accounts table"
+              }
+              title={expanded ? "Collapse" : "Expand"}
+            >
+              {expanded ? (
+                <Minimize2 className="h-5 w-5" />
+              ) : (
+                <Maximize2 className="h-5 w-5" />
+              )}
+            </button>
+          </TableControls>
+        </TableTop>
+
+        <TableMain className="min-h-0 flex-1">
+          <TableGrid minWidthClassName="flex h-full min-w-[1522px] flex-col">
+            <TableHeader columnsClassName={columnsClassName}>
+              <TableCell className="justify-center">
+                <TableCheckbox
+                  checked={isAllSelected}
+                  onToggle={toggleSelectAll}
+                />
+              </TableCell>
+
+              {sharedAccountsTableColumns.map((column) => {
+                const isSortable =
+                  column.sortable || column.key === "linkedRoles";
+
+                return (
+                  <TableHeaderCell
+                    key={column.key}
+                    label={column.label}
+                    sortable={isSortable}
+                    active={sortKey === column.key}
+                    direction={sortDir}
+                    onClick={() => isSortable && handleSort(column.key)}
+                  />
+                );
+              })}
+            </TableHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TableBody>
+                {filteredGroups.length === 0 ? (
+                  <TableEmptyState text="No shared accounts found" />
+                ) : (
+                  filteredGroups.map((group) => {
+                    const isSelected = selectedIds.includes(group.id);
+
+                    return (
+                      <div
+                        key={group.id}
+                        onClick={() => openGroupModal(group)}
+                        className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
+                      >
+                        <TableCell
+                          className="justify-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <TableCheckbox
+                            checked={isSelected}
+                            onToggle={() => toggleRowSelection(group.id)}
+                          />
+                        </TableCell>
+
+                        <TableCell className="text-[32px] font-semibold text-[var(--title)] sm:text-base">
+                          {group.personName}
+                        </TableCell>
+
+                        <TableCell className="paragraph font-semibold text-[var(--title)]">
+                          {group.primaryAccount}
+                        </TableCell>
+
+                        <TableCell className="paragraph font-semibold text-[var(--title)]">
+                          {group.linkedCount}
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            {group.linkedRoles.map((role) => (
+                              <MiniPill key={role} label={role} />
+                            ))}
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="paragraph">
+                          {group.department}
+                        </TableCell>
+
+                        <TableCell>
+                          <SharedStatusBadge status={group.status} />
+                        </TableCell>
+
+                        <TableCell className="paragraph">
+                          {group.lastActivity}
+                        </TableCell>
+                      </div>
+                    );
+                  })
+                )}
+              </TableBody>
+            </div>
+          </TableGrid>
+        </TableMain>
+      </Table>
+    );
+  }
+});
 
 export default SharedAccountsTable;

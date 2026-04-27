@@ -20,6 +20,7 @@ import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import ExpandedButton from "@/components/ui/button/ExpandedButton";
+import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
   Dropdown,
   DropdownContent,
@@ -60,7 +61,6 @@ import {
   Wallet,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FiRefreshCw } from "react-icons/fi";
 
 type SortDir = "asc" | "desc";
 type ActionValue =
@@ -603,12 +603,12 @@ const UserAccountsTable = () => {
 
   const renderUsersTable = (expanded = false) => (
       <Table
-        className={`flex min-h-[520px] flex-col rounded-[24px] ${
-          expanded ? "h-dvh rounded-none" : "max-h-[calc(100vh-20rem)]"
+        className={`flex min-h-[520px] flex-col ${
+          expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
         }`}
       >
         <TableTop
-          className="shrink-0 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl"
+          className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}
         >
           <TableTitleBlock
             title="User Accounts"
@@ -629,14 +629,9 @@ const UserAccountsTable = () => {
               onChange={setSearch}
             />
 
-            <ExpandedButton
-              id={expanded ? "admin-users-refresh-expanded" : "admin-users-refresh"}
-              label="Refresh"
-              icon={FiRefreshCw}
-              variant="surface"
+            <RefreshButton
               onClick={() => void loadUsers()}
-              className="h-14 rounded-md px-2 py-0"
-              iconSize={17}
+              className="h-14"
             />
 
             <Button

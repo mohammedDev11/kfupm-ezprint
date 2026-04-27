@@ -3,13 +3,11 @@
 import {
   CalendarClock,
   CircleDollarSign,
-  FileOutput,
   Info,
   Lock,
   Maximize2,
   Minimize2,
   Plus,
-  RefreshCw,
   Shield,
   Trash2,
   Users,
@@ -34,8 +32,10 @@ import {
 } from "@/components/shared/table/Table";
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
   Dropdown,
   DropdownContent,
@@ -368,15 +368,12 @@ export default function PrintingGroupsTable() {
   };
 
   const selectedGroups = useMemo(
-    () => filteredGroups.filter((group) => selectedIds.includes(group.id)),
-    [filteredGroups, selectedIds],
+    () => groups.filter((group) => selectedIds.includes(group.id)),
+    [groups, selectedIds],
   );
 
   const exportGroups = (format: TableExportFormat) => {
-    const rows =
-      selectedIds.length > 0
-        ? selectedGroups
-        : filteredGroups;
+    if (selectedGroups.length === 0) return;
 
     exportTableData({
       title: "Printing Groups",
@@ -393,7 +390,7 @@ export default function PrintingGroupsTable() {
         },
         { label: "Notes", value: (row) => row.notes || "" },
       ],
-      rows,
+      rows: selectedGroups,
     });
   };
 
@@ -418,6 +415,10 @@ export default function PrintingGroupsTable() {
   const handleExportConfirmed = () => {
     exportGroups(exportMethod);
     setActionModal(null);
+  };
+
+  const removeSelectedGroupFromExport = (id: string) => {
+    setSelectedIds((current) => current.filter((item) => item !== id));
   };
 
   const kpiCards = [
@@ -449,11 +450,11 @@ export default function PrintingGroupsTable() {
 
   const renderGroupsTable = (expanded = false) => (
       <Table
-        className={`flex min-h-[520px] flex-col rounded-[24px] ${
-          expanded ? "h-dvh rounded-none" : "max-h-[calc(100vh-20rem)]"
+        className={`flex min-h-[520px] flex-col ${
+          expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
         }`}
       >
-        <TableTop className="shrink-0 bg-[color-mix(in_srgb,var(--surface)_96%,transparent)] backdrop-blur-xl">
+        <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
           <TableTitleBlock
             title="Printing Groups"
           />
@@ -466,22 +467,14 @@ export default function PrintingGroupsTable() {
               onChange={setSearch}
             />
 
-            <Button
-              variant="outline"
-              iconLeft={<RefreshCw className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
+            <RefreshButton
+              className="h-14"
               disabled={busy}
               onClick={() => loadGroups(false)}
-            >
-              Refresh
-            </Button>
+            />
 
             <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger
-                className={`h-14 min-w-[160px] px-6 text-base ${
-                  filteredGroups.length === 0 ? "pointer-events-none opacity-50" : ""
-                }`}
-              >
+              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
                 Export
               </DropdownTrigger>
 
@@ -899,48 +892,24 @@ export default function PrintingGroupsTable() {
         ) : null}
 
         {actionModal === "export-groups" ? (
-          <div className="w-[min(92vw,720px)] space-y-5 pr-4">
-            <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
-              <h3 className="title-md flex items-center gap-2">
-                <FileOutput className="h-5 w-5 text-[var(--color-brand-500)]" />
-                Export groups
-              </h3>
-              <p className="paragraph mt-2">
-                Export {selectedIds.length > 0 ? "selected" : "visible"} groups
-                as {exportMethod}.
-              </p>
-            </div>
-
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <p className="text-sm text-[var(--muted)]">
-                Rows included:{" "}
-                <span className="font-semibold text-[var(--title)]">
-                  {(selectedIds.length > 0
-                    ? selectedGroups.length
-                    : filteredGroups.length
-                  ).toLocaleString()}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setActionModal(null)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleExportConfirmed}
-                disabled={filteredGroups.length === 0}
-              >
-                Export
-              </Button>
-            </div>
-          </div>
+          <SelectedRowsExportModal
+            title="Export selected groups"
+            description="Review the groups to export, remove any row if needed, then choose the export format."
+            rows={selectedGroups}
+            emptyText="No groups selected."
+            exportMethod={exportMethod}
+            onExportMethodChange={setExportMethod}
+            onRemove={removeSelectedGroupFromExport}
+            onCancel={() => setActionModal(null)}
+            onExport={handleExportConfirmed}
+            getId={(group) => group.id}
+            getTitle={(group) => group.name}
+            getSubtitle={(group) =>
+              `${group.members} members • ${group.restricted}`
+            }
+            idPrefix="groups"
+            exportDisabled={busy}
+          />
         ) : null}
       </Modal>
 
