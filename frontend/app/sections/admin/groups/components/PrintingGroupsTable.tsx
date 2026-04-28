@@ -125,7 +125,24 @@ const emptyForm: GroupFormState = {
 const columnsClassName =
   "[grid-template-columns:72px_minmax(260px,1.5fr)_minmax(120px,0.7fr)_minmax(170px,0.85fr)_minmax(150px,0.8fr)_minmax(220px,1fr)]";
 
-const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
+const formatQuotaValue = (value: number) => value.toFixed(2);
+const formatScheduleAmount = (value: number) => {
+  if (value === 0) {
+    return "0";
+  }
+
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+};
+const formatScheduleValue = (amount: number, period?: string) => {
+  const formattedAmount = formatScheduleAmount(amount);
+  const normalizedPeriod = period?.trim();
+
+  if (!normalizedPeriod || normalizedPeriod === "None" || amount === 0) {
+    return formattedAmount;
+  }
+
+  return `${formattedAmount} / ${normalizedPeriod}`;
+};
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
@@ -384,11 +401,11 @@ export default function PrintingGroupsTable() {
       columns: [
         { label: "Group", value: (row: GroupItem) => row.name },
         { label: "Members", value: (row) => row.members },
-        { label: "Initial Quota", value: (row) => formatMoney(row.initialQuota) },
+        { label: "Initial Quota", value: (row) => formatQuotaValue(row.initialQuota) },
         { label: "Restricted", value: (row) => row.restricted },
         {
           label: "Schedule",
-          value: (row) => `${formatMoney(row.scheduleAmount)} / ${row.period}`,
+          value: (row) => formatScheduleValue(row.scheduleAmount, row.period),
         },
         { label: "Notes", value: (row) => row.notes || "" },
       ],
@@ -621,7 +638,7 @@ export default function PrintingGroupsTable() {
                     <TableCell className="text-[var(--title)]">{group.members}</TableCell>
 
                     <TableCell className="text-[var(--title)]">
-                      {formatMoney(group.initialQuota)}
+                      {formatQuotaValue(group.initialQuota)}
                     </TableCell>
 
                     <TableCell>
@@ -633,7 +650,7 @@ export default function PrintingGroupsTable() {
                     </TableCell>
 
                     <TableCell className="text-[var(--title)]">
-                      {formatMoney(group.scheduleAmount)} / {group.period}
+                      {formatScheduleValue(group.scheduleAmount, group.period)}
                     </TableCell>
                   </div>
                 ))
@@ -965,14 +982,17 @@ export default function PrintingGroupsTable() {
               },
               {
                 label: "Initial Quota",
-                value: detailsGroup ? formatMoney(detailsGroup.initialQuota) : "0 SAR",
+                value: detailsGroup ? formatQuotaValue(detailsGroup.initialQuota) : "0.00",
                 icon: <CircleDollarSign className="h-4 w-4" />,
               },
               {
                 label: "Schedule",
                 value: detailsGroup
-                  ? `${formatMoney(detailsGroup.scheduleAmount)} / ${detailsGroup.resetPeriod || detailsGroup.period}`
-                  : "0 SAR / None",
+                  ? formatScheduleValue(
+                      detailsGroup.scheduleAmount,
+                      detailsGroup.resetPeriod || detailsGroup.period,
+                    )
+                  : "0",
                 icon: <CalendarClock className="h-4 w-4" />,
               },
               {
@@ -982,7 +1002,7 @@ export default function PrintingGroupsTable() {
               },
               {
                 label: "Cost Limit",
-                value: detailsGroup ? formatMoney(detailsGroup.costLimit || 0) : "0 SAR",
+                value: detailsGroup ? formatQuotaValue(detailsGroup.costLimit || 0) : "0.00",
                 icon: <WalletCards className="h-4 w-4" />,
               },
             ].map((item) => (

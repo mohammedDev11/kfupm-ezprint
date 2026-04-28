@@ -360,7 +360,7 @@ function SharedAccountsTable(_props, ref) {
     },
     {
       title: "Linked Balance",
-      value: `${accountStats.totalBalance.toFixed(2)} SAR`,
+      value: accountStats.totalBalance.toFixed(2),
       helper: `${accountStats.linkedAccounts.toLocaleString()} linked accounts tracked`,
       icon: <Link2 className="h-5 w-5" />,
     },
