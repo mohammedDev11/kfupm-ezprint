@@ -4,28 +4,43 @@ const env = require("../../config/env");
 
 const toIdString = (value) => value?.toString?.() || "";
 
+const getDefaultPrinterIdentity = () => ({
+  ipAddress: env.printDefaultPrinterIp.trim(),
+  name: env.printDefaultPrinterName.trim(),
+});
+
+const findExistingDefaultPrinter = async ({ ipAddress, name }) => {
+  if (ipAddress) {
+    const printerByIp = await Printer.findOne({ "network.ipAddress": ipAddress });
+    if (printerByIp) {
+      return printerByIp;
+    }
+  }
+
+  if (name) {
+    return Printer.findOne({ name });
+  }
+
+  return null;
+};
+
 const ensureDefaultPrinterSetup = async () => {
-  if (!env.printDefaultPrinterIp) {
+  const identity = getDefaultPrinterIdentity();
+
+  if (!identity.ipAddress) {
     return {
       printer: null,
       queue: null,
     };
   }
 
-  const printerQuery = {
-    $or: [
-      { "network.ipAddress": env.printDefaultPrinterIp },
-      { name: env.printDefaultPrinterName },
-    ],
-  };
-
-  let printer = await Printer.findOne(printerQuery);
+  let printer = await findExistingDefaultPrinter(identity);
 
   if (!printer) {
     printer = new Printer();
   }
 
-  printer.name = env.printDefaultPrinterName;
+  printer.name = identity.name || env.printDefaultPrinterName;
   printer.model = env.printDefaultPrinterModel;
   printer.department = env.printDefaultPrinterDepartment;
   printer.location = {
@@ -76,7 +91,7 @@ const ensureDefaultPrinterSetup = async () => {
   printer.costPerPage = env.printDefaultCostPerPage;
   printer.network = {
     ...printer.network,
-    ipAddress: env.printDefaultPrinterIp,
+    ipAddress: identity.ipAddress,
   };
   printer.notes = `Provisioned for secure-release web printing at ${env.printDefaultPrinterLocationCode}.`;
   printer.isActive = true;

@@ -78,6 +78,31 @@ const columnsClassName =
 const formatMoney = (value: number) => value.toFixed(2);
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+const fallbackRoleOptions: UserRole[] = ["Admin", "SubAdmin", "User"];
+const fallbackDepartmentOptions: UserDepartment[] = [
+  "Software Engineering",
+  "Computer Science",
+  "Information Systems",
+  "Cybersecurity",
+  "Mathematics",
+  "Deanship",
+];
+const fallbackStandingOptions: UserStanding[] = [
+  "Freshman",
+  "Sophomore",
+  "Junior",
+  "Senior",
+  "Graduate",
+  "Faculty",
+  "Staff",
+];
+const getUniqueOptions = (values: string[], fallbackValues: string[]) => {
+  const options = Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
+
+  return options.length > 0 ? options : fallbackValues;
+};
 
 function RestrictedBadge({ status }: { status: UserRestrictedStatus }) {
   const isUnrestricted = status === "Unrestricted";
@@ -217,28 +242,30 @@ const UserAccountsTable = () => {
     void Promise.resolve().then(loadUsers);
   }, [loadUsers]);
 
-  const roleOptions: UserRole[] = ["Student", "Faculty", "Staff", "Admin"];
-  const departmentOptions: UserDepartment[] = [
-    "Software Engineering",
-    "Computer Science",
-    "Information Systems",
-    "Cybersecurity",
-    "Mathematics",
-    "Deanship",
-  ];
-  const standingOptions: UserStanding[] = [
-    "Freshman",
-    "Sophomore",
-    "Junior",
-    "Senior",
-    "Graduate",
-    "Faculty",
-    "Staff",
-  ];
   const restrictedOptions: UserRestrictedStatus[] = [
     "Restricted",
     "Unrestricted",
   ];
+  const roleOptions = useMemo(
+    () => getUniqueOptions(users.map((user) => user.role), fallbackRoleOptions),
+    [users],
+  );
+  const departmentOptions = useMemo(
+    () =>
+      getUniqueOptions(
+        users.map((user) => user.department),
+        fallbackDepartmentOptions,
+      ),
+    [users],
+  );
+  const standingOptions = useMemo(
+    () =>
+      getUniqueOptions(
+        users.map((user) => user.standing),
+        fallbackStandingOptions,
+      ),
+    [users],
+  );
 
   const handleSort = (key: UserSortKey) => {
     if (sortKey === key) {

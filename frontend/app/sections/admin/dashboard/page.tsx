@@ -97,6 +97,7 @@ type ActivityPeriod = "Today" | "This Week" | "This Month";
 
 type TrendPoint = {
   label: string;
+  dateRange: string;
   pages: number;
   submitted: number;
   released: number;
@@ -358,13 +359,52 @@ const getStatusTotals = (summary: ReportsSummary | null) => {
   };
 };
 
-const buildTrendData = (summary: ReportsSummary | null): TrendPoint[] => {
+const addDays = (date: Date, days: number) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+
+const formatCompactDate = (date: Date) =>
+  date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+const getPeriodStartDate = (periodLabel: string) => {
+  const today = new Date();
+  const normalizedPeriod = periodLabel.toLowerCase();
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+
+  if (normalizedPeriod === "last 7 days") return addDays(startOfToday, -6);
+  if (normalizedPeriod === "last 30 days") return addDays(startOfToday, -29);
+  if (normalizedPeriod === "last 90 days") return addDays(startOfToday, -89);
+  if (normalizedPeriod === "this year") {
+    return new Date(startOfToday.getFullYear(), 0, 1);
+  }
+
+  return addDays(startOfToday, -29);
+};
+
+const getWeekDateRange = (periodLabel: string, weekIndex: number) => {
+  const start = addDays(getPeriodStartDate(periodLabel), weekIndex * 7);
+  const end = addDays(start, 6);
+
+  return `${formatCompactDate(start)} - ${formatCompactDate(end)}`;
+};
+
+const buildTrendData = (
+  summary: ReportsSummary | null,
+  periodLabel: string,
+): TrendPoint[] => {
   const totals = getStatusTotals(summary);
   const factors = [0.58, 0.82, 0.72, 0.94, 1];
   const failedFactors = [1.35, 0.58, 0.42, 0.64, 0.5];
 
   return factors.map((factor, index) => ({
     label: `Week ${index + 1}`,
+    dateRange: getWeekDateRange(periodLabel, index),
     pages: Math.round(totals.totalPages * factor),
     submitted: Math.round(totals.totalJobs * factor),
     released: Math.round(totals.released * (factor * 0.96 + 0.04)),
@@ -398,6 +438,7 @@ type SummaryChartTooltipProps = {
     dataKey?: string | number;
     value?: number | string;
     color?: string;
+    payload?: TrendPoint;
   }>;
 };
 
@@ -407,6 +448,8 @@ function SummaryChartTooltip({
   payload,
 }: SummaryChartTooltipProps) {
   if (!active || !payload?.length) return null;
+
+  const dateRange = payload[0]?.payload?.dateRange;
 
   return (
     <div
@@ -420,6 +463,11 @@ function SummaryChartTooltip({
       }}
     >
       <p className="mb-2 text-sm font-semibold text-[var(--title)]">{label}</p>
+      {dateRange ? (
+        <p className="mb-3 text-xs font-medium text-[var(--muted)]">
+          {dateRange}
+        </p>
+      ) : null}
       <div className="space-y-1.5">
         {payload.map((item) => {
           const metric = trendMetrics.find((entry) => entry.key === item.dataKey);
@@ -786,7 +834,7 @@ function PrintingActivityDonut({ summary }: { summary: ReportsSummary | null }) 
   );
 }
 
-const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
+const formatCostValue = (value: number) => value.toFixed(2);
 
 const getPeriodSummaryText = (periodLabel: string) => {
   const normalizedPeriod = periodLabel.toLowerCase();
@@ -956,7 +1004,7 @@ export default function Page() {
     });
   }, [statusSortDir, statusSortKey, summary]);
 
-  const trendData = useMemo(() => buildTrendData(summary), [summary]);
+  const trendData = useMemo(() => buildTrendData(summary, period), [period, summary]);
   const overviewCards = useMemo(
     () =>
       (summary?.overviewCards || []).map((card, index, cards) => {
@@ -986,7 +1034,7 @@ export default function Page() {
         { label: "Status", value: (row: ReportsSummary["jobStatusBreakdown"][number]) => row.status },
         { label: "Jobs", value: (row) => row.count },
         { label: "Pages", value: (row) => row.pages },
-        { label: "Cost", value: (row) => formatMoney(row.cost) },
+        { label: "Cost", value: (row) => formatCostValue(row.cost) },
       ],
       rows: jobStatusRows,
     });
@@ -1120,7 +1168,7 @@ export default function Page() {
                       {item.pages}
                     </TableCell>
                     <TableCell className="font-semibold text-[var(--color-brand-500)]">
-                      {formatMoney(item.cost)}
+                      {formatCostValue(item.cost)}
                     </TableCell>
                   </div>
                 ))

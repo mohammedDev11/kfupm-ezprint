@@ -96,23 +96,9 @@
 //=================NEN=====================
 export type UserRestrictedStatus = "Restricted" | "Unrestricted";
 
-export type UserRole = "Student" | "Faculty" | "Staff" | "Admin";
-export type UserStanding =
-  | "Freshman"
-  | "Sophomore"
-  | "Junior"
-  | "Senior"
-  | "Graduate"
-  | "Faculty"
-  | "Staff";
-
-export type UserDepartment =
-  | "Software Engineering"
-  | "Computer Science"
-  | "Information Systems"
-  | "Cybersecurity"
-  | "Mathematics"
-  | "Deanship";
+export type UserRole = string;
+export type UserStanding = string;
+export type UserDepartment = string;
 
 export type UserAccountItem = {
   id: string;

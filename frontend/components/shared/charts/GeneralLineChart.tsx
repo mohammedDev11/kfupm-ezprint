@@ -22,6 +22,19 @@ type MetricsConfig = Record<string, MetricConfig>;
 
 type DataItem = Record<string, string | number>;
 
+type ChartTooltipPayload = {
+  dataKey?: string | number;
+  value?: string | number;
+  payload?: DataItem;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  label?: string | number;
+  payload?: ChartTooltipPayload[];
+  metricsConfig: MetricsConfig;
+};
+
 type GeneralLineChartProps = {
   title: string;
   data: DataItem[];
@@ -31,9 +44,69 @@ type GeneralLineChartProps = {
   showFilter?: boolean;
   showLegend?: boolean;
   showMoreButton?: boolean;
+  showTooltipDateRange?: boolean;
   className?: string;
   yDomain?: [number, number] | ["auto", "auto"];
 };
+
+function ChartTooltip({
+  active,
+  label,
+  payload,
+  metricsConfig,
+}: ChartTooltipProps) {
+  if (!active || !payload?.length) return null;
+
+  const dateRange =
+    typeof payload[0]?.payload?.dateRange === "string"
+      ? payload[0].payload.dateRange
+      : "";
+
+  return (
+    <div
+      className="rounded-[16px] border px-4 py-3 shadow-2xl"
+      style={{
+        borderColor: "var(--border)",
+        background: "var(--surface)",
+        color: "var(--foreground)",
+        boxShadow: "0 10px 30px rgba(var(--shadow-color), 0.12)",
+      }}
+    >
+      <p className="mb-1 text-sm font-semibold text-[var(--title)]">{label}</p>
+      {dateRange ? (
+        <p className="mb-3 text-xs font-medium text-[var(--muted)]">
+          {dateRange}
+        </p>
+      ) : null}
+
+      <div className="space-y-1.5">
+        {payload.map((item) => {
+          const metric = metricsConfig[String(item.dataKey)];
+
+          if (!metric) return null;
+
+          return (
+            <div
+              key={String(item.dataKey)}
+              className="flex items-center justify-between gap-5 text-sm"
+            >
+              <span className="flex items-center gap-2 text-[var(--paragraph)]">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: metric.color }}
+                />
+                {metric.label}
+              </span>
+              <span className="font-semibold" style={{ color: metric.color }}>
+                {Number(item.value || 0).toLocaleString()}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const GeneralLineChart = ({
   title,
@@ -43,7 +116,7 @@ const GeneralLineChart = ({
   height = 320,
   showFilter = true,
   showLegend = true,
-  showMoreButton = true,
+  showTooltipDateRange = false,
   className = "",
   yDomain = ["auto", "auto"],
 }: GeneralLineChartProps) => {
@@ -181,20 +254,24 @@ const GeneralLineChart = ({
               width={40}
             />
 
-            <Tooltip
-              contentStyle={{
-                borderRadius: "16px",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: "var(--foreground)",
-                boxShadow: "0 10px 30px rgba(var(--shadow-color), 0.12)",
-              }}
-              labelStyle={{
-                color: "var(--title)",
-                fontWeight: 600,
-                marginBottom: "6px",
-              }}
-            />
+            {showTooltipDateRange ? (
+              <Tooltip content={<ChartTooltip metricsConfig={metricsConfig} />} />
+            ) : (
+              <Tooltip
+                contentStyle={{
+                  borderRadius: "16px",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--foreground)",
+                  boxShadow: "0 10px 30px rgba(var(--shadow-color), 0.12)",
+                }}
+                labelStyle={{
+                  color: "var(--title)",
+                  fontWeight: 600,
+                  marginBottom: "6px",
+                }}
+              />
+            )}
 
             {activeMetrics.map((metricKey) => (
               <Line
