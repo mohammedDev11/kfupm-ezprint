@@ -397,6 +397,8 @@ export default function PrintingGroupsTable() {
   };
 
   const handleExportChange = (value: string) => {
+    if (selectedGroups.length === 0) return;
+
     setExportMethod(value as ExportMethod);
     setActionModal("export-groups");
   };
@@ -476,7 +478,11 @@ export default function PrintingGroupsTable() {
             />
 
             <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+              <DropdownTrigger
+                className={`h-14 min-w-[160px] px-6 text-base ${
+                  selectedGroups.length === 0 ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
                 Export
               </DropdownTrigger>
 

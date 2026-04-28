@@ -415,6 +415,8 @@ function SharedAccountsTable(_props, ref) {
   };
 
   const handleExportChange = (value: string) => {
+    if (selectedGroups.length === 0) return;
+
     setExportMethod(value as ExportMethod);
     setActionValue("export-groups");
   };
@@ -737,6 +739,11 @@ function SharedAccountsTable(_props, ref) {
     }
 
     if (actionValue === "export-groups") {
+      if (selectedGroups.length === 0) {
+        setActionValue(null);
+        return;
+      }
+
       handleExportConfirmed();
       setActionValue(null);
       return;
@@ -1584,7 +1591,11 @@ function SharedAccountsTable(_props, ref) {
             />
 
             <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+              <DropdownTrigger
+                className={`h-14 min-w-[160px] px-6 text-base ${
+                  selectedGroups.length === 0 ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
                 Export
               </DropdownTrigger>
 
@@ -1602,14 +1613,27 @@ function SharedAccountsTable(_props, ref) {
             </Dropdown>
 
             <Dropdown
-              onValueChange={(value) => setActionValue(value as ActionValue)}
+              onValueChange={(value) => {
+                if (value === "export-groups" && selectedGroups.length === 0) {
+                  return;
+                }
+
+                setActionValue(value as ActionValue);
+              }}
             >
               <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
                 Actions
               </DropdownTrigger>
 
               <DropdownContent align="right" widthClassName="w-[260px]">
-                <DropdownItem value="export-groups" className="py-4 text-lg">
+                <DropdownItem
+                  value="export-groups"
+                  className={`py-4 text-lg ${
+                    selectedGroups.length === 0
+                      ? "pointer-events-none opacity-50"
+                      : ""
+                  }`}
+                >
                   Export Shared Accounts
                 </DropdownItem>
                 <DropdownItem value="archive-group" className="py-4 text-lg">

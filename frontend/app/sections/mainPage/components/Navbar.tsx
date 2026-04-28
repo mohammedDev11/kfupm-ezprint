@@ -509,7 +509,34 @@ export const NavbarLogo = () => {
       className="relative z-20 mr-4 flex items-center space-x-2 px-2 py-1 text-sm font-normal text-[var(--foreground)]"
     >
       <BrandMark compact />
-      <span className="font-medium text-[var(--foreground)]">EzPrint</span>
+      <span
+        className="whitespace-nowrap text-[1.125rem] leading-none sm:text-[1.5rem]"
+        style={{
+          color: "var(--foreground)",
+          fontFamily: '"Sora", var(--font-sans), ui-sans-serif, sans-serif',
+          fontWeight: 800,
+          letterSpacing: "-0.015em",
+        }}
+      >
+        <span
+          style={{
+            color: "var(--color-brand-500)",
+            fontWeight: 600,
+            letterSpacing: "0",
+          }}
+        >
+          Ez
+        </span>
+        <span
+          style={{
+            color: "var(--foreground)",
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          Print
+        </span>
+      </span>
     </a>
   );
 };

@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -88,23 +89,6 @@ type ReportsSummary = {
     pages: number;
     cost: number;
   }>;
-};
-
-type AdminPrinter = {
-  id: string;
-  name: string;
-  model: string;
-  location: string;
-  status: string;
-  ipAddress: string;
-  queueName: string;
-  tonerLevel: number;
-  paperLevel: number;
-  lastUsed: string;
-};
-
-type AdminPrintersResponse = {
-  printers: AdminPrinter[];
 };
 
 type JobStatusSortKey = "status" | "count" | "pages" | "cost";
@@ -909,26 +893,24 @@ const compareValues = (a: string | number, b: string | number, direction: SortDi
 export default function Page() {
   const [period, setPeriod] = useState("Last 30 days");
   const [summary, setSummary] = useState<ReportsSummary | null>(null);
-  const [printers, setPrinters] = useState<AdminPrinter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusSortKey, setStatusSortKey] = useState<JobStatusSortKey>("count");
   const [statusSortDir, setStatusSortDir] = useState<SortDir>("desc");
 
-  const loadDashboard = async (showSpinner = false) => {
+  const loadDashboard = useCallback(async (showSpinner = false) => {
     if (showSpinner) {
       setLoading(true);
     }
 
     try {
       const query = encodeURIComponent(period);
-      const [reportsData, printersData] = await Promise.all([
-        apiGet<ReportsSummary>(`/admin/reports/summary?period=${query}`, "admin"),
-        apiGet<AdminPrintersResponse>("/admin/printers", "admin"),
-      ]);
+      const reportsData = await apiGet<ReportsSummary>(
+        `/admin/reports/summary?period=${query}`,
+        "admin",
+      );
 
       setSummary(reportsData);
-      setPrinters(Array.isArray(printersData?.printers) ? printersData.printers : []);
       setError("");
     } catch (requestError) {
       setError(
@@ -937,15 +919,20 @@ export default function Page() {
           : "Unable to load the dashboard.",
       );
       setSummary(null);
-      setPrinters([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [period]);
 
   useEffect(() => {
-    void loadDashboard(true);
-  }, [period]);
+    const loadTimer = window.setTimeout(() => {
+      void loadDashboard(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(loadTimer);
+    };
+  }, [loadDashboard]);
 
   const handleStatusSort = (key: JobStatusSortKey) => {
     if (statusSortKey === key) {
@@ -970,6 +957,25 @@ export default function Page() {
   }, [statusSortDir, statusSortKey, summary]);
 
   const trendData = useMemo(() => buildTrendData(summary), [summary]);
+  const overviewCards = useMemo(
+    () =>
+      (summary?.overviewCards || []).map((card, index, cards) => {
+        const isQuotaCard =
+          card.id === "print-cost" || index === cards.length - 1;
+
+        if (!isQuotaCard) {
+          return card;
+        }
+
+        return {
+          ...card,
+          title: "Estimated Quota Usage",
+          value: card.value.replace(/\s*SAR\b/i, "").trim(),
+          helperText: "Quota used across selected period",
+        };
+      }),
+    [summary],
+  );
 
   const exportJobStatus = (format: TableExportFormat) => {
     exportTableData({
@@ -1015,7 +1021,7 @@ export default function Page() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {(summary?.overviewCards || []).map((card, index) => (
+          {overviewCards.map((card, index) => (
             <SummaryCard
               key={card.id}
               title={card.title}
@@ -1124,157 +1130,6 @@ export default function Page() {
         </TableMain>
       </Table>
 
-      {loading ? (
-        <div className="rounded-2xl border px-6 py-10 text-center text-sm text-[var(--muted)]">
-          Loading dashboard details...
-        </div>
-      ) : (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <div className="space-y-5">
-            <div className="grid gap-5 lg:grid-cols-2">
-              <div
-                className="rounded-2xl border p-5"
-                style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              >
-                <h2 className="title-md">Top Users</h2>
-                <div className="mt-4 space-y-3">
-                  {(summary?.topUsers || []).map((user) => (
-                    <div
-                      key={user.userId || user.username}
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: "var(--border)",
-                        background: "var(--surface-2)",
-                      }}
-                    >
-                      <p className="font-semibold text-[var(--title)]">{user.username}</p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">
-                        {user.jobs} jobs · {user.pages} pages · {formatMoney(user.cost)}
-                      </p>
-                    </div>
-                  ))}
-                  {(summary?.topUsers || []).length === 0 ? (
-                    <p className="text-sm text-[var(--muted)]">
-                      No user activity was returned for this period.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div
-                className="rounded-2xl border p-5"
-                style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              >
-                <h2 className="title-md">Top Printers</h2>
-                <div className="mt-4 space-y-3">
-                  {(summary?.topPrinters || []).map((printer) => (
-                    <div
-                      key={printer.printerId || printer.printerName}
-                      className="rounded-xl border p-4"
-                      style={{
-                        borderColor: "var(--border)",
-                        background: "var(--surface-2)",
-                      }}
-                    >
-                      <p className="font-semibold text-[var(--title)]">
-                        {printer.printerName}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">
-                        {printer.jobs} jobs · {printer.pages} pages · {formatMoney(printer.cost)}
-                      </p>
-                    </div>
-                  ))}
-                  {(summary?.topPrinters || []).length === 0 ? (
-                    <p className="text-sm text-[var(--muted)]">
-                      No printer activity was returned for this period.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            <div
-              className="rounded-2xl border p-5"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-            >
-              <h2 className="title-md">Live Printer Snapshot</h2>
-              <div className="mt-4 space-y-3">
-                {printers.map((printer) => (
-                  <div
-                    key={printer.id}
-                    className="rounded-xl border p-4"
-                    style={{
-                      borderColor: "var(--border)",
-                      background: "var(--surface-2)",
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[var(--title)]">{printer.name}</p>
-                        <p className="mt-1 text-sm text-[var(--muted)]">
-                          {printer.model} · {printer.location || printer.ipAddress}
-                        </p>
-                      </div>
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                          printer.status === "Online"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {printer.status}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-sm text-[var(--muted)]">
-                      <span>Queue: {printer.queueName || "Unassigned"}</span>
-                      <span>Toner: {printer.tonerLevel}%</span>
-                      <span>Paper: {printer.paperLevel}%</span>
-                      <span>Last Used: {printer.lastUsed}</span>
-                    </div>
-                  </div>
-                ))}
-                {printers.length === 0 ? (
-                  <p className="text-sm text-[var(--muted)]">
-                    No printers were returned by the backend.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <div
-              className="rounded-2xl border p-5"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-            >
-              <h2 className="title-md">Group Activity</h2>
-              <div className="mt-4 space-y-3">
-                {(summary?.groupSummary || []).map((group) => (
-                  <div
-                    key={group.id}
-                    className="rounded-xl border p-4"
-                    style={{
-                      borderColor: "var(--border)",
-                      background: "var(--surface-2)",
-                    }}
-                  >
-                    <p className="font-semibold text-[var(--title)]">{group.name}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {group.members} members · {group.jobs} jobs · {group.pages} pages ·{" "}
-                      {formatMoney(group.cost)}
-                    </p>
-                  </div>
-                ))}
-                {(summary?.groupSummary || []).length === 0 ? (
-                  <p className="text-sm text-[var(--muted)]">
-                    No group activity was returned for this period.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

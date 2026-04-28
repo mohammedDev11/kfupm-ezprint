@@ -509,6 +509,8 @@ const UserAccountsTable = () => {
   };
 
   const handleExportChange = (value: string) => {
+    if (selectedUsers.length === 0) return;
+
     setExportMethod(value as ExportMethod);
     setActionModal("export-users");
   };
@@ -646,7 +648,11 @@ const UserAccountsTable = () => {
             </Button>
 
             <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+              <DropdownTrigger
+                className={`h-14 min-w-[160px] px-6 text-base ${
+                  selectedUsers.length === 0 ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
                 Export
               </DropdownTrigger>
 

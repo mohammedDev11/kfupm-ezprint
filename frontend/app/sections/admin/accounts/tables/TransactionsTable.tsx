@@ -309,6 +309,8 @@ const TransactionsTable = () => {
 
   const handleBulkAction = (action: TransactionBulkAction) => {
     if (action === "export-selected") {
+      if (selectedIds.length === 0) return;
+
       setIsExportModalOpen(true);
       return;
     }
@@ -432,6 +434,8 @@ const TransactionsTable = () => {
   };
 
   const handleExportChange = (value: string) => {
+    if (selectedTransactions.length === 0) return;
+
     setExportMethod(value as ExportMethod);
     setIsExportModalOpen(true);
   };
@@ -787,7 +791,13 @@ const TransactionsTable = () => {
             </Dropdown>
 
             <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger className="h-14 min-w-[160px] px-6 text-base">
+              <DropdownTrigger
+                className={`h-14 min-w-[160px] px-6 text-base ${
+                  selectedTransactions.length === 0
+                    ? "pointer-events-none opacity-50"
+                    : ""
+                }`}
+              >
                 Export
               </DropdownTrigger>
 

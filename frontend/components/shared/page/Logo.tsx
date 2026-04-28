@@ -83,11 +83,34 @@ const Logo = ({
         <span className="min-w-0">
           <span
             className={cn(
-              "block truncate text-base font-semibold tracking-[-0.03em]",
+              "block truncate text-[1.125rem] leading-none sm:text-[1.5rem]",
               nameClassName,
             )}
+            style={{
+              color: "var(--title)",
+              fontFamily: '"Sora", var(--font-sans), ui-sans-serif, sans-serif',
+              fontWeight: 800,
+              letterSpacing: "-0.015em",
+            }}
           >
-            EzPrint
+            <span
+              style={{
+                color: "var(--color-brand-500)",
+                fontWeight: 600,
+                letterSpacing: "0",
+              }}
+            >
+              Ez
+            </span>
+            <span
+              style={{
+                color: "var(--title)",
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Print
+            </span>
           </span>
 
           {showTagline ? (
