@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export type ListBoxOption = {
   value: string;
   label?: React.ReactNode;
+  selectedLabel?: React.ReactNode;
+  searchText?: string;
   disabled?: boolean;
 };
 
@@ -24,6 +26,11 @@ type ListBoxProps = {
   maxHeightClassName?: string;
   align?: "left" | "right";
   ariaLabel?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  combobox?: boolean;
+  clearSearchOnSelect?: boolean;
 };
 
 export default function ListBox({
@@ -40,9 +47,16 @@ export default function ListBox({
   maxHeightClassName = "max-h-64",
   align = "left",
   ariaLabel,
+  searchable = false,
+  searchPlaceholder = "Search...",
+  emptyText = "No options found.",
+  combobox = false,
+  clearSearchOnSelect = true,
 }: ListBoxProps) {
   const [open, setOpen] = useState(false);
   const [internalValue, setInternalValue] = useState(defaultValue);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const normalizedOptions = useMemo(
@@ -59,6 +73,52 @@ export default function ListBox({
   const selectedOption = normalizedOptions.find(
     (option) => option.value === selectedValue,
   );
+  const getOptionText = (option: ListBoxOption) => {
+    if (typeof option.selectedLabel === "string") return option.selectedLabel;
+    if (typeof option.label === "string") return option.label;
+    return option.value;
+  };
+  const filteredOptions = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    if (!searchable || !term) {
+      return normalizedOptions;
+    }
+
+    return normalizedOptions.filter((option) => {
+      const labelText =
+        typeof option.label === "string" ? option.label : option.value;
+      const searchText = `${option.searchText || ""} ${labelText} ${option.value}`;
+
+      return searchText.toLowerCase().includes(term);
+    });
+  }, [normalizedOptions, searchTerm, searchable]);
+
+  useEffect(() => {
+    if (!combobox) return;
+
+    const nextSearchTerm =
+      !selectedValue
+        ? ""
+        : selectedOption && !clearSearchOnSelect
+        ? getOptionText(selectedOption)
+        : null;
+
+    if (nextSearchTerm === null) {
+      return;
+    }
+
+    let isActive = true;
+    queueMicrotask(() => {
+      if (isActive) {
+        setSearchTerm(nextSearchTerm);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [clearSearchOnSelect, combobox, selectedOption, selectedValue]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -94,44 +154,132 @@ export default function ListBox({
 
     onValueChange?.(option.value);
     setOpen(false);
+    setSearchTerm(clearSearchOnSelect ? "" : getOptionText(option));
+  };
+
+  const handleComboboxKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open && (event.key === "ArrowDown" || event.key === "Enter")) {
+      setOpen(true);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) =>
+        Math.min(current + 1, Math.max(filteredOptions.length - 1, 0)),
+      );
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const option =
+        filteredOptions[Math.min(activeIndex, filteredOptions.length - 1)];
+
+      if (option) {
+        handleSelect(option);
+      }
+      return;
+    }
+
+    if (event.key === "Escape") {
+      setOpen(false);
+    }
   };
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
-      <button
-        type="button"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={ariaLabel}
-        onClick={() => setOpen((current) => !current)}
-        className={cn(
-          "flex w-full items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)] disabled:pointer-events-none disabled:opacity-50",
-          triggerClassName,
-        )}
-        style={{
-          background: "var(--surface)",
-          borderColor: open
-            ? "color-mix(in srgb, var(--color-brand-500) 34%, var(--border))"
-            : "var(--border)",
-          color: selectedOption ? "var(--foreground)" : "var(--muted)",
-        }}
-      >
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {selectedOption?.label ?? placeholder}
-        </span>
-
-        <ChevronDown
+      {combobox ? (
+        <div
           className={cn(
-            "h-4 w-4 shrink-0 text-[var(--muted)] transition-transform",
-            open ? "rotate-180" : "",
+            "flex w-full items-center gap-3 rounded-md border px-4 py-2.5 text-left transition focus-within:ring-4 focus-within:ring-[rgba(var(--brand-rgb),0.16)]",
+            disabled ? "pointer-events-none opacity-50" : "",
+            triggerClassName,
           )}
-        />
-      </button>
+          style={{
+            background: "var(--surface)",
+            borderColor: open
+              ? "color-mix(in srgb, var(--color-brand-500) 34%, var(--border))"
+              : "var(--border)",
+            color: "var(--foreground)",
+          }}
+        >
+          <Search className="h-5 w-5 shrink-0 text-[var(--muted)]" />
+          <input
+            type="text"
+            role="combobox"
+            disabled={disabled}
+            aria-expanded={open}
+            aria-label={ariaLabel}
+            aria-controls={open ? `${ariaLabel || "listbox"}-options` : undefined}
+            value={searchTerm}
+            placeholder={
+              typeof placeholder === "string" ? placeholder : searchPlaceholder
+            }
+            onFocus={() => {
+              setOpen(true);
+              setActiveIndex(0);
+            }}
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setOpen(true);
+              setActiveIndex(0);
+            }}
+            onKeyDown={handleComboboxKeyDown}
+            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--title)] outline-none placeholder:text-[var(--muted)]"
+          />
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-[var(--muted)] transition-transform",
+              open ? "rotate-180" : "",
+            )}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={ariaLabel}
+          onClick={() => setOpen((current) => !current)}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)] disabled:pointer-events-none disabled:opacity-50",
+            triggerClassName,
+          )}
+          style={{
+            background: "var(--surface)",
+            borderColor: open
+              ? "color-mix(in srgb, var(--color-brand-500) 34%, var(--border))"
+              : "var(--border)",
+            color: selectedOption ? "var(--foreground)" : "var(--muted)",
+          }}
+        >
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {selectedOption?.selectedLabel ??
+              selectedOption?.label ??
+              placeholder}
+          </span>
+
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-[var(--muted)] transition-transform",
+              open ? "rotate-180" : "",
+            )}
+          />
+        </button>
+      )}
 
       {open ? (
         <div
           role="listbox"
+          id={`${ariaLabel || "listbox"}-options`}
           className={cn(
             "absolute top-[calc(100%+10px)] z-50 w-full overflow-hidden rounded-md border p-2 shadow-xl",
             align === "right" ? "right-0" : "left-0",
@@ -143,9 +291,32 @@ export default function ListBox({
             boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
           }}
         >
+          {searchable && !combobox ? (
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="h-11 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm font-medium outline-none transition focus:border-brand-500/50"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--title)",
+                }}
+              />
+            </div>
+          ) : null}
+
           <div className={cn("overflow-y-auto", maxHeightClassName)}>
-            {normalizedOptions.map((option) => {
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-3 text-sm font-medium text-[var(--muted)]">
+                {emptyText}
+              </div>
+            ) : null}
+
+            {filteredOptions.map((option, index) => {
               const isSelected = option.value === selectedValue;
+              const isActive = combobox && index === activeIndex;
 
               return (
                 <button
@@ -155,18 +326,21 @@ export default function ListBox({
                   aria-selected={isSelected}
                   disabled={option.disabled}
                   onClick={() => handleSelect(option)}
+                  onMouseEnter={() => setActiveIndex(index)}
                   className={cn(
                     "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50",
-                    isSelected ? "bg-[var(--surface-2)]" : "bg-transparent",
+                    isSelected || isActive
+                      ? "bg-[var(--surface-2)]"
+                      : "bg-transparent",
                     optionClassName,
                   )}
                   style={{
                     color: "var(--paragraph)",
                   }}
                 >
-                  <span className="min-w-0 flex-1 truncate">
+                  <div className="min-w-0 flex-1 truncate">
                     {option.label}
-                  </span>
+                  </div>
 
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                     {isSelected ? (

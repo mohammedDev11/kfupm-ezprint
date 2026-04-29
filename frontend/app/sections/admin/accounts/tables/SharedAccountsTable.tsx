@@ -15,6 +15,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import React, {
+  useCallback,
+  useEffect,
   forwardRef,
   useImperativeHandle,
   useMemo,
@@ -49,18 +51,11 @@ import {
   DropdownTrigger,
 } from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
-import SegmentToggle from "@/components/shared/actions/SegmentToggle";
 import { exportTableData, TableExportFormat } from "@/lib/export";
-import {
-  sharedAccountsData,
-  sharedAccountsTableColumns,
-  sharedAccountStatusSortOrder,
-  sharedAccountStatusMeta,
-  SharedAccountItem,
-  SharedAccountSortKey,
-  SharedAccountStatus,
-} from "@/lib/mock-data/Admin/accounts";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
+import type { StatusTone } from "@/components/ui/badge/StatusBadge";
 
 type SortDir = "asc" | "desc";
 
@@ -70,16 +65,113 @@ type ActionValue =
   | "delete-group"
   | "refresh-data";
 
-type SegmentValue =
-  | "details"
-  | "add-linked-account"
-  | "change-primary-account"
-  | "view-logs"
-  | "edit-notes"
-  | "delete-grouping";
-
 type MiniPillTone = "neutral" | "brand" | "success" | "warning";
 type ExportMethod = TableExportFormat;
+
+type SharedAccountStatus = "Active" | "Needs Review" | "Archived";
+
+type SharedAccountLinkedItem = {
+  id: string;
+  userId?: string;
+  username: string;
+  identifier: string;
+  department: string;
+  role: string;
+  status: "Active" | "Inactive" | "Suspended";
+  balance: number;
+  pages: number;
+  jobs: number;
+  lastActivity: string;
+  isPrimary: boolean;
+};
+
+type SharedAccountLogItem = {
+  id: string;
+  title: string;
+  description: string;
+  by: string;
+  date: string;
+};
+
+type SharedAccountItem = {
+  id: string;
+  personName: string;
+  identifier: string;
+  primaryAccount: string;
+  linkedCount: number;
+  linkedRoles: string[];
+  department: string;
+  status: SharedAccountStatus;
+  lastActivity: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  notes: string;
+  linkedAccounts: SharedAccountLinkedItem[];
+  logs: SharedAccountLogItem[];
+};
+
+type SharedAccountSortKey =
+  | "personName"
+  | "primaryAccount"
+  | "linkedCount"
+  | "linkedRoles"
+  | "department"
+  | "status"
+  | "lastActivity";
+
+type SharedAccountStatusMeta = {
+  label: string;
+  tone: StatusTone;
+};
+
+type BackendLinkedAccount = {
+  id: string;
+  userId?: string;
+  username: string;
+  identifier?: string;
+  department?: string;
+  role?: string;
+  status?: string;
+  statusLabel?: string;
+  balance?: number;
+  pages?: number;
+  jobs?: number;
+  lastActivityAt?: string | null;
+  isPrimary?: boolean;
+};
+
+type BackendSharedAccount = {
+  id: string;
+  primaryAccount?: {
+    userId?: string;
+    username?: string;
+  };
+  linkedAccounts?: BackendLinkedAccount[];
+  linkedCount?: number;
+  linkedRoles?: string[];
+  department?: string;
+  status?: string;
+  statusLabel?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type SharedAccountsResponse = {
+  accounts?: BackendSharedAccount[];
+};
+
+type AdminUserLookupItem = {
+  id: string;
+  username: string;
+  fullName: string;
+  email?: string;
+  department?: string;
+  role?: string;
+  userType?: string;
+  standing?: string;
+};
 
 export type SharedAccountsTableHandle = {
   openCreateModal: () => void;
@@ -88,13 +180,168 @@ export type SharedAccountsTableHandle = {
 const columnsClassName =
   "[grid-template-columns:72px_minmax(220px,1.2fr)_minmax(190px,1fr)_minmax(210px,0.85fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_minmax(140px,0.8fr)_minmax(200px,1fr)]";
 
-const cloneSharedAccountsData = () =>
-  sharedAccountsData.map((group) => ({
-    ...group,
-    linkedRoles: [...group.linkedRoles],
-    linkedAccounts: group.linkedAccounts.map((account) => ({ ...account })),
-    logs: group.logs.map((log) => ({ ...log })),
-  }));
+const sharedAccountsTableColumns: {
+  key: SharedAccountSortKey;
+  label: string;
+  sortable: boolean;
+}[] = [
+  { key: "personName", label: "Person Name", sortable: true },
+  { key: "primaryAccount", label: "Primary Account", sortable: true },
+  { key: "linkedCount", label: "Linked Accounts", sortable: true },
+  { key: "linkedRoles", label: "Linked Roles", sortable: false },
+  { key: "department", label: "Department", sortable: true },
+  { key: "status", label: "Status", sortable: true },
+  { key: "lastActivity", label: "Last Activity", sortable: true },
+];
+
+const sharedAccountStatusSortOrder: Record<SharedAccountStatus, number> = {
+  Active: 0,
+  "Needs Review": 1,
+  Archived: 2,
+};
+
+const sharedAccountStatusMeta: Record<
+  SharedAccountStatus,
+  SharedAccountStatusMeta
+> = {
+  Active: {
+    label: "Active",
+    tone: "success",
+  },
+  "Needs Review": {
+    label: "Needs Review",
+    tone: "warning",
+  },
+  Archived: {
+    label: "Archived",
+    tone: "inactive",
+  },
+};
+
+const normalizeSharedStatus = (status?: string): SharedAccountStatus => {
+  const normalized = (status || "").toLowerCase();
+
+  if (normalized === "active") return "Active";
+  if (normalized === "review" || normalized === "needs review") {
+    return "Needs Review";
+  }
+
+  return "Archived";
+};
+
+const normalizeLinkedStatus = (
+  status?: string,
+): SharedAccountLinkedItem["status"] => {
+  const normalized = (status || "").toLowerCase();
+
+  if (normalized === "active") return "Active";
+  if (normalized === "suspended") return "Suspended";
+
+  return "Inactive";
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "No activity";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "No activity";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const getLatestDate = (values: Array<string | null | undefined>) => {
+  const timestamps = values
+    .map((value) => {
+      if (!value) return 0;
+      const timestamp = new Date(value).getTime();
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    })
+    .filter((timestamp) => timestamp > 0);
+
+  if (timestamps.length === 0) return null;
+
+  return new Date(Math.max(...timestamps)).toISOString();
+};
+
+const mapSharedAccount = (
+  account: BackendSharedAccount,
+  usersByUsername: Map<string, AdminUserLookupItem>,
+): SharedAccountItem => {
+  const linkedAccounts = (account.linkedAccounts || []).map((linkedAccount) => {
+    const user = usersByUsername.get(linkedAccount.username.toLowerCase());
+
+    return {
+      id: linkedAccount.id,
+      userId: linkedAccount.userId,
+      username: linkedAccount.username,
+      identifier: linkedAccount.identifier || user?.username || "",
+      department: linkedAccount.department || user?.department || "",
+      role: linkedAccount.role || user?.role || "",
+      status: normalizeLinkedStatus(linkedAccount.statusLabel || linkedAccount.status),
+      balance: linkedAccount.balance ?? 0,
+      pages: linkedAccount.pages ?? 0,
+      jobs: linkedAccount.jobs ?? 0,
+      lastActivity: formatDateTime(linkedAccount.lastActivityAt),
+      isPrimary: Boolean(linkedAccount.isPrimary),
+    };
+  });
+
+  const primaryAccount =
+    linkedAccounts.find((linkedAccount) => linkedAccount.isPrimary) ||
+    linkedAccounts[0] ||
+    null;
+  const primaryUsername =
+    account.primaryAccount?.username || primaryAccount?.username || "Unknown";
+  const primaryUser = usersByUsername.get(primaryUsername.toLowerCase());
+  const latestActivity = getLatestDate([
+    account.updatedAt,
+    ...((account.linkedAccounts || []).map((linkedAccount) => linkedAccount.lastActivityAt)),
+  ]);
+  const createdAt = formatDateTime(account.createdAt);
+  const updatedAt = formatDateTime(account.updatedAt);
+
+  return {
+    id: account.id,
+    personName: primaryUser?.fullName || primaryUsername,
+    identifier: primaryAccount?.identifier || primaryUser?.username || primaryUsername,
+    primaryAccount: primaryUsername,
+    linkedCount: account.linkedCount ?? linkedAccounts.length,
+    linkedRoles: account.linkedRoles || [],
+    department: account.department || primaryAccount?.department || primaryUser?.department || "",
+    status: normalizeSharedStatus(account.statusLabel || account.status),
+    lastActivity: formatDateTime(latestActivity),
+    createdBy: "Not recorded",
+    createdAt,
+    updatedAt,
+    notes: account.notes || "",
+    linkedAccounts,
+    logs: [
+      {
+        id: `${account.id}-created`,
+        title: "Shared Account Created",
+        description: "Shared account grouping was created in the database.",
+        by: "System",
+        date: createdAt,
+      },
+      {
+        id: `${account.id}-updated`,
+        title: "Shared Account Updated",
+        description: "Latest persisted update for this grouping.",
+        by: "System",
+        date: updatedAt,
+      },
+    ],
+  };
+};
 
 function SharedStatusBadge({
   status,
@@ -198,26 +445,78 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function DetailField({
-  label,
-  value,
+const getUserTypeLabel = (user: AdminUserLookupItem) =>
+  user.userType || user.standing || user.role || "Not recorded";
+
+const getUserSearchText = (user: AdminUserLookupItem) =>
+  [
+    user.fullName,
+    user.username,
+    user.email,
+    user.department,
+    user.role,
+    user.userType,
+    user.standing,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+function UserOptionLabel({ user }: { user: AdminUserLookupItem }) {
+  return (
+    <span className="block min-w-0">
+      <span className="block truncate font-semibold text-[var(--title)]">
+        {user.fullName}
+      </span>
+      <span className="mt-1 block truncate text-xs text-[var(--muted)]">
+        {user.username} • {user.email || "No email"} • {getUserTypeLabel(user)}
+      </span>
+    </span>
+  );
+}
+
+function UserSummaryCard({
+  user,
+  action,
 }: {
-  label: string;
-  value: React.ReactNode;
+  user: AdminUserLookupItem;
+  action?: React.ReactNode;
 }) {
   return (
-    <p className="break-words paragraph !text-lg">
-      <span className="text-[var(--muted)]">{label}: </span>
-      <span className="font-semibold text-[var(--title)]">{value}</span>
-    </p>
+    <div
+      className="flex min-w-0 items-start justify-between gap-4 rounded-2xl border p-4"
+      style={{
+        background: "var(--surface-2)",
+        borderColor: "var(--border)",
+      }}
+    >
+      <div className="min-w-0 space-y-3">
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold text-[var(--title)]">
+            {user.fullName}
+          </p>
+          <p className="mt-1 truncate text-sm text-[var(--muted)]">
+            {user.username} • {user.email || "No email"}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <MiniPill label={user.department || "No department"} />
+          <MiniPill label={user.role || "User"} tone="brand" />
+          <MiniPill label={getUserTypeLabel(user)} />
+        </div>
+      </div>
+
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
   );
 }
 
 const SharedAccountsTable = forwardRef<SharedAccountsTableHandle>(
 function SharedAccountsTable(_props, ref) {
-  const [groups, setGroups] = useState<SharedAccountItem[]>(
-    cloneSharedAccountsData,
-  );
+  const [groups, setGroups] = useState<SharedAccountItem[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUserLookupItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SharedAccountSortKey>("personName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -226,24 +525,27 @@ function SharedAccountsTable(_props, ref) {
   const [selectedGroup, setSelectedGroup] = useState<SharedAccountItem | null>(
     null
   );
-  const [segment, setSegment] = useState<SegmentValue>("details");
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
+  const [isAddLinkedOpen, setIsAddLinkedOpen] = useState(false);
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
+  const [isDeleteGroupConfirmOpen, setIsDeleteGroupConfirmOpen] =
+    useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [detailsActionId, setDetailsActionId] = useState("");
   const [actionValue, setActionValue] = useState<ActionValue | null>(null);
   const [exportMethod, setExportMethod] = useState<ExportMethod>("PDF");
 
-  const [createFullName, setCreateFullName] = useState("");
-  const [createIdentifier, setCreateIdentifier] = useState("");
-  const [createDepartment, setCreateDepartment] = useState("");
+  const [createPrimaryUsername, setCreatePrimaryUsername] = useState("");
+  const [createLinkedUsernames, setCreateLinkedUsernames] = useState<string[]>([]);
   const [createNotes, setCreateNotes] = useState("");
-  const [accountSearch, setAccountSearch] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   const [notesDraft, setNotesDraft] = useState("");
   const [linkedSearch, setLinkedSearch] = useState("");
   const [newLinkedUsername, setNewLinkedUsername] = useState("");
-  const [newLinkedRole, setNewLinkedRole] = useState("");
-  const [newPrimaryId, setNewPrimaryId] = useState("");
 
   useImperativeHandle(
     ref,
@@ -252,6 +554,50 @@ function SharedAccountsTable(_props, ref) {
     }),
     [],
   );
+
+  const loadSharedAccounts = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      const [accountsData, usersData] = await Promise.all([
+        apiGet<SharedAccountsResponse>("/admin/accounts", "admin"),
+        apiGet<{ users: AdminUserLookupItem[] }>("/admin/users", "admin"),
+      ]);
+      const usersByUsername = new Map(
+        (usersData.users || []).map((user) => [user.username.toLowerCase(), user]),
+      );
+      const nextGroups = (accountsData.accounts || []).map((account) =>
+        mapSharedAccount(account, usersByUsername),
+      );
+
+      setAdminUsers(usersData.users || []);
+      setGroups(nextGroups);
+      setSelectedIds((current) =>
+        current.filter((id) => nextGroups.some((group) => group.id === id)),
+      );
+      setSelectedGroup((current) => {
+        if (!current) return null;
+
+        return nextGroups.find((group) => group.id === current.id) || null;
+      });
+      setLoadError("");
+    } catch (requestError) {
+      setGroups([]);
+      setSelectedIds([]);
+      setSelectedGroup(null);
+      setLoadError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load shared accounts.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadSharedAccounts);
+  }, [loadSharedAccounts]);
 
   const handleSort = (key: SharedAccountSortKey) => {
     if (sortKey === key) {
@@ -366,6 +712,65 @@ function SharedAccountsTable(_props, ref) {
     },
   ];
 
+  const usersByUsername = useMemo(
+    () => new Map(adminUsers.map((user) => [user.username.toLowerCase(), user])),
+    [adminUsers],
+  );
+  const selectedPrimaryUser = createPrimaryUsername
+    ? usersByUsername.get(createPrimaryUsername)
+    : undefined;
+  const selectedLinkedUsers = createLinkedUsernames
+    .map((username) => usersByUsername.get(username))
+    .filter((user): user is AdminUserLookupItem => Boolean(user));
+  const createPrimaryOptions = useMemo<ListBoxOption[]>(
+    () =>
+      adminUsers.map((user) => ({
+        value: user.username.toLowerCase(),
+        label: <UserOptionLabel user={user} />,
+        selectedLabel: user.fullName,
+        searchText: getUserSearchText(user),
+      })),
+    [adminUsers],
+  );
+  const createLinkedOptions = useMemo<ListBoxOption[]>(
+    () =>
+      adminUsers
+        .filter((user) => {
+          const username = user.username.toLowerCase();
+          return (
+            username !== createPrimaryUsername &&
+            !createLinkedUsernames.includes(username)
+          );
+        })
+        .map((user) => ({
+          value: user.username.toLowerCase(),
+          label: <UserOptionLabel user={user} />,
+          selectedLabel: user.fullName,
+          searchText: getUserSearchText(user),
+        })),
+    [adminUsers, createLinkedUsernames, createPrimaryUsername],
+  );
+  const canCreateSharedAccount =
+    Boolean(selectedPrimaryUser) && createLinkedUsernames.length > 0 && !isCreating;
+  const detailLinkedOptions = useMemo<ListBoxOption[]>(() => {
+    if (!selectedGroup) return [];
+
+    const linkedUsernames = new Set(
+      selectedGroup.linkedAccounts.map((account) =>
+        account.username.toLowerCase(),
+      ),
+    );
+
+    return adminUsers
+      .filter((user) => !linkedUsernames.has(user.username.toLowerCase()))
+      .map((user) => ({
+        value: user.username.toLowerCase(),
+        label: <UserOptionLabel user={user} />,
+        selectedLabel: user.fullName,
+        searchText: getUserSearchText(user),
+      }));
+  }, [adminUsers, selectedGroup]);
+
   const allVisibleIds = filteredGroups.map((group) => group.id);
   const isAllSelected =
     allVisibleIds.length > 0 &&
@@ -427,9 +832,7 @@ function SharedAccountsTable(_props, ref) {
   };
 
   const refreshSharedAccounts = () => {
-    setGroups(cloneSharedAccountsData());
-    setSelectedIds([]);
-    setSelectedGroup(null);
+    void loadSharedAccounts();
   };
 
   const selectedLinkedAccounts = useMemo(() => {
@@ -462,211 +865,266 @@ function SharedAccountsTable(_props, ref) {
     };
   }, [selectedGroup]);
 
-  const segmentOptions = [
-    { value: "details", label: "View Details" },
-    { value: "add-linked-account", label: "Add Linked Account" },
-    { value: "change-primary-account", label: "Change Primary Account" },
-    { value: "view-logs", label: "View Logs" },
-    { value: "edit-notes", label: "Edit Notes" },
-    { value: "delete-grouping", label: "Delete Grouping" },
-  ];
-
   const prepareSelectedGroupDrafts = (group: SharedAccountItem) => {
     setNotesDraft(group.notes);
     setLinkedSearch("");
-    const primary = group.linkedAccounts.find((item) => item.isPrimary);
-    setNewPrimaryId(primary?.id ?? "");
+    setNewLinkedUsername("");
+    setIsAddLinkedOpen(false);
+    setIsLogsModalOpen(false);
+    setIsDeleteGroupConfirmOpen(false);
+    setDetailsError("");
+    setDetailsActionId("");
   };
 
   const openGroupModal = (group: SharedAccountItem) => {
     prepareSelectedGroupDrafts(group);
     setSelectedGroup(group);
-    setSegment("details");
   };
 
-  const syncSelectedGroup = (updatedGroup: SharedAccountItem) => {
-    prepareSelectedGroupDrafts(updatedGroup);
-    setSelectedGroup(updatedGroup);
-    setGroups((prev) =>
-      prev.map((group) => (group.id === updatedGroup.id ? updatedGroup : group))
+  const resetCreateForm = () => {
+    setCreatePrimaryUsername("");
+    setCreateLinkedUsernames([]);
+    setCreateNotes("");
+    setCreateError("");
+    setIsCreating(false);
+  };
+
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false);
+    resetCreateForm();
+  };
+
+  const handleCreatePrimaryChange = (username: string) => {
+    const normalizedUsername = username.toLowerCase();
+    setCreatePrimaryUsername(normalizedUsername);
+    setCreateLinkedUsernames((current) =>
+      current.filter((item) => item !== normalizedUsername),
+    );
+    setCreateError("");
+  };
+
+  const handleCreateLinkedSelect = (username: string) => {
+    const normalizedUsername = username.toLowerCase();
+
+    if (
+      !normalizedUsername ||
+      normalizedUsername === createPrimaryUsername ||
+      createLinkedUsernames.includes(normalizedUsername)
+    ) {
+      return;
+    }
+
+    setCreateLinkedUsernames((current) => [...current, normalizedUsername]);
+    setCreateError("");
+  };
+
+  const removeCreateLinkedUser = (username: string) => {
+    setCreateLinkedUsernames((current) =>
+      current.filter((item) => item !== username),
     );
   };
 
-  const createSharedAccount = () => {
-    const fullName = createFullName.trim() || "New Person";
-    const identifier = createIdentifier.trim() || `EMP-${1000 + groups.length}`;
-    const department = createDepartment.trim() || "General";
-    const now = "2026-04-10 10:30 AM";
+  const createSharedAccount = async () => {
+    if (!selectedPrimaryUser || createLinkedUsernames.length === 0) {
+      setCreateError("Select a primary account and at least one linked account.");
+      return;
+    }
 
-    const usernameBase = fullName
-      .toLowerCase()
-      .replace(/\s+/g, ".")
-      .replace(/[^a-z0-9.]/g, "");
+    setIsCreating(true);
+    setCreateError("");
 
-    const newGroup: SharedAccountItem = {
-      id: `shared-${Date.now()}`,
-      personName: fullName,
-      identifier,
-      primaryAccount: usernameBase || "new.primary",
-      linkedCount: 1,
-      linkedRoles: ["Staff"],
-      department,
-      status: "Active" as SharedAccountStatus,
-      lastActivity: now,
-      createdBy: "Mohammed Alshammasi",
-      createdAt: now,
-      updatedAt: now,
-      notes: createNotes.trim() || "New shared account group created manually.",
-      linkedAccounts: [
+    try {
+      await apiPost(
+        "/admin/accounts",
         {
-          id: `linked-${Date.now()}`,
-          username: usernameBase || "new.primary",
-          identifier,
-          department,
-          role: "Staff",
-          status: "Active",
-          balance: 0,
-          pages: 0,
-          jobs: 0,
-          lastActivity: now,
-          isPrimary: true,
+          primaryAccount: {
+            userId: selectedPrimaryUser.id,
+            username: selectedPrimaryUser.username,
+          },
+          linkedAccounts: selectedLinkedUsers.map((user) => ({
+            userId: user.id,
+            username: user.username,
+          })),
+          department: selectedPrimaryUser.department || "",
+          status: "active",
+          notes: createNotes.trim(),
         },
-      ],
-      logs: [
-        {
-          id: `log-${Date.now()}`,
-          title: "Create Shared Account Group",
-          description: "Created new shared account group from admin panel.",
-          by: "Mohammed Alshammasi",
-          date: now,
-        },
-      ],
-    };
+        "admin",
+      );
 
-    setGroups((prev) => [newGroup, ...prev]);
-    setIsCreateModalOpen(false);
-    setCreateFullName("");
-    setCreateIdentifier("");
-    setCreateDepartment("");
-    setCreateNotes("");
-    setAccountSearch("");
+      await loadSharedAccounts();
+      closeCreateModal();
+    } catch (requestError) {
+      setCreateError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to create shared account group.",
+      );
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const saveNotes = () => {
+  const saveNotes = async () => {
     if (!selectedGroup) return;
 
-    const updatedGroup: SharedAccountItem = {
-      ...selectedGroup,
-      notes: notesDraft.trim() || selectedGroup.notes,
-      updatedAt: "2026-04-10 10:30 AM",
-      logs: [
-        {
-          id: `log-${Date.now()}`,
-          title: "Edit Notes",
-          description: "Updated shared account notes.",
-          by: "Mohammed Alshammasi",
-          date: "2026-04-10 10:30 AM",
-        },
-        ...selectedGroup.logs,
-      ],
-    };
+    setDetailsActionId("notes");
+    setDetailsError("");
 
-    syncSelectedGroup(updatedGroup);
-    setSegment("details");
+    try {
+      await apiPatch(
+        `/admin/accounts/${selectedGroup.id}/notes`,
+        {
+          notes: notesDraft.trim(),
+        },
+        "admin",
+      );
+
+      await loadSharedAccounts();
+    } catch (requestError) {
+      setDetailsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to save notes.",
+      );
+    } finally {
+      setDetailsActionId("");
+    }
   };
 
-  const addLinkedAccount = () => {
+  const addLinkedAccount = async (username = newLinkedUsername) => {
     if (!selectedGroup) return;
-    if (!newLinkedUsername.trim()) return;
+    const linkedUsername = username.trim().toLowerCase();
+    if (!linkedUsername) return;
 
-    const role = newLinkedRole.trim() || "Staff";
-    const newAccount = {
-      id: `linked-${Date.now()}`,
-      username: newLinkedUsername.trim(),
-      identifier: `${selectedGroup.identifier}-ALT`,
-      department: selectedGroup.department,
-      role,
-      status: "Active" as const,
-      balance: 0,
-      pages: 0,
-      jobs: 0,
-      lastActivity: "2026-04-10 10:30 AM",
-      isPrimary: false,
-    };
+    setDetailsActionId("add-linked");
+    setDetailsError("");
 
-    const updatedAccounts = [...selectedGroup.linkedAccounts, newAccount];
-    const updatedGroup: SharedAccountItem = {
-      ...selectedGroup,
-      linkedAccounts: updatedAccounts,
-      linkedCount: updatedAccounts.length,
-      linkedRoles: Array.from(
-        new Set(updatedAccounts.map((item) => item.role))
-      ),
-      updatedAt: "2026-04-10 10:30 AM",
-      logs: [
+    try {
+      await apiPatch(
+        `/admin/accounts/${selectedGroup.id}/link`,
         {
-          id: `log-${Date.now()}`,
-          title: "Linked Account Added",
-          description: `Added linked account "${newAccount.username}".`,
-          by: "Mohammed Alshammasi",
-          date: "2026-04-10 10:30 AM",
+          username: linkedUsername,
+          department: selectedGroup.department,
         },
-        ...selectedGroup.logs,
-      ],
-    };
+        "admin",
+      );
 
-    syncSelectedGroup(updatedGroup);
-    setNewLinkedUsername("");
-    setNewLinkedRole("");
-    setSegment("details");
+      await loadSharedAccounts();
+      setNewLinkedUsername("");
+      setIsAddLinkedOpen(false);
+    } catch (requestError) {
+      setDetailsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to add linked account.",
+      );
+    } finally {
+      setDetailsActionId("");
+    }
   };
 
-  const changePrimaryAccount = () => {
-    if (!selectedGroup || !newPrimaryId) return;
+  const changePrimaryAccount = async (linkedAccountId: string) => {
+    if (!selectedGroup || !linkedAccountId) return;
 
-    const updatedAccounts = selectedGroup.linkedAccounts.map((account) => ({
-      ...account,
-      isPrimary: account.id === newPrimaryId,
-    }));
+    setDetailsActionId(`primary-${linkedAccountId}`);
+    setDetailsError("");
 
-    const nextPrimary =
-      updatedAccounts.find((account) => account.isPrimary)?.username ??
-      selectedGroup.primaryAccount;
-
-    const updatedGroup: SharedAccountItem = {
-      ...selectedGroup,
-      linkedAccounts: updatedAccounts,
-      primaryAccount: nextPrimary,
-      updatedAt: "2026-04-10 10:30 AM",
-      logs: [
+    try {
+      await apiPatch(
+        `/admin/accounts/${selectedGroup.id}/primary`,
         {
-          id: `log-${Date.now()}`,
-          title: "Primary Account Changed",
-          description: `Primary account changed to "${nextPrimary}".`,
-          by: "Mohammed Alshammasi",
-          date: "2026-04-10 10:30 AM",
+          linkedAccountId,
         },
-        ...selectedGroup.logs,
-      ],
-    };
+        "admin",
+      );
 
-    syncSelectedGroup(updatedGroup);
-    setSegment("details");
+      await loadSharedAccounts();
+    } catch (requestError) {
+      setDetailsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to change primary account.",
+      );
+    } finally {
+      setDetailsActionId("");
+    }
   };
 
-  const deleteGrouping = () => {
+  const removeLinkedAccount = async (accountId: string) => {
     if (!selectedGroup) return;
 
-    setGroups((prev) => prev.filter((group) => group.id !== selectedGroup.id));
-    setSelectedIds((prev) => prev.filter((id) => id !== selectedGroup.id));
-    setSelectedGroup(null);
+    const accountToRemove = selectedGroup.linkedAccounts.find(
+      (account) => account.id === accountId,
+    );
+
+    if (!accountToRemove || accountToRemove.isPrimary) return;
+
+    setDetailsActionId(`remove-${accountId}`);
+    setDetailsError("");
+
+    try {
+      await apiPatch(
+        `/admin/accounts/${selectedGroup.id}`,
+        {
+          linkedAccounts: selectedGroup.linkedAccounts
+            .filter((account) => account.id !== accountId)
+            .map((account) => ({
+              userId: account.userId || undefined,
+              username: account.username,
+              identifier: account.identifier,
+              department: account.department,
+              role: account.role,
+              status: account.status.toLowerCase(),
+              balance: account.balance,
+              pages: account.pages,
+              jobs: account.jobs,
+              isPrimary: account.isPrimary,
+            })),
+        },
+        "admin",
+      );
+
+      await loadSharedAccounts();
+    } catch (requestError) {
+      setDetailsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to remove linked account.",
+      );
+    } finally {
+      setDetailsActionId("");
+    }
   };
 
-  const handleActionConfirm = () => {
+  const deleteGrouping = async () => {
+    if (!selectedGroup) return;
+
+    setDetailsActionId("delete-group");
+    setDetailsError("");
+
+    try {
+      await apiDelete(`/admin/accounts/${selectedGroup.id}`, "admin");
+      setSelectedIds((prev) => prev.filter((id) => id !== selectedGroup.id));
+      setIsDeleteGroupConfirmOpen(false);
+      setSelectedGroup(null);
+      await loadSharedAccounts();
+    } catch (requestError) {
+      setDetailsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to delete shared account group.",
+      );
+    } finally {
+      setDetailsActionId("");
+    }
+  };
+
+  const handleActionConfirm = async () => {
     if (!actionValue) return;
 
     if (actionValue === "refresh-data") {
-      refreshSharedAccounts();
+      await loadSharedAccounts();
       setActionValue(null);
       return;
     }
@@ -674,50 +1132,19 @@ function SharedAccountsTable(_props, ref) {
     if (actionValue === "archive-group") {
       if (selectedIds.length === 0) return;
 
-      setGroups((prev) =>
-        prev.map((group) =>
-          selectedIds.includes(group.id)
-            ? {
-                ...group,
-                status: "Archived" as SharedAccountStatus,
-                updatedAt: "2026-04-10 10:30 AM",
-                logs: [
-                  {
-                    id: `log-${Date.now()}-${group.id}`,
-                    title: "Group Archived",
-                    description:
-                      "Shared account group archived from admin table.",
-                    by: "Mohammed Alshammasi",
-                    date: "2026-04-10 10:30 AM",
-                  },
-                  ...group.logs,
-                ],
-              }
-            : group
-        )
+      await Promise.all(
+        selectedIds.map((id) =>
+          apiPatch(
+            `/admin/accounts/${id}`,
+            {
+              status: "archived",
+            },
+            "admin",
+          ),
+        ),
       );
 
-      if (selectedGroup && selectedIds.includes(selectedGroup.id)) {
-        const updatedSelectedGroup: SharedAccountItem = {
-          ...selectedGroup,
-          status: "Archived" as SharedAccountStatus,
-          updatedAt: "2026-04-10 10:30 AM",
-          logs: [
-            {
-              id: `log-${Date.now()}-selected`,
-              title: "Group Archived",
-              description: "Shared account group archived from admin table.",
-              by: "Mohammed Alshammasi",
-              date: "2026-04-10 10:30 AM",
-            },
-            ...selectedGroup.logs,
-          ],
-        };
-
-        prepareSelectedGroupDrafts(updatedSelectedGroup);
-        setSelectedGroup(updatedSelectedGroup);
-      }
-
+      await loadSharedAccounts();
       setActionValue(null);
       return;
     }
@@ -725,15 +1152,15 @@ function SharedAccountsTable(_props, ref) {
     if (actionValue === "delete-group") {
       if (selectedIds.length === 0) return;
 
-      setGroups((prev) =>
-        prev.filter((group) => !selectedIds.includes(group.id))
+      await Promise.all(
+        selectedIds.map((id) => apiDelete(`/admin/accounts/${id}`, "admin")),
       );
 
+      setSelectedIds([]);
       if (selectedGroup && selectedIds.includes(selectedGroup.id)) {
         setSelectedGroup(null);
       }
-
-      setSelectedIds([]);
+      await loadSharedAccounts();
       setActionValue(null);
       return;
     }
@@ -752,506 +1179,256 @@ function SharedAccountsTable(_props, ref) {
     setActionValue(null);
   };
 
-  const renderSegmentContent = () => {
+  const renderSharedAccountDetailsContent = () => {
     if (!selectedGroup || !totals) return null;
 
-    if (segment === "details") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div className="grid min-w-0 gap-5 xl:grid-cols-4">
-            <InfoCard
-              label="Total Linked Accounts"
-              value={totals.linkedAccounts}
-            />
-            <InfoCard label="Combined Pages Printed" value={totals.pages} />
-            <InfoCard label="Combined Jobs Submitted" value={totals.jobs} />
-            <InfoCard
-              label="Combined Balance"
-              value={totals.balance.toFixed(2)}
-            />
-          </div>
+    return (
+      <div className="min-w-0 space-y-6 overflow-x-hidden">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <InfoCard
+            label="Total Linked Accounts"
+            value={totals.linkedAccounts}
+          />
+          <InfoCard label="Combined Pages" value={totals.pages} />
+          <InfoCard label="Combined Jobs" value={totals.jobs} />
+          <InfoCard label="Combined Balance" value={totals.balance.toFixed(2)} />
+        </div>
 
-          <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-            <div
-              className="min-w-0 rounded-[32px] border p-8"
-              style={{
-                background: "var(--surface-2)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <h4 className="mb-7 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Person Information
-              </h4>
-
-              <div className="space-y-4">
-                <DetailField
-                  label="Full name"
-                  value={selectedGroup.personName}
-                />
-                <DetailField
-                  label="Identifier"
-                  value={selectedGroup.identifier}
-                />
-                <DetailField
-                  label="Department"
-                  value={selectedGroup.department}
-                />
-                <DetailField
-                  label="Created by"
-                  value={selectedGroup.createdBy}
-                />
-                <DetailField
-                  label="Created date"
-                  value={selectedGroup.createdAt}
-                />
-                <DetailField
-                  label="Last updated"
-                  value={selectedGroup.updatedAt}
-                />
-                <DetailField label="Notes" value={selectedGroup.notes} />
-              </div>
-            </div>
-
-            <div
-              className="min-w-0 rounded-[32px] border p-8"
-              style={{
-                background: "var(--surface-2)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <h4 className="mb-7 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Security / Audit
-              </h4>
-
-              <div className="space-y-5">
-                {selectedGroup.logs.slice(0, 2).map((log) => (
-                  <div
-                    key={log.id}
-                    className="min-w-0 rounded-[28px] border p-7"
-                    style={{
-                      background: "var(--surface)",
-                      borderColor: "var(--border)",
-                    }}
-                  >
-                    <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0">
-                        <h5 className="break-words text-2xl font-semibold text-[var(--title)]">
-                          {log.title}
-                        </h5>
-                        <p className="paragraph mt-3 break-words !text-lg">
-                          {log.description}
-                        </p>
-                        <p className="mt-4 break-words text-xl font-semibold text-[var(--title)]">
-                          By {log.by}
-                        </p>
-                      </div>
-
-                      <p className="shrink-0 text-lg text-[var(--muted)]">
-                        {log.date}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
+        {detailsError ? (
           <div
-            className="min-w-0 rounded-[32px] border p-8"
+            className="rounded-2xl border px-4 py-3 text-sm font-semibold"
             style={{
-              background: "var(--surface-2)",
-              borderColor: "var(--border)",
+              background:
+                "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+              borderColor:
+                "color-mix(in srgb, var(--color-brand-500) 28%, var(--border))",
+              color:
+                "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
             }}
           >
-            <div className="mb-5 flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Linked Accounts
-              </h4>
+            {detailsError}
+          </div>
+        ) : null}
 
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="w-full min-w-0 sm:min-w-[280px]">
-                  <Input
-                    value={linkedSearch}
-                    onChange={(e) => setLinkedSearch(e.target.value)}
-                    placeholder="Search linked accounts..."
-                    wrapperClassName="h-14"
-                    className="h-full py-0"
-                  />
-                </div>
+        <section
+          className="min-w-0 rounded-[28px] border p-5"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+        >
+          <div className="mb-4 flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+              Linked Accounts
+            </h4>
 
-                <Button
-                  iconLeft={<Link2 className="h-4 w-4" />}
-                  className="h-14 shrink-0 px-8 text-base"
-                  onClick={() => setSegment("add-linked-account")}
-                >
-                  Add Linked Account
-                </Button>
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="w-full min-w-0 sm:min-w-[280px]">
+                <Input
+                  value={linkedSearch}
+                  onChange={(e) => setLinkedSearch(e.target.value)}
+                  placeholder="Search linked accounts..."
+                  wrapperClassName="h-12"
+                  className="h-full py-0"
+                />
               </div>
-            </div>
 
-            <div className="space-y-5">
-              {selectedLinkedAccounts.length === 0 ? (
-                <div className="rounded-[28px] border px-7 py-6 text-[var(--muted)]">
-                  No linked accounts found.
-                </div>
-              ) : (
-                selectedLinkedAccounts.map((account) => (
-                  <div
-                    key={account.id}
-                    className="min-w-0 rounded-[28px] border px-7 py-6"
-                    style={{
+              <Button
+                iconLeft={<Plus className="h-4 w-4" />}
+                className="h-12 shrink-0 px-5 text-sm"
+                onClick={() => {
+                  setIsAddLinkedOpen((current) => !current);
+                  setNewLinkedUsername("");
+                  setDetailsError("");
+                }}
+              >
+                Add Linked Account
+              </Button>
+            </div>
+          </div>
+
+          {isAddLinkedOpen ? (
+            <div
+              className="mb-4 rounded-2xl border p-4"
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
+                Add existing user
+              </label>
+              <ListBox
+                value={newLinkedUsername}
+                onValueChange={(value) => {
+                  setNewLinkedUsername(value);
+                  void addLinkedAccount(value);
+                }}
+                options={detailLinkedOptions}
+                placeholder="Search linked accounts..."
+                searchable
+                combobox
+                searchPlaceholder="Search linked accounts..."
+                emptyText="No available users."
+                triggerClassName="min-h-12 px-4 py-3"
+                contentClassName="z-[70]"
+                maxHeightClassName="max-h-72"
+                disabled={detailsActionId === "add-linked"}
+              />
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {selectedLinkedAccounts.length === 0 ? (
+              <div className="rounded-2xl border px-5 py-4 text-sm font-medium text-[var(--muted)]">
+                No linked accounts found.
+              </div>
+            ) : (
+              selectedLinkedAccounts.map((account) => {
+                const linkedUser = usersByUsername.get(
+                  account.username.toLowerCase(),
+                );
+                const displayName = linkedUser?.fullName || account.username;
+                const primaryStyles = account.isPrimary
+                  ? {
+                      background:
+                        "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+                      borderColor:
+                        "color-mix(in srgb, var(--color-brand-500) 38%, var(--border))",
+                    }
+                  : {
                       background: "var(--surface)",
                       borderColor: "var(--border)",
-                    }}
+                    };
+
+                return (
+                  <div
+                    key={account.id}
+                    className="min-w-0 rounded-2xl border p-4"
+                    style={primaryStyles}
                   >
-                    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)] xl:items-start">
+                    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] xl:items-center">
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <h5 className="break-all text-2xl font-semibold text-[var(--title)]">
-                            {account.username}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="truncate text-lg font-semibold text-[var(--title)]">
+                            {displayName}
                           </h5>
                           {account.isPrimary ? (
-                            <MiniPill label="Primary Account" tone="brand" />
+                            <MiniPill label="Primary" tone="brand" />
                           ) : null}
                         </div>
-
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <MiniPill label={account.role} />
+                        <p className="mt-1 truncate text-sm text-[var(--muted)]">
+                          {account.username}
+                          {linkedUser?.email ? ` • ${linkedUser.email}` : ""}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <MiniPill label={account.role || "User"} />
                           <MiniPill
                             label={account.status}
                             tone={getLinkedStatusTone(account.status)}
                           />
+                          <MiniPill
+                            label={account.department || "No department"}
+                          />
                         </div>
-
-                        <p className="paragraph mt-4 break-words !text-lg">
-                          {account.identifier} • {account.department}
-                        </p>
                       </div>
 
-                      <div className="min-w-0 xl:pt-1">
-                        <p className="paragraph break-words !text-lg">
-                          Balance:{" "}
-                          <span className="font-semibold text-[var(--title)]">
+                      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 xl:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Balance
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--title)]">
                             {account.balance.toFixed(2)}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="min-w-0 xl:pt-1">
-                        <p className="paragraph break-words !text-lg">
-                          Pages:{" "}
-                          <span className="font-semibold text-[var(--title)]">
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Pages
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--title)]">
                             {account.pages}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="min-w-0 xl:pt-1">
-                        <p className="paragraph break-words !text-lg">
-                          Jobs:{" "}
-                          <span className="font-semibold text-[var(--title)]">
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Jobs
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--title)]">
                             {account.jobs}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="min-w-0 xl:pt-1">
-                        <p className="paragraph break-words !text-lg">
-                          Last activity:{" "}
-                          <span className="font-semibold text-[var(--title)]">
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Last Activity
+                          </p>
+                          <p className="mt-1 truncate font-semibold text-[var(--title)]">
                             {account.lastActivity}
-                          </span>
-                        </p>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!account.isPrimary ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              className="h-10 px-4 text-sm"
+                              iconLeft={<Crown className="h-4 w-4" />}
+                              disabled={detailsActionId === `primary-${account.id}`}
+                              onClick={() => void changePrimaryAccount(account.id)}
+                            >
+                              Set as Primary
+                            </Button>
+                            <button
+                              type="button"
+                              className="flex h-10 w-10 items-center justify-center rounded-md border text-[var(--muted)] transition hover:border-[var(--color-brand-500)] hover:text-[var(--color-brand-500)] disabled:cursor-not-allowed disabled:opacity-50"
+                              style={{
+                                background: "var(--surface)",
+                                borderColor: "var(--border)",
+                              }}
+                              disabled={detailsActionId === `remove-${account.id}`}
+                              aria-label={`Remove ${account.username}`}
+                              onClick={() => void removeLinkedAccount(account.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <MiniPill label="Primary cannot be removed" />
+                        )}
                       </div>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                );
+              })
+            )}
           </div>
-        </div>
-      );
-    }
+        </section>
 
-    if (segment === "add-linked-account") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div>
-            <h3 className="title-lg">Add Linked Account</h3>
-            <p className="paragraph mt-3 !text-lg">
-              Add another account under the same real person profile.
-            </p>
-          </div>
-
-          <div className="grid min-w-0 gap-5 md:grid-cols-2">
-            <Input
-              value={selectedGroup.personName}
-              readOnly
-              wrapperClassName="h-14"
-              className="h-full !py-0 !text-base"
-            />
-            <Input
-              value={selectedGroup.identifier}
-              readOnly
-              wrapperClassName="h-14"
-              className="h-full !py-0 !text-base"
-            />
-            <Input
-              value={newLinkedUsername}
-              onChange={(e) => setNewLinkedUsername(e.target.value)}
-              placeholder="Linked username"
-              wrapperClassName="h-14"
-              className="h-full !py-0 !text-base"
-            />
-            <Input
-              value={newLinkedRole}
-              onChange={(e) => setNewLinkedRole(e.target.value)}
-              placeholder="Role"
-              wrapperClassName="h-14"
-              className="h-full !py-0 !text-base"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-3">
-            <Button
-              variant="outline"
-              className="h-14 px-6 text-base"
-              onClick={() => setSegment("details")}
-            >
-              Cancel
-            </Button>
-            <Button
-              iconLeft={<Plus className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
-              onClick={addLinkedAccount}
-            >
-              Add Linked Account
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (segment === "change-primary-account") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div>
-            <h3 className="title-lg">Change Primary Account</h3>
-            <p className="paragraph mt-3 !text-lg">
-              Select the account that should become the primary identity for
-              this group.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            {selectedGroup.linkedAccounts.map((account) => {
-              const isSelected = newPrimaryId === account.id;
-
-              return (
-                <button
-                  key={account.id}
-                  type="button"
-                  onClick={() => setNewPrimaryId(account.id)}
-                  className="flex w-full min-w-0 items-center justify-between gap-4 rounded-[28px] border px-7 py-6 text-left transition hover:opacity-90"
-                  style={{
-                    background: isSelected
-                      ? "color-mix(in srgb, var(--color-brand-500) 14%, var(--surface))"
-                      : "var(--surface-2)",
-                    borderColor: isSelected
-                      ? "color-mix(in srgb, var(--color-brand-500) 64%, var(--border))"
-                      : "var(--border)",
-                    boxShadow: isSelected
-                      ? "inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 36%, transparent)"
-                      : "none",
-                  }}
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h5 className="break-all text-2xl font-semibold text-[var(--title)]">
-                        {account.username}
-                      </h5>
-                      {account.isPrimary ? (
-                        <MiniPill label="Current Primary" tone="brand" />
-                      ) : null}
-                    </div>
-
-                    <p className="paragraph mt-3 break-words !text-lg">
-                      {account.identifier} • {account.department}
-                    </p>
-                  </div>
-
-                  <Crown
-                    className="h-7 w-7 shrink-0"
-                    style={{
-                      color: isSelected
-                        ? "var(--color-brand-500)"
-                        : "var(--muted)",
-                    }}
-                  />
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center justify-end gap-3">
-            <Button
-              variant="outline"
-              className="h-12 px-6 text-base"
-              onClick={() => setSegment("details")}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="h-12 px-6 text-base"
-              onClick={changePrimaryAccount}
-            >
-              Save Primary Account
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (segment === "view-logs") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div>
-            <h3 className="title-lg">Shared Account Logs</h3>
-            <p className="paragraph mt-3 !text-lg">
-              Audit trail for {selectedGroup.personName}
-            </p>
-          </div>
-
-          <div className="space-y-5">
-            {selectedGroup.logs.map((log) => (
-              <div
-                key={log.id}
-                className="min-w-0 rounded-[32px] border p-8"
-                style={{
-                  background: "var(--surface-2)",
-                  borderColor: "var(--border)",
-                }}
-              >
-                <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0">
-                    <h4 className="break-words text-2xl font-semibold text-[var(--title)]">
-                      {log.title}
-                    </h4>
-                    <p className="paragraph mt-4 break-words !text-xl">
-                      {log.description}
-                    </p>
-                    <p className="mt-6 break-words text-xl font-semibold text-[var(--title)]">
-                      {log.by} • {log.date}
-                    </p>
-                  </div>
-
-                  <Shield className="h-7 w-7 shrink-0 text-[var(--muted)]" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (segment === "edit-notes") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div>
-            <h3 className="title-lg">Edit Notes</h3>
-            <p className="paragraph mt-3 !text-lg">
-              Update the notes for this shared account grouping.
-            </p>
-          </div>
-
-          <div
-            className="min-w-0 rounded-[32px] border p-8"
-            style={{
-              background: "var(--surface-2)",
-              borderColor: "var(--border)",
-            }}
-          >
-            <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+        <section
+          className="min-w-0 rounded-[28px] border p-5"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
               Notes
-            </label>
-            <Input
-              value={notesDraft}
-              onChange={(e) => setNotesDraft(e.target.value)}
-              wrapperClassName="h-12"
-              className="h-full !py-0 !text-base"
-              placeholder="Add shared account notes"
-            />
-          </div>
-
-          <div className="flex items-center justify-end">
-            <Button className="h-12 px-6 text-base" onClick={saveNotes}>
-              Save Notes
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (segment === "delete-grouping") {
-      return (
-        <div className="min-w-0 space-y-8 overflow-x-hidden">
-          <div>
-            <h3 className="title-lg text-[var(--color-brand-600)]">
-              Delete Grouping
-            </h3>
-            <p className="paragraph mt-3 !text-lg">
-              This will permanently remove the shared account grouping record.
-            </p>
-          </div>
-
-          <div
-            className="min-w-0 rounded-[32px] border p-8"
-            style={{
-              background: "var(--surface-2)",
-              borderColor: "var(--border)",
-            }}
-          >
-            <div className="space-y-4">
-              <DetailField
-                label="Person Name"
-                value={selectedGroup.personName}
-              />
-              <DetailField
-                label="Primary Account"
-                value={selectedGroup.primaryAccount}
-              />
-              <DetailField
-                label="Linked Count"
-                value={selectedGroup.linkedCount}
-              />
-              <DetailField
-                label="Department"
-                value={selectedGroup.department}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3">
+            </h4>
             <Button
-              variant="outline"
-              className="h-12 px-6 text-base"
-              onClick={() => setSegment("details")}
+              className="h-10 px-4 text-sm"
+              disabled={detailsActionId === "notes"}
+              onClick={saveNotes}
             >
-              Cancel
-            </Button>
-            <Button
-              iconLeft={<Trash2 className="h-4 w-4" />}
-              className="h-12 px-6 text-base"
-              onClick={deleteGrouping}
-            >
-              Delete Grouping
+              {detailsActionId === "notes" ? "Saving..." : "Save"}
             </Button>
           </div>
-        </div>
-      );
-    }
-
-    return null;
+          <textarea
+            value={notesDraft}
+            onChange={(event) => setNotesDraft(event.target.value)}
+            placeholder="Add shared account notes"
+            className="min-h-[110px] w-full resize-y rounded-md border bg-transparent px-4 py-3 text-sm outline-none transition focus:border-brand-500/50 focus:ring-4 focus:ring-[rgba(var(--brand-rgb),0.16)]"
+            style={{ borderColor: "var(--border)", color: "var(--title)" }}
+          />
+        </section>
+      </div>
+    );
   };
 
   return (
@@ -1282,14 +1459,6 @@ function SharedAccountsTable(_props, ref) {
           box-sizing: border-box;
         }
 
-        .shared-segment-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-
-        .shared-segment-scroll::-webkit-scrollbar {
-          display: none;
-        }
       `}</style>
 
       <FullscreenTablePortal open={isTableExpanded}>
@@ -1315,39 +1484,157 @@ function SharedAccountsTable(_props, ref) {
 
       <Modal
         open={Boolean(selectedGroup)}
-        onClose={() => setSelectedGroup(null)}
+        onClose={() => {
+          setSelectedGroup(null);
+          setIsAddLinkedOpen(false);
+          setIsLogsModalOpen(false);
+          setIsDeleteGroupConfirmOpen(false);
+          setDetailsError("");
+        }}
         className="shared-accounts-details-modal"
       >
         {selectedGroup ? (
-          <div className="shared-accounts-modal-shell w-full max-w-full min-w-0 space-y-8 overflow-x-hidden pr-2">
-            <div className="min-w-0 space-y-5">
+          <div className="shared-accounts-modal-shell w-full max-w-full min-w-0 space-y-6 overflow-x-hidden pr-2">
+            <div className="flex min-w-0 flex-col gap-4 border-b border-[var(--border)] pb-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
-                <h3 className="break-words title-xl">
-                  {selectedGroup.personName}
-                </h3>
-                <p className="paragraph mt-2 break-words !text-lg">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="break-words title-xl">
+                    {selectedGroup.personName}
+                  </h3>
+                  <SharedStatusBadge status={selectedGroup.status} />
+                </div>
+                <p className="paragraph mt-2 break-words !text-base">
                   Primary account:{" "}
                   <span className="font-semibold text-[var(--title)]">
                     {selectedGroup.primaryAccount}
                   </span>
                 </p>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  {selectedGroup.department || "No department"} • Updated{" "}
+                  {selectedGroup.updatedAt}
+                </p>
               </div>
 
-              <div className="shared-segment-scroll w-full overflow-x-auto overflow-y-hidden pb-1">
-                <div className="w-max min-w-full">
-                  <SegmentToggle
-                    options={segmentOptions}
-                    value={segment}
-                    onChange={(value) => setSegment(value as SegmentValue)}
-                    className="w-max min-w-full max-w-none flex-nowrap"
-                    buttonClassName="text-base"
-                  />
-                </div>
+              <div className="flex shrink-0 flex-wrap gap-2 pr-10">
+                <Button
+                  variant="outline"
+                  className="h-10 px-4 text-sm"
+                  iconLeft={<Shield className="h-4 w-4" />}
+                  onClick={() => setIsLogsModalOpen(true)}
+                >
+                  View Logs
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 px-4 text-sm text-[var(--color-brand-600)]"
+                  iconLeft={<Trash2 className="h-4 w-4" />}
+                  onClick={() => setIsDeleteGroupConfirmOpen(true)}
+                >
+                  Delete Group
+                </Button>
               </div>
             </div>
 
             <div className="min-w-0 overflow-x-hidden">
-              {renderSegmentContent()}
+              {renderSharedAccountDetailsContent()}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(selectedGroup && isLogsModalOpen)}
+        onClose={() => setIsLogsModalOpen(false)}
+      >
+        {selectedGroup ? (
+          <div className="w-[min(92vw,760px)] max-w-full min-w-0 space-y-5 overflow-x-hidden">
+            <div>
+              <h3 className="title-lg">Shared Account Logs</h3>
+              <p className="paragraph mt-2 !text-base">
+                Audit trail for {selectedGroup.personName}
+              </p>
+            </div>
+
+            <div className="max-h-[520px] space-y-3 overflow-y-auto pr-2">
+              {selectedGroup.logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="min-w-0 rounded-2xl border p-5"
+                  style={{
+                    background: "var(--surface-2)",
+                    borderColor: "var(--border)",
+                  }}
+                >
+                  <div className="flex min-w-0 gap-3">
+                    <Shield className="mt-1 h-5 w-5 shrink-0 text-[var(--muted)]" />
+                    <div className="min-w-0">
+                      <h4 className="truncate text-lg font-semibold text-[var(--title)]">
+                        {log.title}
+                      </h4>
+                      <p className="paragraph mt-2 break-words !text-base">
+                        {log.description}
+                      </p>
+                      <p className="mt-3 text-sm font-semibold text-[var(--title)]">
+                        {log.by} • {log.date}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(selectedGroup && isDeleteGroupConfirmOpen)}
+        onClose={() => setIsDeleteGroupConfirmOpen(false)}
+      >
+        {selectedGroup ? (
+          <div className="w-[min(92vw,560px)] max-w-full min-w-0 space-y-5 overflow-x-hidden">
+            <div>
+              <h3 className="title-md text-[var(--color-brand-600)]">
+                Delete Group
+              </h3>
+              <p className="paragraph mt-2">
+                This will permanently remove the shared account group for{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {selectedGroup.personName}
+                </span>
+                .
+              </p>
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                background: "var(--surface-2)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <p className="font-semibold text-[var(--title)]">
+                {selectedGroup.primaryAccount}
+              </p>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {selectedGroup.linkedCount} linked accounts •{" "}
+                {selectedGroup.department || "No department"}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteGroupConfirmOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                iconLeft={<Trash2 className="h-4 w-4" />}
+                disabled={detailsActionId === "delete-group"}
+                onClick={deleteGrouping}
+              >
+                {detailsActionId === "delete-group" ? "Deleting..." : "Delete"}
+              </Button>
             </div>
           </div>
         ) : null}
@@ -1355,82 +1642,133 @@ function SharedAccountsTable(_props, ref) {
 
       <Modal
         open={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={closeCreateModal}
       >
         <div className="w-[min(96vw,920px)] max-w-full min-w-0 space-y-8 overflow-x-hidden">
           <div>
             <h3 className="title-lg">Create Shared Account Group</h3>
           </div>
 
-          <div className="grid min-w-0 gap-6 md:grid-cols-2">
-            <div className="min-w-0">
-              <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
-                Full Name *
-              </label>
-              <Input
-                value={createFullName}
-                onChange={(e) => setCreateFullName(e.target.value)}
-                placeholder="e.g. Jane Smith"
-              />
+          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0">
+                <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
+                  Primary Account *
+                </label>
+                <ListBox
+                  value={createPrimaryUsername}
+                  onValueChange={handleCreatePrimaryChange}
+                  options={createPrimaryOptions}
+                  placeholder="Search primary account..."
+                  searchable
+                  combobox
+                  clearSearchOnSelect={false}
+                  searchPlaceholder="Search primary account..."
+                  emptyText="No users found."
+                  triggerClassName="min-h-14 px-4 py-3"
+                  contentClassName="z-[70]"
+                  maxHeightClassName="max-h-72"
+                />
+              </div>
+
+              {selectedPrimaryUser ? (
+                <UserSummaryCard user={selectedPrimaryUser} />
+              ) : null}
             </div>
 
-            <div className="min-w-0">
-              <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
-                Employee / University ID
-              </label>
-              <Input
-                value={createIdentifier}
-                onChange={(e) => setCreateIdentifier(e.target.value)}
-                placeholder="e.g. EMP-1042"
-              />
-            </div>
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0">
+                <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
+                  Linked Account *
+                </label>
+                <ListBox
+                  value=""
+                  onValueChange={handleCreateLinkedSelect}
+                  options={createLinkedOptions}
+                  placeholder="Search linked accounts..."
+                  searchable
+                  combobox
+                  searchPlaceholder="Search linked accounts..."
+                  emptyText="No available linked users."
+                  disabled={!selectedPrimaryUser}
+                  triggerClassName="min-h-14 px-4 py-3"
+                  contentClassName="z-[70]"
+                  maxHeightClassName="max-h-72"
+                />
+              </div>
 
-            <div className="min-w-0">
-              <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
-                Department
-              </label>
-              <Input
-                value={createDepartment}
-                onChange={(e) => setCreateDepartment(e.target.value)}
-                placeholder="e.g. IT"
-              />
-            </div>
-
-            <div className="min-w-0">
-              <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
-                Notes
-              </label>
-              <Input
-                value={createNotes}
-                onChange={(e) => setCreateNotes(e.target.value)}
-                placeholder="Optional notes..."
-              />
+              <div className="space-y-3">
+                {selectedLinkedUsers.length === 0 ? (
+                  <div
+                    className="rounded-2xl border px-4 py-4 text-sm font-medium text-[var(--muted)]"
+                    style={{
+                      background: "var(--surface-2)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    No linked accounts selected.
+                  </div>
+                ) : (
+                  selectedLinkedUsers.map((user) => (
+                    <UserSummaryCard
+                      key={user.username}
+                      user={user}
+                      action={
+                        <Button
+                          variant="outline"
+                          className="h-10 px-4 text-sm"
+                          onClick={() => removeCreateLinkedUser(user.username)}
+                        >
+                          Remove
+                        </Button>
+                      }
+                    />
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
           <div className="min-w-0">
             <label className="mb-2 block text-sm font-medium text-[var(--muted)]">
-              Search & Add Accounts
+              Notes
             </label>
             <Input
-              value={accountSearch}
-              onChange={(e) => setAccountSearch(e.target.value)}
-              placeholder="Search by username or name..."
+              value={createNotes}
+              onChange={(e) => setCreateNotes(e.target.value)}
+              placeholder="Optional notes..."
             />
           </div>
+
+          {createError ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm font-semibold"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+                borderColor:
+                  "color-mix(in srgb, var(--color-brand-500) 28%, var(--border))",
+                color:
+                  "color-mix(in srgb, var(--color-brand-700) 82%, var(--title))",
+              }}
+            >
+              {createError}
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-3">
             <Button
               variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
+              onClick={closeCreateModal}
             >
               Cancel
             </Button>
             <Button
               iconLeft={<UserRound className="h-4 w-4" />}
               onClick={createSharedAccount}
+              disabled={!canCreateSharedAccount}
             >
-              Create Group
+              {isCreating ? "Creating..." : "Create Group"}
             </Button>
           </div>
         </div>
@@ -1480,7 +1818,7 @@ function SharedAccountsTable(_props, ref) {
               {actionValue === "delete-group" &&
                 "The selected groups below will be permanently removed from the table."}
               {actionValue === "refresh-data" &&
-                "This will restore the local preview data."}
+                "This will reload shared accounts from the database."}
             </p>
 
             {actionValue !== "refresh-data" ? (
@@ -1697,7 +2035,11 @@ function SharedAccountsTable(_props, ref) {
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               <TableBody>
-                {filteredGroups.length === 0 ? (
+                {isLoading ? (
+                  <TableEmptyState text="Loading shared accounts..." />
+                ) : loadError ? (
+                  <TableEmptyState text={loadError} />
+                ) : filteredGroups.length === 0 ? (
                   <TableEmptyState text="No shared accounts found" />
                 ) : (
                   filteredGroups.map((group) => {

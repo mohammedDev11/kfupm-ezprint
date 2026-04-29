@@ -275,6 +275,7 @@ const getAdminUsersData = async () => {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        userType: user.userType,
         department: user.department || "Software Engineering",
         standing: user.standing || "Student",
         phone: user.phone || "-",

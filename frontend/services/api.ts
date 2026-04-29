@@ -79,7 +79,10 @@ const readToken = (scope: Scope) => {
   return window.localStorage.getItem(TOKEN_STORAGE_KEYS[scope]) || "";
 };
 
-const writeSession = (session: AuthSession) => {
+const writeSession = (
+  session: AuthSession,
+  { setCurrent = true }: { setCurrent?: boolean } = {},
+) => {
   if (typeof window === "undefined") {
     return;
   }
@@ -89,7 +92,10 @@ const writeSession = (session: AuthSession) => {
     USER_STORAGE_KEYS[session.scope],
     JSON.stringify(session.user),
   );
-  window.localStorage.setItem(CURRENT_SCOPE_KEY, session.scope);
+
+  if (setCurrent) {
+    window.localStorage.setItem(CURRENT_SCOPE_KEY, session.scope);
+  }
 };
 
 export const getSession = (scope: Scope): AuthSession | null => {
@@ -183,6 +189,11 @@ export const loginLocal = async (
   };
 
   writeSession(session);
+
+  if (session.scope === "admin") {
+    writeSession({ ...session, scope: "user" }, { setCurrent: false });
+  }
+
   return session;
 };
 

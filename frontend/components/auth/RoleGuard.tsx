@@ -9,7 +9,7 @@ const scopeAllowsRole = (scope: Scope, role: string) => {
     return role === "Admin" || role === "SubAdmin";
   }
 
-  return role === "User";
+  return role === "User" || role === "Admin" || role === "SubAdmin";
 };
 
 export default function RoleGuard({
@@ -30,7 +30,16 @@ export default function RoleGuard({
       return;
     }
 
-    setReady(true);
+    let isActive = true;
+    queueMicrotask(() => {
+      if (isActive) {
+        setReady(true);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [router, scope]);
 
   if (!ready) {

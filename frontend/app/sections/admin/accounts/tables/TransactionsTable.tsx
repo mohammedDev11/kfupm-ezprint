@@ -2,8 +2,6 @@
 
 import Modal from "@/components/ui/modal/Modal";
 import {
-  Check,
-  CircleAlert,
   CircleDollarSign,
   Maximize2,
   Minimize2,
@@ -96,7 +94,7 @@ const formatMoney = (value: number) => {
   return `${sign}${Math.abs(value).toFixed(2)}`;
 };
 
-const formatCurrency = (value: number) => `${value.toFixed(2)} SAR`;
+const formatQuotaValue = (value: number) => value.toFixed(2);
 
 const getAmountColor = (value: number) => {
   if (value > 0) {
@@ -133,23 +131,11 @@ const getAmountColor = (value: number) => {
 function TransactionTypeBadge({ type }: { type: TransactionType }) {
   const meta = transactionTypeMeta[type];
 
-  const icon =
-    type === "Top-up" ? (
-      <CircleDollarSign className="h-4 w-4" strokeWidth={2.4} />
-    ) : type === "Print Charge" ? (
-      <CircleAlert className="h-4 w-4" strokeWidth={2.4} />
-    ) : type === "Refund" ? (
-      <RotateCcw className="h-4 w-4" strokeWidth={2.4} />
-    ) : (
-      <Check className="h-4 w-4" strokeWidth={2.4} />
-    );
-
   return (
     <StatusBadge
       label={meta.label}
       tone={meta.tone}
-      icon={icon}
-      className="rounded-full !gap-2 px-3 py-1.5 text-xs [&>span:first-child]:h-auto [&>span:first-child]:w-auto"
+      className="rounded-full px-3 py-1.5 text-xs"
     />
   );
 }
@@ -389,20 +375,20 @@ const TransactionsTable = () => {
     },
     {
       title: "Total Top-ups",
-      value: formatCurrency(transactionStats.totalTopUps),
-      helper: `${transactionStats.topUpCount.toLocaleString()} top-up records`,
+      value: formatQuotaValue(transactionStats.totalTopUps),
+      helper: `${transactionStats.topUpCount.toLocaleString()} quota top-up records`,
       icon: <CircleDollarSign className="h-5 w-5" />,
     },
     {
       title: "Total Charges",
-      value: formatCurrency(transactionStats.totalCharges),
-      helper: `${transactionStats.chargeCount.toLocaleString()} print charge records`,
+      value: formatQuotaValue(transactionStats.totalCharges),
+      helper: "Quota consumed by print charges",
       icon: <Printer className="h-5 w-5" />,
     },
     {
       title: "Net Movement",
-      value: formatCurrency(transactionStats.netMovement),
-      helper: "Quota movement across loaded records",
+      value: formatQuotaValue(transactionStats.netMovement),
+      helper: "Net quota movement across loaded records",
       icon: <RotateCcw className="h-5 w-5" />,
     },
   ];
