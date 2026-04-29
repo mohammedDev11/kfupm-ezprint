@@ -4,12 +4,50 @@ const env = require("../../config/env");
 
 const toIdString = (value) => value?.toString?.() || "";
 
-const getDefaultPrinterIdentity = () => ({
+const DEFAULT_CAPABILITIES = ["B&W", "Duplex", "Secure Release", "PDF"];
+const LEGACY_DEFAULT_QUEUE_NAMES = ["HP MFP M830 Secure Release Queue"];
+const DEFAULT_QUEUE_DESCRIPTION = "Secure-release queue for CCM printers.";
+
+const getDefaultPrinterConfig = () => ({
   ipAddress: env.printDefaultPrinterIp.trim(),
   name: env.printDefaultPrinterName.trim(),
+  model: env.printDefaultPrinterModel,
+  building: env.printDefaultPrinterBuilding,
+  room: env.printDefaultPrinterRoom,
+  department: env.printDefaultPrinterDepartment,
+  locationCode: env.printDefaultPrinterLocationCode,
+  queueName: env.printDefaultQueueName,
+  costPerPage: env.printDefaultCostPerPage,
+  capabilities: DEFAULT_CAPABILITIES,
+  isPrimaryDefault: true,
 });
 
-const findExistingDefaultPrinter = async ({ ipAddress, name }) => {
+const getAdditionalPrinterConfigs = () =>
+  (env.printAdditionalPrinters || []).map((printer, index) => ({
+    ipAddress: printer.ipAddress,
+    name: printer.name || `Additional Printer ${index + 2}`,
+    model: printer.model || printer.name || `Additional Printer ${index + 2}`,
+    building: printer.building || env.printDefaultPrinterBuilding,
+    room: printer.room || "",
+    department: printer.department || env.printDefaultPrinterDepartment,
+    locationCode:
+      printer.locationCode ||
+      [printer.building || env.printDefaultPrinterBuilding, printer.room]
+        .filter(Boolean)
+        .join("/"),
+    serialNumber: printer.serialNumber,
+    firmwareVersion: printer.firmwareVersion,
+    queueName: printer.queueName || env.printDefaultQueueName,
+    costPerPage: Number.isFinite(printer.costPerPage)
+      ? printer.costPerPage
+      : env.printDefaultCostPerPage,
+    capabilities: printer.capabilities?.length
+      ? printer.capabilities
+      : DEFAULT_CAPABILITIES,
+    isPrimaryDefault: false,
+  }));
+
+const findExistingPrinter = async ({ ipAddress, name }) => {
   if (ipAddress) {
     const printerByIp = await Printer.findOne({ "network.ipAddress": ipAddress });
     if (printerByIp) {
@@ -24,29 +62,14 @@ const findExistingDefaultPrinter = async ({ ipAddress, name }) => {
   return null;
 };
 
-const ensureDefaultPrinterSetup = async () => {
-  const identity = getDefaultPrinterIdentity();
-
-  if (!identity.ipAddress) {
-    return {
-      printer: null,
-      queue: null,
-    };
-  }
-
-  let printer = await findExistingDefaultPrinter(identity);
-
-  if (!printer) {
-    printer = new Printer();
-  }
-
-  printer.name = identity.name || env.printDefaultPrinterName;
-  printer.model = env.printDefaultPrinterModel;
-  printer.department = env.printDefaultPrinterDepartment;
+const applyPrinterConfig = (printer, config) => {
+  printer.name = config.name || env.printDefaultPrinterName;
+  printer.model = config.model || config.name || env.printDefaultPrinterModel;
+  printer.department = config.department || env.printDefaultPrinterDepartment;
   printer.location = {
     ...printer.location,
-    building: env.printDefaultPrinterBuilding,
-    room: env.printDefaultPrinterRoom,
+    building: config.building || "",
+    room: config.room || "",
     floor: printer.location?.floor ?? null,
     coordinates: {
       lat: printer.location?.coordinates?.lat ?? null,
@@ -75,10 +98,7 @@ const ensureDefaultPrinterSetup = async () => {
     supported: Array.from(
       new Set([
         ...(printer.capabilities?.supported || []),
-        "B&W",
-        "Duplex",
-        "Secure Release",
-        "PDF",
+        ...(config.capabilities || DEFAULT_CAPABILITIES),
       ]),
     ),
     defaultSettings: {
@@ -88,24 +108,128 @@ const ensureDefaultPrinterSetup = async () => {
       quality: printer.capabilities?.defaultSettings?.quality || "Normal",
     },
   };
-  printer.costPerPage = env.printDefaultCostPerPage;
+  printer.costPerPage = Number.isFinite(config.costPerPage)
+    ? config.costPerPage
+    : env.printDefaultCostPerPage;
   printer.network = {
     ...printer.network,
-    ipAddress: identity.ipAddress,
+    ipAddress: config.ipAddress,
   };
-  printer.notes = `Provisioned for secure-release web printing at ${env.printDefaultPrinterLocationCode}.`;
+  if (config.serialNumber) {
+    printer.serialNumber = config.serialNumber;
+  }
+  if (config.firmwareVersion) {
+    printer.device = {
+      ...printer.device,
+      firmwareVersion: config.firmwareVersion,
+    };
+  }
+  printer.notes = `Provisioned for secure-release web printing at ${
+    config.locationCode || "the configured location"
+  }.`;
   printer.isActive = true;
+};
 
+const upsertPrinter = async (config) => {
+  let printer = await findExistingPrinter(config);
+
+  if (!printer) {
+    printer = new Printer();
+  }
+
+  applyPrinterConfig(printer, config);
   await printer.save();
 
-  let queue = await Queue.findOne({ name: env.printDefaultQueueName });
+  return printer;
+};
+
+const buildUniqueAssignedIds = (...printerGroups) => {
+  const seen = new Set();
+  const assigned = [];
+
+  printerGroups.flat().forEach((printer) => {
+    const id = printer?._id || printer;
+    const idString = toIdString(id);
+
+    if (!idString || seen.has(idString)) {
+      return;
+    }
+
+    seen.add(idString);
+    assigned.push(id);
+  });
+
+  return assigned;
+};
+
+const updatePrinterQueueLink = async (printer, queue) => {
+  if (!printer || !queue) {
+    return;
+  }
+
+  if (
+    toIdString(printer.queue?.assignedQueueId) === toIdString(queue._id) &&
+    printer.queue?.queueName === queue.name
+  ) {
+    return;
+  }
+
+  printer.queue = {
+    ...printer.queue,
+    assignedQueueId: queue._id,
+    queueName: queue.name,
+    enabled: true,
+    manualReleaseRequired: true,
+    pinRequired: false,
+  };
+  await printer.save();
+};
+
+const findQueueForConfig = async (config) => {
+  const queue = await Queue.findOne({ name: config.queueName });
+
+  if (queue) {
+    return queue;
+  }
+
+  const canUseLegacyDefaultQueue =
+    config.isPrimaryDefault || config.queueName === env.printDefaultQueueName;
+
+  if (!canUseLegacyDefaultQueue) {
+    return null;
+  }
+
+  return Queue.findOne({
+    name: { $in: LEGACY_DEFAULT_QUEUE_NAMES },
+  });
+};
+
+const upsertQueueForPrinter = async ({ config, printer, defaultPrinter }) => {
+  let queue = await findQueueForConfig(config);
 
   if (!queue) {
     queue = new Queue();
   }
 
-  queue.name = env.printDefaultQueueName;
-  queue.description = `Secure-release queue for ${env.printDefaultPrinterName}.`;
+  const existingAssigned = queue.printers?.assigned || [];
+  const shouldKeepDefault =
+    config.queueName === env.printDefaultQueueName || config.isPrimaryDefault;
+  const defaultPrinterId =
+    shouldKeepDefault && defaultPrinter?._id
+      ? defaultPrinter._id
+      : queue.printers?.default || printer._id;
+  const assigned = buildUniqueAssignedIds(
+    shouldKeepDefault && defaultPrinter ? [defaultPrinter] : [],
+    existingAssigned,
+    [printer],
+  );
+  const assignedPrinters = await Printer.find({ _id: { $in: assigned } });
+
+  queue.name = config.queueName;
+  queue.description =
+    config.queueName === env.printDefaultQueueName
+      ? DEFAULT_QUEUE_DESCRIPTION
+      : queue.description || `Secure-release queue for ${config.name || printer.name}.`;
   queue.type = "Secure Release Queue";
   queue.status = {
     ...queue.status,
@@ -115,10 +239,12 @@ const ensureDefaultPrinterSetup = async () => {
   };
   queue.printers = {
     ...queue.printers,
-    assigned: [printer._id],
-    default: printer._id,
-    totalAssigned: 1,
-    onlineCount: printer.status?.current === "Online" ? 1 : 0,
+    assigned,
+    default: defaultPrinterId,
+    totalAssigned: assigned.length,
+    onlineCount: assignedPrinters.filter(
+      (assignedPrinter) => assignedPrinter.status?.current === "Online",
+    ).length,
   };
   queue.access = {
     ...queue.access,
@@ -151,22 +277,50 @@ const ensureDefaultPrinterSetup = async () => {
   queue.isActive = true;
 
   await queue.save();
+  await Promise.all(
+    assignedPrinters.map((assignedPrinter) => updatePrinterQueueLink(assignedPrinter, queue)),
+  );
 
-  if (toIdString(printer.queue?.assignedQueueId) !== toIdString(queue._id)) {
-    printer.queue = {
-      ...printer.queue,
-      assignedQueueId: queue._id,
-      queueName: queue.name,
-      enabled: true,
-      manualReleaseRequired: true,
-      pinRequired: false,
+  return queue;
+};
+
+const ensureDefaultPrinterSetup = async () => {
+  const defaultConfig = getDefaultPrinterConfig();
+
+  if (!defaultConfig.ipAddress) {
+    return {
+      printer: null,
+      queue: null,
+      additionalPrinters: [],
     };
-    await printer.save();
+  }
+
+  const printer = await upsertPrinter(defaultConfig);
+  const queue = await upsertQueueForPrinter({
+    config: defaultConfig,
+    printer,
+    defaultPrinter: printer,
+  });
+  const additionalPrinters = [];
+
+  for (const config of getAdditionalPrinterConfigs()) {
+    if (!config.ipAddress) {
+      continue;
+    }
+
+    const additionalPrinter = await upsertPrinter(config);
+    await upsertQueueForPrinter({
+      config,
+      printer: additionalPrinter,
+      defaultPrinter: printer,
+    });
+    additionalPrinters.push(additionalPrinter);
   }
 
   return {
     printer,
     queue,
+    additionalPrinters,
   };
 };
 

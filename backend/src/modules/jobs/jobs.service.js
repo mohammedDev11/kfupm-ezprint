@@ -36,6 +36,28 @@ const isPrintingRestricted = (user) =>
 const isPendingReleaseStatus = (job) =>
   ["Pending Release", "Held"].includes(job.status?.current || "");
 
+const getConfiguredSecureReleaseQueueNames = () =>
+  new Set([
+    env.printDefaultQueueName,
+    ...(env.printAdditionalPrinters || [])
+      .map((printer) => printer.queueName)
+      .filter(Boolean),
+  ]);
+
+const isConfiguredSecureReleaseQueue = (queue) => {
+  if (!queue) {
+    return false;
+  }
+
+  const configuredQueueNames = getConfiguredSecureReleaseQueueNames();
+  const isSecureRelease =
+    queue.type === "Secure Release Queue" ||
+    queue.security?.secureRelease !== false ||
+    queue.security?.manualReleaseRequired !== false;
+
+  return configuredQueueNames.has(queue.name) && isSecureRelease;
+};
+
 const buildActorPayload = (actor = {}) => ({
   userId: actor.userId,
   username: actor.username,
@@ -175,6 +197,263 @@ const resolvePrinterForQueue = async (queue) => {
     queue,
     printer: resolvedPrinter,
   };
+};
+
+const resolveDispatchPrintersForQueue = async (queue, primaryPrinter) => {
+  const orderedIds = [];
+  const seen = new Set();
+
+  [primaryPrinter, ...(queue?.printers?.assigned || [])].forEach((printer) => {
+    const id = toIdString(printer?._id || printer);
+
+    if (!id || seen.has(id)) {
+      return;
+    }
+
+    seen.add(id);
+    orderedIds.push(id);
+  });
+
+  if (orderedIds.length === 0) {
+    return primaryPrinter ? [primaryPrinter] : [];
+  }
+
+  const printers = await Printer.find({ _id: { $in: orderedIds } });
+  const printersById = new Map(printers.map((printer) => [toIdString(printer._id), printer]));
+
+  return orderedIds
+    .map((id) => printersById.get(id))
+    .filter(
+      (printer) =>
+        printer &&
+        printer.isActive !== false &&
+        printer.status?.current === "Online" &&
+        Boolean(printer.network?.ipAddress),
+    );
+};
+
+const getDispatchPortForLog = () =>
+  env.printTransport === "socket" ? env.printSocketPort : 0;
+
+const mapDispatchPrinterForLog = (printer) => ({
+  printerId: toIdString(printer?._id || printer),
+  printerName: printer?.name || "",
+  ipAddress: printer?.network?.ipAddress || "",
+  port: getDispatchPortForLog(),
+  status: printer?.status?.current || "",
+  isActive: printer?.isActive !== false,
+});
+
+const buildUploadDispatchLogBase = (queue, logContext = {}) => ({
+  phase: logContext.phase || "upload",
+  jobId: logContext.jobId || "",
+  queueId: toIdString(queue?._id),
+  queueName: queue?.name || "",
+});
+
+const logUploadDispatchInfo = (message, payload) => {
+  console.info(`[print-upload] ${message}`, payload);
+};
+
+const logUploadDispatchWarning = (message, payload) => {
+  console.warn(`[print-upload] ${message}`, payload);
+};
+
+const dispatchPrintFileToQueuePrinters = async ({
+  queue,
+  primaryPrinter,
+  filePath,
+  buffer,
+  holdOnPrinter = false,
+  holdKey = "",
+  jobName = "",
+  username = "",
+  logContext = null,
+}) => {
+  const printers = await resolveDispatchPrintersForQueue(queue, primaryPrinter);
+  const shouldLogUploadDispatch = Boolean(logContext);
+  const logBase = shouldLogUploadDispatch
+    ? buildUploadDispatchLogBase(queue, logContext)
+    : null;
+
+  if (shouldLogUploadDispatch) {
+    logUploadDispatchInfo("selected queue", logBase);
+    logUploadDispatchInfo("resolved target printers", {
+      ...logBase,
+      targetCount: printers.length,
+      printers: printers.map(mapDispatchPrinterForLog),
+    });
+  }
+
+  if (printers.length === 0) {
+    if (shouldLogUploadDispatch) {
+      logUploadDispatchWarning("no eligible assigned printers, using primary printer fallback", {
+        ...logBase,
+        printer: mapDispatchPrinterForLog(primaryPrinter),
+      });
+    }
+
+    try {
+      const result = await dispatchPrintFile({
+        printer: primaryPrinter,
+        filePath,
+        buffer,
+        holdOnPrinter,
+        holdKey,
+        jobName,
+        username,
+      });
+
+      if (shouldLogUploadDispatch) {
+        logUploadDispatchInfo("printer dispatch succeeded", {
+          ...logBase,
+          printer: mapDispatchPrinterForLog(primaryPrinter),
+          bytesSent: result.bytesSent || 0,
+          method: result.method || env.printTransport,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      if (shouldLogUploadDispatch) {
+        logUploadDispatchWarning("printer dispatch failed", {
+          ...logBase,
+          printer: mapDispatchPrinterForLog(primaryPrinter),
+          message: error.message,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  const destinations = [];
+  const failures = [];
+
+  for (const [index, printer] of printers.entries()) {
+    if (shouldLogUploadDispatch) {
+      logUploadDispatchInfo("dispatching to printer", {
+        ...logBase,
+        printer: mapDispatchPrinterForLog(printer),
+      });
+    }
+
+    try {
+      const result = await dispatchPrintFile({
+        printer,
+        filePath,
+        buffer,
+        holdOnPrinter,
+        holdKey,
+        jobName,
+        username,
+      });
+
+      destinations.push({
+        ...result,
+        printerId: toIdString(printer._id),
+        printerName: printer.name,
+      });
+
+      if (shouldLogUploadDispatch) {
+        logUploadDispatchInfo("printer dispatch succeeded", {
+          ...logBase,
+          printer: mapDispatchPrinterForLog(printer),
+          bytesSent: result.bytesSent || 0,
+          method: result.method || env.printTransport,
+        });
+      }
+    } catch (error) {
+      if (shouldLogUploadDispatch) {
+        logUploadDispatchWarning("printer dispatch failed", {
+          ...logBase,
+          printer: mapDispatchPrinterForLog(printer),
+          message: error.message,
+        });
+      }
+
+      if (index === 0) {
+        throw error;
+      }
+
+      failures.push({
+        printerId: toIdString(printer._id),
+        printerName: printer.name,
+        message: error.message,
+      });
+    }
+  }
+
+  const primaryResult = destinations[0];
+
+  return {
+    ...primaryResult,
+    destinations,
+    failures,
+    destinationCount: destinations.length,
+  };
+};
+
+const mapDispatchSummary = (dispatchResult) => {
+  if (!dispatchResult) {
+    return null;
+  }
+
+  return {
+    method: dispatchResult.method || env.printTransport,
+    destinationName: dispatchResult.destinationName || "",
+    destinationCount: dispatchResult.destinationCount || 1,
+    destinations: (dispatchResult.destinations || []).map((destination) => ({
+      printerId: destination.printerId || "",
+      printerName: destination.printerName || destination.destinationName || "",
+      targetHost: destination.targetHost || "",
+      bytesSent: destination.bytesSent || 0,
+    })),
+    failures: dispatchResult.failures || [],
+    failureCount: dispatchResult.failures?.length || 0,
+  };
+};
+
+const recordAdditionalDispatchFailures = async ({ actor, job, dispatchResult }) => {
+  const failures = dispatchResult?.failures || [];
+
+  if (failures.length === 0) {
+    return;
+  }
+
+  try {
+    await Promise.all(
+      failures.map((failure) =>
+        recordAuditLog({
+          actor: buildActorPayload(actor),
+          action: {
+            name: "Additional Printer Dispatch Failed",
+            category: "Job",
+            details: `Additional printer dispatch failed for job "${job.jobId}".`,
+          },
+          resource: {
+            type: "PrintJob",
+            id: job._id,
+            name: job.jobId,
+            changes: {
+              documentName: job.documentName,
+              printerName: failure.printerName || "",
+              queueName: job.printer?.queueName || "",
+            },
+          },
+          outcome: {
+            success: false,
+            statusCode: 207,
+            errorMessage: failure.message || "Additional printer dispatch failed.",
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    console.warn(
+      `Unable to record additional printer dispatch failure for ${job.jobId}: ${error.message}`,
+    );
+  }
 };
 
 const canUserAccessQueue = (user, queue) => {
@@ -381,6 +660,42 @@ const recordSuccessfulPrintStats = async ({ user, queueId, printerId, groupId, p
   ]);
 };
 
+const recordAdditionalPrinterDispatchStats = async ({
+  dispatchResult,
+  primaryPrinterId,
+  pages,
+  totalCost,
+  now,
+}) => {
+  const primaryId = toIdString(primaryPrinterId);
+  const additionalPrinterIds = Array.from(
+    new Set(
+      (dispatchResult?.destinations || [])
+        .map((destination) => destination.printerId)
+        .filter((printerId) => printerId && printerId !== primaryId),
+    ),
+  );
+
+  if (additionalPrinterIds.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    additionalPrinterIds.map((printerId) =>
+      Printer.findByIdAndUpdate(printerId, {
+        $inc: {
+          "statistics.totalPagesPrinted": pages || 0,
+          "statistics.totalJobsSubmitted": 1,
+          "statistics.totalCost": totalCost || 0,
+        },
+        $set: {
+          "statistics.lastUsedAt": now,
+        },
+      }),
+    ),
+  );
+};
+
 const ensureQueueAccessForUser = (user, queue) => {
   if (queue.status?.current !== "Active" || queue.isActive === false) {
     throw createHttpError(409, "This queue is not active.");
@@ -464,15 +779,53 @@ const mapCreatedJob = (job) => {
   };
 };
 
-const mapPrintOptionQueue = (queue, printer) => ({
-  id: queue._id.toString(),
-  name: queue.name,
-  description: queue.description || "",
-  type: queue.type,
-  secureRelease: queue.security?.secureRelease ?? true,
-  printerId: toIdString(printer?._id || queue.printers?.default?._id || queue.printers?.default),
-  printerName: printer?.name || queue.printers?.default?.name || "",
-});
+const mapQueuePrinterTarget = (printer) => {
+  const id = toIdString(printer?._id || printer);
+
+  if (!id && !printer?.name) {
+    return null;
+  }
+
+  return {
+    id,
+    name: printer?.name || "",
+    status: printer?.status?.current || "",
+    online: printer?.status?.current === "Online" && printer?.isActive !== false,
+    isActive: printer?.isActive !== false,
+    ipAddress: printer?.network?.ipAddress || "",
+  };
+};
+
+const getQueuePrinterTargets = (queue, fallbackPrinter) => {
+  const assignedTargets = (queue.printers?.assigned || [])
+    .map(mapQueuePrinterTarget)
+    .filter(Boolean);
+
+  if (assignedTargets.length > 0) {
+    return assignedTargets;
+  }
+
+  return [fallbackPrinter, queue.printers?.default]
+    .map(mapQueuePrinterTarget)
+    .filter(Boolean)
+    .slice(0, 1);
+};
+
+const mapPrintOptionQueue = (queue, printer) => {
+  const assignedPrinters = getQueuePrinterTargets(queue, printer);
+
+  return {
+    id: queue._id.toString(),
+    name: queue.name,
+    description: queue.description || "",
+    type: queue.type,
+    secureRelease: queue.security?.secureRelease ?? true,
+    printerId: toIdString(printer?._id || queue.printers?.default?._id || queue.printers?.default),
+    printerName: printer?.name || queue.printers?.default?.name || "",
+    assignedPrinters,
+    targetPrinterCount: assignedPrinters.length,
+  };
+};
 
 const mapReleaseAdminJob = (job, user) => {
   return {
@@ -700,24 +1053,16 @@ const getPrintJobOptionsData = async (userId) => {
     isActive: true,
     "status.current": "Active",
   })
-    .populate("printers.default", "name")
-    .populate("printers.assigned", "name model location network queue status");
+    .populate("printers.default", "name model location network queue status isActive")
+    .populate("printers.assigned", "name model location network queue status isActive");
 
   const accessibleQueues = queues.filter((queue) => canUserAccessQueue(user, queue));
-  const namedQueues = accessibleQueues.filter(
+  const preferredQueues = accessibleQueues.filter(
     (queue) =>
-      queue.name === env.printDefaultQueueName ||
-      toIdString(queue._id) === toIdString(provisionedSetup.queue?._id),
+      isConfiguredSecureReleaseQueue(queue) ||
+      (toIdString(queue._id) === toIdString(provisionedSetup.queue?._id) &&
+        isConfiguredSecureReleaseQueue(queue)),
   );
-  const secureReleaseQueues = accessibleQueues.filter(
-    (queue) => queue.security?.manualReleaseRequired !== false || queue.security?.secureRelease !== false,
-  );
-  const preferredQueues =
-    namedQueues.length > 0
-      ? namedQueues
-      : secureReleaseQueues.length > 0
-        ? secureReleaseQueues
-        : accessibleQueues;
   const mappedQueues = await Promise.all(
     preferredQueues.map(async (queue) => {
       const { printer } = await resolvePrinterForQueue(queue);
@@ -789,8 +1134,16 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
     throw createHttpError(400, "A non-empty file upload is required.");
   }
 
+  if (!payload.queueId) {
+    throw createHttpError(400, "Select a secure-release queue before uploading.");
+  }
+
   const user = await getRequiredUser(userId);
   const { queue, printer } = await resolveQueueAndPrinterForSubmission(user, payload);
+
+  if (!isConfiguredSecureReleaseQueue(queue)) {
+    throw createHttpError(400, "Select the configured Secure Release queue for this demo.");
+  }
 
   const draftJobId = generateJobId();
   const storedFile = await storePrintFile({
@@ -839,13 +1192,18 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
   let dispatchResult = null;
 
   try {
-    dispatchResult = await dispatchPrintFile({
-      printer,
+    dispatchResult = await dispatchPrintFileToQueuePrinters({
+      queue,
+      primaryPrinter: printer,
       filePath: storedFile.relativePath,
       holdOnPrinter: true,
       holdKey: job.release?.releaseCode,
       jobName: job.documentName,
       username: user.username,
+      logContext: {
+        phase: "upload",
+        jobId: job.jobId,
+      },
     });
   } catch (error) {
     job.status.current = "Pending Release";
@@ -901,6 +1259,11 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
   };
   job.errorMessage = "";
   await job.save();
+  await recordAdditionalDispatchFailures({
+    actor,
+    job,
+    dispatchResult,
+  });
 
   await recordJobSubmittedStats({ user, queue, now });
   await recordSuccessfulPrintStats({
@@ -908,6 +1271,13 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
     queueId: queue?._id,
     printerId: printer?._id,
     groupId: user.groupId,
+    pages: totalPages,
+    totalCost: job.cost?.totalCost || 0,
+    now,
+  });
+  await recordAdditionalPrinterDispatchStats({
+    dispatchResult,
+    primaryPrinterId: printer?._id,
     pages: totalPages,
     totalCost: job.cost?.totalCost || 0,
     now,
@@ -939,6 +1309,7 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
 
   return {
     job: mapCreatedJob(job),
+    dispatch: mapDispatchSummary(dispatchResult),
   };
 };
 
@@ -979,8 +1350,9 @@ const releaseJobData = async (jobId, actor, { scope }) => {
   // is guaranteed to have a stored printable file from the upload flow.
   if (storedFilePath) {
     try {
-      dispatchResult = await dispatchPrintFile({
-        printer,
+      dispatchResult = await dispatchPrintFileToQueuePrinters({
+        queue,
+        primaryPrinter: printer,
         filePath: storedFilePath,
       });
     } catch (error) {
@@ -1075,6 +1447,11 @@ const releaseJobData = async (jobId, actor, { scope }) => {
   job.errorMessage = "";
 
   await job.save();
+  await recordAdditionalDispatchFailures({
+    actor,
+    job,
+    dispatchResult,
+  });
 
   await Promise.all([
     User.findByIdAndUpdate(user._id, {
@@ -1115,6 +1492,13 @@ const releaseJobData = async (jobId, actor, { scope }) => {
         })
       : Promise.resolve(),
   ]);
+  await recordAdditionalPrinterDispatchStats({
+    dispatchResult,
+    primaryPrinterId: job.printer?.printerId,
+    pages: job.document?.pages || 0,
+    totalCost,
+    now,
+  });
 
   await refreshQueuePendingCount(job.printer?.queueId);
   await markJobReleasedNotification(user, job);

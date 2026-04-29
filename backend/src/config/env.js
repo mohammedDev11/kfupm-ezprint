@@ -2,6 +2,83 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+const parsePrinterCapabilities = (value = "") =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizePrinterConfig = (printer = {}) => ({
+  ipAddress: String(printer.ipAddress || printer.ip || "").trim(),
+  name: String(printer.name || "").trim(),
+  model: String(printer.model || "").trim(),
+  building: String(printer.building || "").trim(),
+  room: String(printer.room || "").trim(),
+  department: String(printer.department || "").trim(),
+  locationCode: String(printer.locationCode || "").trim(),
+  serialNumber: String(printer.serialNumber || printer.serial || "").trim(),
+  firmwareVersion: String(
+    printer.firmwareVersion || printer.functionVersion || "",
+  ).trim(),
+  queueName: String(printer.queueName || "").trim(),
+  costPerPage:
+    printer.costPerPage === undefined || printer.costPerPage === ""
+      ? null
+      : Number(printer.costPerPage),
+  capabilities: Array.isArray(printer.capabilities)
+    ? printer.capabilities.map((item) => String(item).trim()).filter(Boolean)
+    : parsePrinterCapabilities(printer.capabilities),
+});
+
+const parseAdditionalPrintersJson = () => {
+  if (!process.env.PRINT_ADDITIONAL_PRINTERS_JSON) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(process.env.PRINT_ADDITIONAL_PRINTERS_JSON);
+    return Array.isArray(parsed) ? parsed.map(normalizePrinterConfig) : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseIndexedAdditionalPrinters = () =>
+  [2, 3, 4, 5]
+    .map((index) =>
+      normalizePrinterConfig({
+        ipAddress: process.env[`PRINT_PRINTER_${index}_IP`],
+        name: process.env[`PRINT_PRINTER_${index}_NAME`],
+        model: process.env[`PRINT_PRINTER_${index}_MODEL`],
+        building: process.env[`PRINT_PRINTER_${index}_BUILDING`],
+        room: process.env[`PRINT_PRINTER_${index}_ROOM`],
+        department: process.env[`PRINT_PRINTER_${index}_DEPARTMENT`],
+        locationCode: process.env[`PRINT_PRINTER_${index}_LOCATION_CODE`],
+        serialNumber: process.env[`PRINT_PRINTER_${index}_SERIAL_NUMBER`],
+        functionVersion: process.env[`PRINT_PRINTER_${index}_FUNCTION_VERSION`],
+        queueName: process.env[`PRINT_PRINTER_${index}_QUEUE_NAME`],
+        costPerPage: process.env[`PRINT_PRINTER_${index}_COST_PER_PAGE`],
+        capabilities: process.env[`PRINT_PRINTER_${index}_CAPABILITIES`],
+      }),
+    )
+    .filter((printer) => printer.ipAddress);
+
+const parseAdditionalPrinters = () => {
+  const printers = [...parseAdditionalPrintersJson(), ...parseIndexedAdditionalPrinters()];
+  const seen = new Set();
+
+  return printers.filter((printer) => {
+    const identity = printer.ipAddress || printer.name;
+
+    if (!identity || seen.has(identity.toLowerCase())) {
+      return false;
+    }
+
+    seen.add(identity.toLowerCase());
+    return true;
+  });
+};
+
 const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT) || 5000,
@@ -26,12 +103,13 @@ const env = {
   printDefaultPrinterLocationCode:
     process.env.PRINT_DEFAULT_PRINTER_LOCATION_CODE || "22/339",
   printDefaultQueueName:
-    process.env.PRINT_DEFAULT_QUEUE_NAME || "HP MFP M830 Secure Release Queue",
+    process.env.PRINT_DEFAULT_QUEUE_NAME || "CCM Secure Release Queue",
   printDefaultCostPerPage:
     Number(process.env.PRINT_DEFAULT_COST_PER_PAGE) || 0.05,
   printDefaultUsername: process.env.PRINT_DEFAULT_USERNAME || "",
   printDefaultPassword: process.env.PRINT_DEFAULT_PASSWORD || "",
   printDestination: process.env.PRINT_DESTINATION || "",
+  printAdditionalPrinters: parseAdditionalPrinters(),
 };
 
 module.exports = env;

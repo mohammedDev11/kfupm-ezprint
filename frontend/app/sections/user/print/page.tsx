@@ -24,6 +24,17 @@ type PrintQueueOption = {
   secureRelease: boolean;
   printerId: string;
   printerName: string;
+  assignedPrinters?: PrintQueuePrinterTarget[];
+  targetPrinterCount?: number;
+};
+
+type PrintQueuePrinterTarget = {
+  id: string;
+  name: string;
+  status: string;
+  online?: boolean;
+  isActive?: boolean;
+  ipAddress?: string;
 };
 
 type PrintOptionsResponse = {
@@ -48,6 +59,8 @@ type UploadedJobResponse = {
     method: string;
     destinationName: string;
     bytesSent: number;
+    destinationCount?: number;
+    failureCount?: number;
   };
 };
 
@@ -56,6 +69,40 @@ const DUPLEX_OPTIONS = [
   { value: "Simplex", label: "Single-sided" },
   { value: "Duplex", label: "Double-sided" },
 ];
+
+const isSecureReleaseQueue = (queue: PrintQueueOption) =>
+  queue.secureRelease ||
+  queue.type === "Secure Release Queue" ||
+  /secure release/i.test(queue.name);
+
+const getQueuePrinterTargets = (
+  queue: PrintQueueOption | null,
+): PrintQueuePrinterTarget[] => {
+  if (!queue) {
+    return [];
+  }
+
+  if (queue.assignedPrinters?.length) {
+    return queue.assignedPrinters;
+  }
+
+  if (queue.printerName || queue.printerId) {
+    return [
+      {
+        id: queue.printerId,
+        name: queue.printerName || "Assigned printer",
+        status: "",
+      },
+    ];
+  }
+
+  return [];
+};
+
+const getPrinterTargetMeta = (printer: PrintQueuePrinterTarget) =>
+  [printer.status || (printer.online ? "Online" : ""), printer.ipAddress]
+    .filter(Boolean)
+    .join(" - ");
 
 const Page = () => {
   const router = useRouter();
@@ -71,6 +118,8 @@ const Page = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [queuedJob, setQueuedJob] = useState<UploadedJobResponse["job"] | null>(null);
+  const [dispatchSummary, setDispatchSummary] =
+    useState<UploadedJobResponse["dispatch"] | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -81,8 +130,19 @@ const Page = () => {
           return;
         }
 
-        setQueues(data.queues || []);
-        setSelectedQueueId(data.defaultQueueId || data.queues?.[0]?.id || "");
+        const secureReleaseQueues = (data.queues || []).filter(isSecureReleaseQueue);
+        const defaultSecureQueue =
+          secureReleaseQueues.find((queue) => queue.id === data.defaultQueueId) ||
+          (secureReleaseQueues.length === 1 ? secureReleaseQueues[0] : null);
+
+        setQueues(secureReleaseQueues);
+        setSelectedQueueId(defaultSecureQueue?.id || "");
+
+        if (secureReleaseQueues.length === 0) {
+          setError(
+            "No active Secure Release queue is available. Confirm MongoDB is connected and the demo queue is provisioned.",
+          );
+        }
       })
       .catch((requestError) => {
         if (!mounted) {
@@ -110,6 +170,13 @@ const Page = () => {
     () => queues.find((queue) => queue.id === selectedQueueId) || null,
     [queues, selectedQueueId],
   );
+  const selectedQueuePrinterTargets = useMemo(
+    () => getQueuePrinterTargets(selectedQueue),
+    [selectedQueue],
+  );
+  const selectedQueuePrinterNames = selectedQueuePrinterTargets
+    .map((printer) => printer.name)
+    .filter(Boolean);
 
   const handleFilesChange = (nextFiles: File[]) => {
     setFiles(nextFiles);
@@ -124,6 +191,7 @@ const Page = () => {
     setError("");
     setSuccess("");
     setQueuedJob(null);
+    setDispatchSummary(null);
 
     const file = files[0];
 
@@ -133,7 +201,12 @@ const Page = () => {
     }
 
     if (!selectedQueueId) {
-      setError("Please choose a queue before submitting the job.");
+      setError("Please choose the Secure Release queue before submitting the job.");
+      return;
+    }
+
+    if (!selectedQueue || !isSecureReleaseQueue(selectedQueue)) {
+      setError("Please choose a valid Secure Release queue before submitting the job.");
       return;
     }
 
@@ -165,6 +238,7 @@ const Page = () => {
         `Print job ${data.job.jobId} was queued in ${data.job.queueName || selectedQueue?.name || "the selected queue"}.`,
       );
       setQueuedJob(data.job);
+      setDispatchSummary(data.dispatch || null);
       setFiles([]);
       setJobName("");
       router.refresh();
@@ -225,18 +299,24 @@ const Page = () => {
                     {selectedQueue?.name || "Select queue"}
                   </DropdownTrigger>
                   <DropdownContent widthClassName="w-full">
-                    {queues.map((queue) => (
-                      <DropdownItem key={queue.id} value={queue.id}>
-                        {queue.name}
+                    {queues.length === 0 ? (
+                      <DropdownItem value="">
+                        No Secure Release queues available
                       </DropdownItem>
-                    ))}
+                    ) : (
+                      queues.map((queue) => (
+                        <DropdownItem key={queue.id} value={queue.id}>
+                          {queue.name}
+                        </DropdownItem>
+                      ))
+                    )}
                   </DropdownContent>
                 </Dropdown>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-[var(--muted)]">
-                  Resolved printer
+                  Assigned printers
                 </label>
                 <div
                   className="rounded-xl border px-4 py-3 text-sm"
@@ -246,11 +326,29 @@ const Page = () => {
                     color: "var(--title)",
                   }}
                 >
-                  <p className="font-medium">
-                    {selectedQueue?.printerName || "Assigned automatically from the queue"}
-                  </p>
+                  {selectedQueuePrinterTargets.length > 0 ? (
+                    <ul className="space-y-2">
+                      {selectedQueuePrinterTargets.map((printer) => (
+                        <li
+                          key={printer.id || printer.name}
+                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <span className="font-medium">
+                            {printer.name || "Assigned printer"}
+                          </span>
+                          <span className="text-xs text-[var(--muted)]">
+                            {getPrinterTargetMeta(printer)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="font-medium">
+                      Assigned automatically from the queue
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-[var(--muted)]">
-                    The backend resolves the physical printer from the selected queue.
+                    The dropdown selects a queue. The backend targets every active, online printer assigned to it.
                   </p>
                 </div>
               </div>
@@ -331,8 +429,8 @@ const Page = () => {
                 Selected destination
               </p>
               <p className="mt-2 text-[var(--paragraph)]">
-                {selectedQueue?.printerName
-                  ? `${selectedQueue.printerName} via ${selectedQueue.name}`
+                {selectedQueuePrinterNames.length > 0 && selectedQueue
+                  ? `${selectedQueuePrinterNames.join(", ")} via ${selectedQueue.name}`
                   : "The queue will resolve the assigned printer automatically."}
               </p>
               <p className="mt-1 text-[var(--muted)]">
@@ -369,6 +467,16 @@ const Page = () => {
                     <p className="font-mono text-3xl font-semibold tracking-[0.22em]">
                       {queuedJob.releaseCode || "------"}
                     </p>
+                    {dispatchSummary ? (
+                      <p className="mt-2 text-sm font-medium text-green-700">
+                        Sent to {dispatchSummary.destinationCount || 1} configured{" "}
+                        printer{(dispatchSummary.destinationCount || 1) === 1 ? "" : "s"}
+                        {dispatchSummary.failureCount
+                          ? `, ${dispatchSummary.failureCount} additional dispatch warning${dispatchSummary.failureCount === 1 ? "" : "s"} logged`
+                          : ""}
+                        .
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -395,7 +503,8 @@ const Page = () => {
               loading ||
               submitting ||
               files.length === 0 ||
-              !selectedQueueId
+              !selectedQueue ||
+              !isSecureReleaseQueue(selectedQueue)
             }
           >
             {submitting ? "Queuing job..." : "Upload and Queue"}
