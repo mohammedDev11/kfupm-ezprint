@@ -7,7 +7,7 @@ const page = () => {
       <PageIntro
         title="Recent Print Jobs"
         description="Review your recent print activity, including status, cost, and document details."
-      />{" "}
+      />
       <RecentPrintJobsTable />
     </div>
   );

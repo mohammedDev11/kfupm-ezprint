@@ -1,59 +1,46 @@
 "use client";
 
 import Card from "@/components/ui/card/Card";
-import { userQuickActions } from "@/lib/mock-data/User/dashboard";
-import { apiGet } from "@/services/api";
-import { Clock3, CreditCard, Upload } from "lucide-react";
+import { Clock3, CreditCard, Upload, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import React from "react";
+import type { UserDashboardQuickAction } from "../types";
 
-const UserQuickActions = () => {
-  const [actions, setActions] = React.useState(userQuickActions);
+type UserQuickActionsProps = {
+  actions: UserDashboardQuickAction[];
+  loading?: boolean;
+};
 
-  React.useEffect(() => {
-    let mounted = true;
-    const iconMap: Record<string, any> = {
-      upload: Upload,
-      "credit-card": CreditCard,
-      "clock-3": Clock3,
-    };
+const iconMap: Record<string, LucideIcon> = {
+  upload: Upload,
+  "credit-card": CreditCard,
+  "clock-3": Clock3,
+};
 
-    apiGet<{
-      quickActions: Array<{
-        id: number;
-        label: string;
-        href: string;
-        variant?: "primary" | "secondary";
-        iconKey?: string;
-      }>;
-    }>("/user/dashboard", "user")
-      .then((data) => {
-        if (!mounted || !data?.quickActions?.length) return;
-        setActions(
-          data.quickActions.map((item) => ({
-            ...item,
-            icon: iconMap[item.iconKey || ""] || Upload,
-          })),
-        );
-      })
-      .catch(() => {
-        // Keep fallback.
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
+const UserQuickActions = ({
+  actions,
+  loading = false,
+}: UserQuickActionsProps) => {
   return (
-    <Card className="p-5 sm:p-6">
+    <Card className="rounded-[1.35rem] p-5 sm:p-6">
       <div className="mb-5">
         <h2 className="title-md">Quick Actions</h2>
       </div>
 
       <div className="space-y-4">
+        {loading && actions.length === 0 ? (
+          <p className="text-sm font-medium text-[var(--muted)]">
+            Loading actions...
+          </p>
+        ) : null}
+
+        {!loading && actions.length === 0 ? (
+          <p className="text-sm font-medium text-[var(--muted)]">
+            No quick actions were returned.
+          </p>
+        ) : null}
+
         {actions.map((action) => {
-          const Icon = action.icon;
+          const Icon = iconMap[action.iconKey || ""] || Upload;
           const isPrimary = action.variant === "primary";
 
           return (

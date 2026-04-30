@@ -1,6 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/cn";
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
+import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import {
   Table,
   TableBody,
@@ -16,40 +17,108 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import StatusBadge from "@/components/ui/badge/StatusBadge";
+import StatusBadge, {
+  type StatusTone,
+} from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import RefreshButton from "@/components/ui/button/RefreshButton";
+import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
-import {
-  recentPrintJobsFilterOptions,
-  recentPrintJobsStatusMeta,
-  recentPrintJobsTableColumns,
-  type RecentPrintJobItem,
-  type RecentPrintJobSortKey,
-  type RecentPrintJobStatus,
-} from "@/lib/mock-data/User/recent-print-jobs";
+import { cn } from "@/lib/cn";
 import { apiGet } from "@/services/api";
 import {
   Check,
+  Clock3,
   Download,
   Eye,
+  FileStack,
   FileText,
+  Layers3,
+  Maximize2,
+  Minimize2,
+  Printer,
   RotateCcw,
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+type RecentPrintJobStatus = "Printed" | "Failed" | "Refunded";
+
+type RecentPrintJobSortKey =
+  | "date"
+  | "printerName"
+  | "documentName"
+  | "pages"
+  | "cost"
+  | "status";
+
+type RecentPrintJobItem = {
+  id: string;
+  date: string;
+  dateOrder: number;
+  printerName: string;
+  documentName: string;
+  pages: number;
+  cost: number;
+  status: RecentPrintJobStatus;
+  attributes: string[];
+  submittedFrom: string;
+  printedAt: string;
+  note?: string;
+};
+
+type PendingReleaseJobItem = {
+  id: string;
+  pages: number;
+  cost: number;
+  status?: string;
+};
 
 type SortDir = "asc" | "desc";
-type FilterValue = "all" | RecentPrintJobStatus;
+type StatusFilter = "all" | RecentPrintJobStatus;
+type DateFilter = "all" | "last7" | "last30" | "thisYear";
 
 const columnsClassName =
-  "[grid-template-columns:72px_160px_minmax(240px,1fr)_minmax(290px,1.5fr)_120px_120px_180px]";
+  "[grid-template-columns:72px_160px_minmax(240px,1fr)_minmax(290px,1.5fr)_120px_140px_180px]";
+
+const recentPrintJobsTableColumns: {
+  key: RecentPrintJobSortKey;
+  label: string;
+  sortable: boolean;
+}[] = [
+  { key: "date", label: "Date", sortable: true },
+  { key: "printerName", label: "Printer", sortable: true },
+  { key: "documentName", label: "Document", sortable: true },
+  { key: "pages", label: "Pages", sortable: true },
+  { key: "cost", label: "Cost / Quota", sortable: true },
+  { key: "status", label: "Status", sortable: true },
+];
+
+const recentPrintJobsStatusMeta: Record<
+  RecentPrintJobStatus,
+  { label: string; tone: StatusTone }
+> = {
+  Printed: { label: "Printed", tone: "success" },
+  Failed: { label: "Failed", tone: "danger" },
+  Refunded: { label: "Refunded", tone: "inactive" },
+};
+
+const statusFilterOptions: ListBoxOption[] = [
+  { label: "All Statuses", value: "all" },
+  { label: "Printed", value: "Printed" },
+  { label: "Failed", value: "Failed" },
+  { label: "Refunded", value: "Refunded" },
+];
+
+const dateFilterOptions: ListBoxOption[] = [
+  { label: "All Dates", value: "all" },
+  { label: "Last 7 Days", value: "last7" },
+  { label: "Last 30 Days", value: "last30" },
+  { label: "This Year", value: "thisYear" },
+];
+
+const numberFormatter = new Intl.NumberFormat("en-US");
 
 function PrintJobStatusBadge({ status }: { status: RecentPrintJobStatus }) {
   const meta = recentPrintJobsStatusMeta[status];
@@ -73,17 +142,112 @@ function PrintJobStatusBadge({ status }: { status: RecentPrintJobStatus }) {
   );
 }
 
+function toDateOrder(date: Date) {
+  return (
+    date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+  );
+}
+
+function matchesDateFilter(job: RecentPrintJobItem, dateFilter: DateFilter) {
+  if (dateFilter === "all") return true;
+
+  const today = new Date();
+
+  if (dateFilter === "thisYear") {
+    return Math.floor(job.dateOrder / 10000) === today.getFullYear();
+  }
+
+  const cutoff = new Date(today);
+  cutoff.setDate(today.getDate() - (dateFilter === "last7" ? 7 : 30));
+
+  return (
+    job.dateOrder >= toDateOrder(cutoff) &&
+    job.dateOrder <= toDateOrder(today)
+  );
+}
+
+function formatQuota(value: number) {
+  return value.toFixed(2);
+}
+
 const RecentPrintJobsTable = () => {
+  const isMountedRef = useRef(true);
+
   const [jobs, setJobs] = useState<RecentPrintJobItem[]>([]);
+  const [pendingJobs, setPendingJobs] = useState<PendingReleaseJobItem[]>([]);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<RecentPrintJobSortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [filterValue, setFilterValue] = useState<FilterValue>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [printerFilter, setPrinterFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [openJobModal, setOpenJobModal] = useState<RecentPrintJobItem | null>(
     null,
   );
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  const loadJobs = useCallback(
+    async (mode: "initial" | "refresh" = "refresh") => {
+      if (mode === "initial") {
+        setIsInitialLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
+
+      setLoadError("");
+
+      try {
+        const [recentData, pendingData] = await Promise.all([
+          apiGet<{ jobs: RecentPrintJobItem[] }>("/user/jobs/recent", "user"),
+          apiGet<{ jobs: PendingReleaseJobItem[] }>(
+            "/user/jobs/pending-release",
+            "user",
+          ),
+        ]);
+
+        if (!isMountedRef.current) return;
+
+        const nextJobs = recentData?.jobs || [];
+
+        setJobs(nextJobs);
+        setPendingJobs(pendingData?.jobs || []);
+        setSelectedIds((current) =>
+          current.filter((id) => nextJobs.some((job) => job.id === id)),
+        );
+      } catch (error) {
+        if (!isMountedRef.current) return;
+
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load recent print jobs.",
+        );
+      } finally {
+        if (!isMountedRef.current) return;
+
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const timer = window.setTimeout(() => {
+      void loadJobs("initial");
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      isMountedRef.current = false;
+    };
+  }, [loadJobs]);
 
   const handleSort = (key: RecentPrintJobSortKey) => {
     if (sortKey === key) {
@@ -95,43 +259,53 @@ const RecentPrintJobsTable = () => {
     setSortDir(key === "date" ? "desc" : "asc");
   };
 
-  useEffect(() => {
-    let mounted = true;
+  const printerFilterOptions = useMemo<ListBoxOption[]>(() => {
+    const printers = Array.from(
+      new Set(jobs.map((job) => job.printerName).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
 
-    apiGet<{ jobs: RecentPrintJobItem[] }>("/user/jobs/recent", "user")
-      .then((data) => {
-        if (!mounted) return;
-        setJobs(data?.jobs || []);
-      })
-      .catch(() => {});
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const toggleRowSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
+    return [
+      { label: "All Printers", value: "all" },
+      ...printers.map((printer) => ({
+        label: printer,
+        value: printer,
+        searchText: printer,
+      })),
+    ];
+  }, [jobs]);
 
   const filteredJobs = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     return [...jobs]
       .filter((job) => {
-        const matchesSearch =
-          !term ||
-          job.date.toLowerCase().includes(term) ||
-          job.printerName.toLowerCase().includes(term) ||
-          job.documentName.toLowerCase().includes(term) ||
-          job.status.toLowerCase().includes(term);
+        const searchableText = [
+          job.date,
+          job.printerName,
+          job.documentName,
+          job.status,
+          job.submittedFrom,
+          job.note,
+          formatQuota(job.cost),
+          String(job.pages),
+          ...(job.attributes || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-        if (!matchesSearch) return false;
-        if (filterValue === "all") return true;
+        const matchesSearch = !term || searchableText.includes(term);
+        const matchesStatus =
+          statusFilter === "all" || job.status === statusFilter;
+        const matchesPrinter =
+          printerFilter === "all" || job.printerName === printerFilter;
 
-        return job.status === filterValue;
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesPrinter &&
+          matchesDateFilter(job, dateFilter)
+        );
       })
       .sort((a, b) => {
         const getSortValue = (item: RecentPrintJobItem) => {
@@ -164,12 +338,66 @@ const RecentPrintJobsTable = () => {
           ? String(aValue).localeCompare(String(bValue))
           : String(bValue).localeCompare(String(aValue));
       });
-  }, [jobs, search, filterValue, sortKey, sortDir]);
+  }, [dateFilter, jobs, printerFilter, search, sortDir, sortKey, statusFilter]);
 
   const allVisibleIds = filteredJobs.map((job) => job.id);
   const isAllSelected =
     allVisibleIds.length > 0 &&
     allVisibleIds.every((id) => selectedIds.includes(id));
+  const selectedVisibleCount = allVisibleIds.filter((id) =>
+    selectedIds.includes(id),
+  ).length;
+
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    statusFilter !== "all" ||
+    printerFilter !== "all" ||
+    dateFilter !== "all";
+
+  const activeFilterCount = [
+    statusFilter !== "all",
+    printerFilter !== "all",
+    dateFilter !== "all",
+  ].filter(Boolean).length;
+
+  const printedJobs = jobs.filter((job) => job.status === "Printed");
+  const totalPagesPrinted = printedJobs.reduce((sum, job) => sum + job.pages, 0);
+  const totalJobCount = jobs.length + pendingJobs.length;
+
+  const kpiCards = [
+    {
+      title: "Total Jobs",
+      value: numberFormatter.format(totalJobCount),
+      helper: `${numberFormatter.format(jobs.length)} recent, ${numberFormatter.format(
+        pendingJobs.length,
+      )} pending`,
+      icon: <FileStack className="h-4 w-4" />,
+    },
+    {
+      title: "Printed Jobs",
+      value: numberFormatter.format(printedJobs.length),
+      helper: "Successful releases in your history",
+      icon: <Check className="h-4 w-4" />,
+    },
+    {
+      title: "Pending / Held Jobs",
+      value: numberFormatter.format(pendingJobs.length),
+      helper: "Waiting in secure release",
+      icon: <Clock3 className="h-4 w-4" />,
+    },
+    {
+      title: "Pages Printed",
+      value: numberFormatter.format(totalPagesPrinted),
+      helper: "Pages from printed jobs",
+      icon: <Layers3 className="h-4 w-4" />,
+    },
+  ];
+
+  const toggleRowSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
@@ -182,85 +410,140 @@ const RecentPrintJobsTable = () => {
     setSelectedIds((prev) => Array.from(new Set([...prev, ...allVisibleIds])));
   };
 
-  return (
-    <>
-      <Table>
-        <TableTop>
-          <TableTitleBlock
-            title="Recent Print Jobs"
-            description={`${filteredJobs.length} jobs total`}
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setPrinterFilter("all");
+    setDateFilter("all");
+  };
+
+  const renderRecentJobsTable = (expanded = false) => (
+    <Table
+      className={`flex min-h-[520px] flex-col ${
+        expanded ? "h-dvh !rounded-none" : "max-h-[calc(100vh-20rem)]"
+      }`}
+    >
+      <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
+        <TableTitleBlock
+          title="Recent Print Jobs"
+          description={
+            hasActiveFilters
+              ? `Showing ${filteredJobs.length} filtered job${
+                  filteredJobs.length === 1 ? "" : "s"
+                }`
+              : `${jobs.length} recent job${jobs.length === 1 ? "" : "s"}`
+          }
+        />
+
+        <TableControls>
+          <TableSearch
+            id={
+              expanded
+                ? "search-recent-print-jobs-expanded"
+                : "search-recent-print-jobs"
+            }
+            label="Search printer, document, status..."
+            value={search}
+            onChange={setSearch}
+            wrapperClassName="w-full md:w-[360px]"
           />
 
-          <TableControls>
-            <TableSearch
-              id="search-recent-print-jobs"
-              label="Search printer, document, status..."
-              value={search}
-              onChange={setSearch}
-              wrapperClassName="w-full md:w-[360px]"
-            />
+          <ListBox
+            options={statusFilterOptions}
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+            ariaLabel="Filter recent jobs by status"
+            align="right"
+            className="w-full md:w-[190px]"
+            triggerClassName="h-14 px-5 text-base"
+            contentClassName="w-[220px]"
+          />
 
-            <Dropdown
-              value={filterValue}
-              onValueChange={(value) => setFilterValue(value as FilterValue)}
-            >
-              <DropdownTrigger className="h-14 min-w-[180px] px-5 text-base">
-                {
-                  recentPrintJobsFilterOptions.find(
-                    (option) => option.value === filterValue,
-                  )?.label
-                }
-              </DropdownTrigger>
+          <RefreshButton
+            label={isRefreshing ? "Refreshing" : "Refresh"}
+            className="h-14"
+            disabled={isInitialLoading || isRefreshing}
+            onClick={() => void loadJobs("refresh")}
+          />
 
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                {recentPrintJobsFilterOptions.map((option) => (
-                  <DropdownItem
-                    key={option.value}
-                    value={option.value}
-                    className="py-3 text-base"
-                  >
-                    {option.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
+          <Button
+            variant="outline"
+            iconLeft={<SlidersHorizontal className="h-4 w-4" />}
+            className="h-14 px-6 text-base"
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}
+          </Button>
 
-            <Button
-              variant="outline"
-              iconLeft={<SlidersHorizontal className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
-              onClick={() => setIsFilterModalOpen(true)}
-            >
-              Filter
-            </Button>
-          </TableControls>
-        </TableTop>
+          <button
+            type="button"
+            onClick={() => setIsTableExpanded(!expanded)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-[var(--muted)] transition hover:text-[var(--color-brand-500)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)]"
+            aria-label={
+              expanded
+                ? "Collapse recent print jobs table"
+                : "Expand recent print jobs table"
+            }
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? (
+              <Minimize2 className="h-5 w-5" />
+            ) : (
+              <Maximize2 className="h-5 w-5" />
+            )}
+          </button>
+        </TableControls>
+      </TableTop>
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1260px]">
-            <TableHeader columnsClassName={columnsClassName}>
-              <TableCell className="justify-center">
-                <TableCheckbox
-                  checked={isAllSelected}
-                  onToggle={toggleSelectAll}
-                />
-              </TableCell>
+      {selectedVisibleCount > 0 ? (
+        <div className="shrink-0 border-b border-[var(--border)] px-6 py-3 text-sm font-medium text-[var(--muted)]">
+          {selectedVisibleCount} visible job
+          {selectedVisibleCount === 1 ? "" : "s"} selected
+        </div>
+      ) : null}
 
-              {recentPrintJobsTableColumns.map((column) => (
-                <TableHeaderCell
-                  key={column.key}
-                  label={column.label}
-                  sortable={column.sortable}
-                  active={sortKey === column.key}
-                  direction={sortDir}
-                  onClick={() => handleSort(column.key)}
-                />
-              ))}
-            </TableHeader>
+      {loadError ? (
+        <div className="shrink-0 px-6 pb-2 pt-4">
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </p>
+        </div>
+      ) : null}
 
+      <TableMain className="min-h-0 flex-1">
+        <TableGrid minWidthClassName="flex h-full min-w-[1260px] flex-col">
+          <TableHeader columnsClassName={columnsClassName}>
+            <TableCell className="justify-center">
+              <TableCheckbox
+                checked={isAllSelected}
+                onToggle={toggleSelectAll}
+              />
+            </TableCell>
+
+            {recentPrintJobsTableColumns.map((column) => (
+              <TableHeaderCell
+                key={column.key}
+                label={column.label}
+                sortable={column.sortable}
+                active={sortKey === column.key}
+                direction={sortDir}
+                onClick={() => handleSort(column.key)}
+              />
+            ))}
+          </TableHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <TableBody>
-              {filteredJobs.length === 0 ? (
-                <TableEmptyState text="No print jobs found" />
+              {isInitialLoading ? (
+                <TableEmptyState text="Loading recent print jobs..." />
+              ) : filteredJobs.length === 0 ? (
+                <TableEmptyState
+                  text={
+                    hasActiveFilters
+                      ? "No print jobs match these filters"
+                      : "No print jobs found"
+                  }
+                />
               ) : (
                 filteredJobs.map((job) => {
                   const isSelected = selectedIds.includes(job.id);
@@ -285,7 +568,8 @@ const RecentPrintJobsTable = () => {
                         {job.date}
                       </TableCell>
 
-                      <TableCell className="min-w-0">
+                      <TableCell className="min-w-0 gap-3">
+                        <Printer className="h-4 w-4 shrink-0 text-[var(--muted)]" />
                         <span className="block truncate text-base text-[var(--paragraph)]">
                           {job.printerName}
                         </span>
@@ -303,7 +587,7 @@ const RecentPrintJobsTable = () => {
                       </TableCell>
 
                       <TableCell className="text-base font-medium text-[var(--title)]">
-                        {job.cost.toFixed(2)}
+                        {formatQuota(job.cost)}
                       </TableCell>
 
                       <TableCell>
@@ -314,51 +598,114 @@ const RecentPrintJobsTable = () => {
                 })
               )}
             </TableBody>
-          </TableGrid>
-        </TableMain>
-      </Table>
+          </div>
+        </TableGrid>
+      </TableMain>
+    </Table>
+  );
+
+  return (
+    <>
+      <FullscreenTablePortal open={isTableExpanded}>
+        {renderRecentJobsTable(true)}
+      </FullscreenTablePortal>
+
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {kpiCards.map((card, index) => (
+            <KpiMetricCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              helper={card.helper}
+              icon={card.icon}
+              index={index}
+            />
+          ))}
+        </div>
+
+        {renderRecentJobsTable()}
+      </div>
 
       <Modal
         open={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
       >
-        <div className="space-y-4 pr-8">
+        <div className="w-[min(92vw,620px)] space-y-5 pr-4">
           <div>
             <h3 className="title-md">Filter Recent Print Jobs</h3>
             <p className="paragraph mt-1">
-              Narrow down your print history by result type.
+              Narrow your print history by status, printer, and date.
             </p>
           </div>
 
-          <Dropdown
-            value={filterValue}
-            onValueChange={(value) => setFilterValue(value as FilterValue)}
-          >
-            <DropdownTrigger className="h-14 w-full px-4 text-left text-base">
-              {
-                recentPrintJobsFilterOptions.find(
-                  (option) => option.value === filterValue,
-                )?.label
-              }
-            </DropdownTrigger>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-[var(--muted)]">
+                Status
+              </label>
+              <ListBox
+                options={statusFilterOptions}
+                value={statusFilter}
+                onValueChange={(value) =>
+                  setStatusFilter(value as StatusFilter)
+                }
+                ariaLabel="Advanced status filter"
+                triggerClassName="h-12"
+              />
+            </div>
 
-            <DropdownContent widthClassName="w-full">
-              {recentPrintJobsFilterOptions.map((option) => (
-                <DropdownItem
-                  key={option.value}
-                  value={option.value}
-                  className="py-3 text-base"
-                >
-                  {option.label}
-                </DropdownItem>
-              ))}
-            </DropdownContent>
-          </Dropdown>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-[var(--muted)]">
+                Date Range
+              </label>
+              <ListBox
+                options={dateFilterOptions}
+                value={dateFilter}
+                onValueChange={(value) => setDateFilter(value as DateFilter)}
+                ariaLabel="Advanced date filter"
+                triggerClassName="h-12"
+              />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-semibold text-[var(--muted)]">
+                Printer
+              </label>
+              <ListBox
+                options={printerFilterOptions}
+                value={printerFilter}
+                onValueChange={setPrinterFilter}
+                ariaLabel="Advanced printer filter"
+                searchable
+                searchPlaceholder="Search printers..."
+                triggerClassName="h-12"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="px-5"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+            >
+              Clear Filters
+            </Button>
+            <Button
+              variant="primary"
+              className="px-5"
+              onClick={() => setIsFilterModalOpen(false)}
+            >
+              Apply Filters
+            </Button>
+          </div>
         </div>
       </Modal>
 
       <Modal open={Boolean(openJobModal)} onClose={() => setOpenJobModal(null)}>
-        <div className="space-y-5 pr-8">
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
           <div>
             <h3 className="title-md">{openJobModal?.documentName}</h3>
             <p className="paragraph mt-1">
@@ -369,7 +716,9 @@ const RecentPrintJobsTable = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm font-medium text-[var(--muted)]">Date</p>
-              <p className="paragraph mt-1">{openJobModal?.printedAt}</p>
+              <p className="paragraph mt-1">
+                {openJobModal?.printedAt || openJobModal?.date}
+              </p>
             </div>
 
             <div>
@@ -392,8 +741,12 @@ const RecentPrintJobsTable = () => {
             </div>
 
             <div>
-              <p className="text-sm font-medium text-[var(--muted)]">Cost</p>
-              <p className="paragraph mt-1">{openJobModal?.cost.toFixed(2)}</p>
+              <p className="text-sm font-medium text-[var(--muted)]">
+                Cost / Quota
+              </p>
+              <p className="paragraph mt-1">
+                {openJobModal ? formatQuota(openJobModal.cost) : ""}
+              </p>
             </div>
 
             <div>
@@ -404,27 +757,29 @@ const RecentPrintJobsTable = () => {
             </div>
           </div>
 
-          <div>
-            <p className="text-sm font-medium text-[var(--muted)]">
-              Print Attributes
-            </p>
+          {openJobModal?.attributes?.length ? (
+            <div>
+              <p className="text-sm font-medium text-[var(--muted)]">
+                Print Attributes
+              </p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {openJobModal?.attributes.map((attribute) => (
-                <span
-                  key={attribute}
-                  className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium"
-                  style={{
-                    background: "var(--surface-2)",
-                    color: "var(--paragraph)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  {attribute}
-                </span>
-              ))}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {openJobModal.attributes.map((attribute) => (
+                  <span
+                    key={attribute}
+                    className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      background: "var(--surface-2)",
+                      color: "var(--paragraph)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {attribute}
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {openJobModal?.note ? (
             <div>

@@ -1,34 +1,31 @@
 "use client";
 
 import Card from "@/components/ui/card/Card";
-import { apiGet } from "@/services/api";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, EyeOff, IdCard, Sparkles, User2 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  IdCard,
+  Sparkles,
+  User2,
+  type LucideIcon,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import type { UserDashboardInfoItem } from "../types";
 
-type UserInfoItem = {
-  id: number;
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ size?: number | string; className?: string }>;
+type UserInfoItem = UserDashboardInfoItem & {
   isSensitive?: boolean;
 };
 
-export const userInformationData: UserInfoItem[] = [
-  {
-    id: 1,
-    label: "Name",
-    value: "Mohammed Alshammasi",
-    icon: User2,
-  },
-  {
-    id: 2,
-    label: "User ID",
-    value: "s202279720",
-    icon: IdCard,
-    isSensitive: true,
-  },
-];
+type UserInformationCardProps = {
+  items: UserDashboardInfoItem[];
+  loading?: boolean;
+};
+
+const iconMap: Record<string, LucideIcon> = {
+  "user-2": User2,
+  "id-card": IdCard,
+};
 
 const maskSensitiveValue = (value: string) => {
   if (!value) return "";
@@ -42,56 +39,21 @@ const maskSensitiveValue = (value: string) => {
   return `${clean.slice(0, 5)}XXXXX`;
 };
 
-const UserInformationCard = () => {
+const UserInformationCard = ({
+  items,
+  loading = false,
+}: UserInformationCardProps) => {
   const [showSensitive, setShowSensitive] = useState(false);
-  const [userInfo, setUserInfo] = useState(userInformationData);
 
-  const data = useMemo(() => {
-    return userInfo.map((item) => ({
+  const data = useMemo<UserInfoItem[]>(() => {
+    return items.map((item) => ({
       ...item,
-      displayValue:
-        item.isSensitive && !showSensitive
-          ? maskSensitiveValue(item.value)
-          : item.value,
+      isSensitive: item.label.toLowerCase().includes("id"),
     }));
-  }, [showSensitive, userInfo]);
-
-  useEffect(() => {
-    let mounted = true;
-    const iconMap: Record<string, any> = {
-      "user-2": User2,
-      "id-card": IdCard,
-    };
-
-    apiGet<{
-      userInformation: Array<{
-        id: number;
-        label: string;
-        value: string;
-        iconKey?: string;
-      }>;
-    }>("/user/dashboard", "user")
-      .then((payload) => {
-        if (!mounted || !payload?.userInformation?.length) return;
-        setUserInfo(
-          payload.userInformation.map((item) => ({
-            ...item,
-            icon: iconMap[item.iconKey || ""] || User2,
-            isSensitive: item.label.toLowerCase().includes("id"),
-          })),
-        );
-      })
-      .catch(() => {
-        // Keep fallback.
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  }, [items]);
 
   return (
-    <Card className="group relative overflow-hidden p-0">
+    <Card className="group relative overflow-hidden rounded-[1.35rem] p-0">
       <div className="relative z-10 p-5 sm:p-6">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -123,8 +85,36 @@ const UserInformationCard = () => {
         </div>
 
         <div className="grid gap-4">
+          {loading && data.length === 0 ? (
+            <div
+              className="rounded-md border p-4 text-sm font-medium text-[var(--muted)]"
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--border)",
+              }}
+            >
+              Loading account details...
+            </div>
+          ) : null}
+
+          {!loading && data.length === 0 ? (
+            <div
+              className="rounded-md border p-4 text-sm font-medium text-[var(--muted)]"
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--border)",
+              }}
+            >
+              No account details were returned.
+            </div>
+          ) : null}
+
           {data.map((item, index) => {
-            const Icon = item.icon;
+            const Icon = iconMap[item.iconKey || ""] || User2;
+            const displayValue =
+              item.isSensitive && !showSensitive
+                ? maskSensitiveValue(item.value)
+                : item.value;
 
             return (
               <motion.div
@@ -168,7 +158,7 @@ const UserInformationCard = () => {
                 <div className="sm:text-right">
                   <AnimatePresence mode="wait">
                     <motion.p
-                      key={item.displayValue}
+                      key={displayValue}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
@@ -178,7 +168,7 @@ const UserInformationCard = () => {
                       }`}
                       style={{ color: "var(--title)" }}
                     >
-                      {item.displayValue}
+                      {displayValue}
                     </motion.p>
                   </AnimatePresence>
                 </div>
