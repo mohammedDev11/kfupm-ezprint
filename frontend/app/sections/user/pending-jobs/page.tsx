@@ -3,11 +3,11 @@ import JobsPendingReleaseTable from "./components/JobsPendingReleaseTable";
 
 const page = () => {
   return (
-    <div>
+    <div className="space-y-5">
       <PageIntro
         title="Jobs Pending Release"
         description="Review queued jobs, keep the release code, and release the document from the printer screen."
-      />{" "}
+      />
       <JobsPendingReleaseTable />
     </div>
   );

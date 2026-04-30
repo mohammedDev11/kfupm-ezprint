@@ -22,6 +22,11 @@ import StatusBadge, {
 } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import RefreshButton from "@/components/ui/button/RefreshButton";
+import {
+  Dropdown,
+  DropdownContent,
+  DropdownTrigger,
+} from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { cn } from "@/lib/cn";
@@ -182,7 +187,6 @@ const RecentPrintJobsTable = () => {
   const [printerFilter, setPrinterFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [openJobModal, setOpenJobModal] = useState<RecentPrintJobItem | null>(
     null,
@@ -410,13 +414,6 @@ const RecentPrintJobsTable = () => {
     setSelectedIds((prev) => Array.from(new Set([...prev, ...allVisibleIds])));
   };
 
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("all");
-    setPrinterFilter("all");
-    setDateFilter("all");
-  };
-
   const renderRecentJobsTable = (expanded = false) => (
     <Table
       className={`flex min-h-[520px] flex-col ${
@@ -424,16 +421,7 @@ const RecentPrintJobsTable = () => {
       }`}
     >
       <TableTop className={`shrink-0 ${expanded ? "bg-[var(--surface)]" : ""}`}>
-        <TableTitleBlock
-          title="Recent Print Jobs"
-          description={
-            hasActiveFilters
-              ? `Showing ${filteredJobs.length} filtered job${
-                  filteredJobs.length === 1 ? "" : "s"
-                }`
-              : `${jobs.length} recent job${jobs.length === 1 ? "" : "s"}`
-          }
-        />
+        <TableTitleBlock title="Recent Print Jobs" />
 
         <TableControls>
           <TableSearch
@@ -448,17 +436,6 @@ const RecentPrintJobsTable = () => {
             wrapperClassName="w-full md:w-[360px]"
           />
 
-          <ListBox
-            options={statusFilterOptions}
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as StatusFilter)}
-            ariaLabel="Filter recent jobs by status"
-            align="right"
-            className="w-full md:w-[190px]"
-            triggerClassName="h-14 px-5 text-base"
-            contentClassName="w-[220px]"
-          />
-
           <RefreshButton
             label={isRefreshing ? "Refreshing" : "Refresh"}
             className="h-14"
@@ -466,14 +443,93 @@ const RecentPrintJobsTable = () => {
             onClick={() => void loadJobs("refresh")}
           />
 
-          <Button
-            variant="outline"
-            iconLeft={<SlidersHorizontal className="h-4 w-4" />}
-            className="h-14 px-6 text-base"
-            onClick={() => setIsFilterModalOpen(true)}
-          >
-            {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}
-          </Button>
+          <Dropdown>
+            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 ? (
+                  <span
+                    className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                    style={{
+                      background: "rgba(var(--brand-rgb), 0.12)",
+                      color: "var(--color-brand-600)",
+                    }}
+                  >
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </span>
+            </DropdownTrigger>
+
+            <DropdownContent align="right" widthClassName="w-[380px]">
+              <div className="space-y-4 p-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Status
+                    </p>
+                    <ListBox
+                      options={statusFilterOptions}
+                      value={statusFilter}
+                      onValueChange={(value) =>
+                        setStatusFilter(value as StatusFilter)
+                      }
+                      ariaLabel="Filter recent jobs by status"
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Date Range
+                    </p>
+                    <ListBox
+                      options={dateFilterOptions}
+                      value={dateFilter}
+                      onValueChange={(value) =>
+                        setDateFilter(value as DateFilter)
+                      }
+                      ariaLabel="Filter recent jobs by date"
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Printer
+                  </p>
+                  <ListBox
+                    options={printerFilterOptions}
+                    value={printerFilter}
+                    onValueChange={setPrinterFilter}
+                    ariaLabel="Filter recent jobs by printer"
+                    searchable
+                    searchPlaceholder="Search printers..."
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                  />
+                </div>
+
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full text-sm"
+                    onClick={() => {
+                      setStatusFilter("all");
+                      setPrinterFilter("all");
+                      setDateFilter("all");
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                ) : null}
+              </div>
+            </DropdownContent>
+          </Dropdown>
 
           <button
             type="button"
@@ -626,83 +682,6 @@ const RecentPrintJobsTable = () => {
 
         {renderRecentJobsTable()}
       </div>
-
-      <Modal
-        open={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-      >
-        <div className="w-[min(92vw,620px)] space-y-5 pr-4">
-          <div>
-            <h3 className="title-md">Filter Recent Print Jobs</h3>
-            <p className="paragraph mt-1">
-              Narrow your print history by status, printer, and date.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-[var(--muted)]">
-                Status
-              </label>
-              <ListBox
-                options={statusFilterOptions}
-                value={statusFilter}
-                onValueChange={(value) =>
-                  setStatusFilter(value as StatusFilter)
-                }
-                ariaLabel="Advanced status filter"
-                triggerClassName="h-12"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-[var(--muted)]">
-                Date Range
-              </label>
-              <ListBox
-                options={dateFilterOptions}
-                value={dateFilter}
-                onValueChange={(value) => setDateFilter(value as DateFilter)}
-                ariaLabel="Advanced date filter"
-                triggerClassName="h-12"
-              />
-            </div>
-
-            <div className="space-y-2 sm:col-span-2">
-              <label className="text-sm font-semibold text-[var(--muted)]">
-                Printer
-              </label>
-              <ListBox
-                options={printerFilterOptions}
-                value={printerFilter}
-                onValueChange={setPrinterFilter}
-                ariaLabel="Advanced printer filter"
-                searchable
-                searchPlaceholder="Search printers..."
-                triggerClassName="h-12"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              className="px-5"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-            >
-              Clear Filters
-            </Button>
-            <Button
-              variant="primary"
-              className="px-5"
-              onClick={() => setIsFilterModalOpen(false)}
-            >
-              Apply Filters
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       <Modal open={Boolean(openJobModal)} onClose={() => setOpenJobModal(null)}>
         <div className="w-[min(92vw,760px)] space-y-5 pr-4">
