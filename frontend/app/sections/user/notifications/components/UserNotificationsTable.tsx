@@ -1,8 +1,6 @@
 "use client";
 
-import { Bell, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-
+import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import {
   Table,
   TableBody,
@@ -19,13 +17,36 @@ import {
   TableTop,
 } from "@/components/shared/table/Table";
 import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
+import StatusBadge, { type StatusTone } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import RefreshButton from "@/components/ui/button/RefreshButton";
+import {
+  Dropdown,
+  DropdownContent,
+  DropdownTrigger,
+} from "@/components/ui/dropdown/Dropdown";
+import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
+import { apiGet, apiPatch, apiPost } from "@/services/api";
+import {
+  Bell,
+  CheckCircle2,
+  Inbox,
+  MoreHorizontal,
+  ShieldAlert,
+  SlidersHorizontal,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type SortDir = "asc" | "desc";
-type NotificationSortKey = "title" | "type" | "source" | "severity" | "status" | "createdAt";
+type NotificationSortKey =
+  | "title"
+  | "type"
+  | "source"
+  | "severity"
+  | "status"
+  | "createdAt";
 
 type UserNotification = {
   id: string;
@@ -57,23 +78,35 @@ type UserNotificationsResponse = {
   };
 };
 
-const REFRESH_SECONDS = 30;
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(260px,1.4fr)_minmax(150px,0.8fr)_minmax(160px,0.8fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(170px,0.8fr)_minmax(210px,1fr)]";
+  "[grid-template-columns:72px_minmax(320px,1.55fr)_minmax(150px,0.75fr)_minmax(130px,0.62fr)_minmax(130px,0.62fr)_minmax(170px,0.8fr)_minmax(180px,0.82fr)]";
 
-const severityTone: Record<UserNotification["severity"], string> = {
-  info: "bg-slate-100 text-slate-700",
-  success: "bg-emerald-100 text-emerald-700",
-  warning: "bg-amber-100 text-amber-700",
-  error: "bg-red-100 text-red-700",
-  critical: "bg-red-200 text-red-800",
-};
+const notificationTableColumns: Array<{
+  key: NotificationSortKey;
+  label: string;
+}> = [
+  { key: "title", label: "Notification" },
+  { key: "type", label: "Type" },
+  { key: "severity", label: "Severity" },
+  { key: "status", label: "Status" },
+  { key: "source", label: "Source" },
+  { key: "createdAt", label: "Created" },
+];
 
-const statusTone: Record<UserNotification["status"], string> = {
-  unread: "bg-amber-100 text-amber-700",
-  read: "bg-slate-100 text-slate-700",
-  resolved: "bg-emerald-100 text-emerald-700",
-  archived: "bg-slate-200 text-slate-700",
+const filterValues = {
+  type: ["all", "print-job", "balance", "redeem-card", "printer", "system"],
+  severity: ["all", "info", "success", "warning", "error", "critical"],
+  status: ["all", "unread", "read", "resolved", "archived"],
+  source: [
+    "all",
+    "web-print",
+    "jobs-pending-release",
+    "recent-print-jobs",
+    "transaction-history",
+    "redeem-card",
+    "printer-device",
+    "system",
+  ],
 };
 
 const severityRank: Record<UserNotification["severity"], number> = {
@@ -91,33 +124,28 @@ const statusRank: Record<UserNotification["status"], number> = {
   archived: 3,
 };
 
-const filterOptions = {
-  type: ["all", "print-job", "balance", "redeem-card", "printer", "system"],
-  severity: ["all", "info", "success", "warning", "error", "critical"],
-  status: ["all", "unread", "read", "resolved", "archived"],
-  source: [
-    "all",
-    "web-print",
-    "jobs-pending-release",
-    "recent-print-jobs",
-    "transaction-history",
-    "redeem-card",
-    "printer-device",
-    "system",
-  ],
-};
-
 const formatOptionLabel = (value: string) =>
   value
     .replaceAll("-", " ")
+    .replaceAll("_", " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
+
+const toFilterOptions = (values: string[], label: string): ListBoxOption[] =>
+  values.map((value) => ({
+    value,
+    label: value === "all" ? `All ${label}` : formatOptionLabel(value),
+  }));
 
 const parseSortableDate = (value: string) => {
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? value : timestamp;
 };
 
-const compareValues = (a: string | number, b: string | number, direction: SortDir) => {
+const compareValues = (
+  a: string | number,
+  b: string | number,
+  direction: SortDir,
+) => {
   if (typeof a === "number" && typeof b === "number") {
     return direction === "asc" ? a - b : b - a;
   }
@@ -127,63 +155,17 @@ const compareValues = (a: string | number, b: string | number, direction: SortDi
     : String(b).localeCompare(String(a));
 };
 
-function SummaryCard({
-  label,
-  value,
-  helper,
-}: {
-  label: string;
-  value: string | number;
-  helper: string;
-}) {
-  return (
-    <div
-      className="rounded-2xl border p-5"
-      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-[var(--title)]">{value}</p>
-      <p className="mt-2 text-sm text-[var(--muted)]">{helper}</p>
-    </div>
-  );
+function getSeverityTone(severity: UserNotification["severity"]): StatusTone {
+  if (severity === "success") return "success";
+  if (severity === "warning") return "warning";
+  if (severity === "info") return "inactive";
+  return "danger";
 }
 
-function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="flex min-w-[180px] flex-col gap-2">
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 rounded-md border px-4 text-sm outline-none"
-        style={{
-          borderColor: "var(--border)",
-          background: "var(--surface)",
-          color: "var(--title)",
-        }}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option === "all" ? `All ${label}` : formatOptionLabel(option)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function getStatusTone(status: UserNotification["status"]): StatusTone {
+  if (status === "unread") return "warning";
+  if (status === "read" || status === "resolved") return "success";
+  return "inactive";
 }
 
 export default function UserNotificationsTable() {
@@ -202,14 +184,13 @@ export default function UserNotificationsTable() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [secondsLeft, setSecondsLeft] = useState(REFRESH_SECONDS);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [detailsNotification, setDetailsNotification] =
     useState<UserNotification | null>(null);
 
-  const loadNotifications = async (showSpinner = false) => {
+  const loadNotifications = useCallback(async (showSpinner = false) => {
     if (showSpinner) {
       setLoading(true);
     }
@@ -219,7 +200,6 @@ export default function UserNotificationsTable() {
         "/user/notifications",
         "user",
       );
-
       const nextNotifications = Array.isArray(data?.notifications)
         ? data.notifications
         : [];
@@ -247,28 +227,17 @@ export default function UserNotificationsTable() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadNotifications(true);
   }, []);
 
   useEffect(() => {
-    const refreshTimer = window.setInterval(() => {
-      setSecondsLeft((current) => {
-        if (current <= 1) {
-          void loadNotifications(false);
-          return REFRESH_SECONDS;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
+    const initialLoad = window.setTimeout(() => {
+      void loadNotifications(true);
+    }, 0);
 
     return () => {
-      window.clearInterval(refreshTimer);
+      window.clearTimeout(initialLoad);
     };
-  }, []);
+  }, [loadNotifications]);
 
   const handleSort = (key: NotificationSortKey) => {
     if (sortKey === key) {
@@ -290,39 +259,45 @@ export default function UserNotificationsTable() {
           notification.message,
           notification.type,
           notification.source,
+          notification.severity,
+          notification.status,
         ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
 
-        if (searchTerm && !haystack.includes(searchTerm)) {
-          return false;
-        }
+        const matchesSearch = !searchTerm || haystack.includes(searchTerm);
+        const matchesType =
+          typeFilter === "all" || notification.type === typeFilter;
+        const matchesSeverity =
+          severityFilter === "all" || notification.severity === severityFilter;
+        const matchesStatus =
+          statusFilter === "all" || notification.status === statusFilter;
+        const matchesSource =
+          sourceFilter === "all" || notification.source === sourceFilter;
 
-        if (typeFilter !== "all" && notification.type !== typeFilter) {
-          return false;
-        }
-
-        if (severityFilter !== "all" && notification.severity !== severityFilter) {
-          return false;
-        }
-
-        if (statusFilter !== "all" && notification.status !== statusFilter) {
-          return false;
-        }
-
-        if (sourceFilter !== "all" && notification.source !== sourceFilter) {
-          return false;
-        }
-
-        return true;
+        return (
+          matchesSearch &&
+          matchesType &&
+          matchesSeverity &&
+          matchesStatus &&
+          matchesSource
+        );
       })
       .sort((a, b) => {
         switch (sortKey) {
           case "severity":
-            return compareValues(severityRank[a.severity], severityRank[b.severity], sortDir);
+            return compareValues(
+              severityRank[a.severity],
+              severityRank[b.severity],
+              sortDir,
+            );
           case "status":
-            return compareValues(statusRank[a.status], statusRank[b.status], sortDir);
+            return compareValues(
+              statusRank[a.status],
+              statusRank[b.status],
+              sortDir,
+            );
           case "createdAt":
             return compareValues(
               parseSortableDate(a.createdAt),
@@ -333,6 +308,12 @@ export default function UserNotificationsTable() {
             return compareValues(
               formatOptionLabel(a.source),
               formatOptionLabel(b.source),
+              sortDir,
+            );
+          case "type":
+            return compareValues(
+              formatOptionLabel(a.type),
+              formatOptionLabel(b.type),
               sortDir,
             );
           default:
@@ -350,9 +331,65 @@ export default function UserNotificationsTable() {
     typeFilter,
   ]);
 
-  const visibleIds = filteredNotifications.map((notification) => notification.id);
+  const visibleIds = filteredNotifications.map(
+    (notification) => notification.id,
+  );
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+  const selectedVisibleCount = visibleIds.filter((id) =>
+    selectedIds.includes(id),
+  ).length;
+
+  const sourceFilterOptions = useMemo(() => {
+    const loadedSources = notifications
+      .map((notification) => notification.source)
+      .filter(Boolean);
+    const uniqueSources = Array.from(
+      new Set([...filterValues.source, ...loadedSources]),
+    );
+
+    return toFilterOptions(uniqueSources, "Sources");
+  }, [notifications]);
+
+  const activeFilterCount = [
+    typeFilter,
+    severityFilter,
+    statusFilter,
+    sourceFilter,
+  ].filter((value) => value !== "all").length;
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    typeFilter !== "all" ||
+    severityFilter !== "all" ||
+    statusFilter !== "all" ||
+    sourceFilter !== "all";
+
+  const kpiCards = [
+    {
+      title: "Total",
+      value: summary.total.toLocaleString(),
+      helper: "Backend-tracked notifications",
+      icon: <Bell className="h-4 w-4" />,
+    },
+    {
+      title: "Unread",
+      value: summary.unread.toLocaleString(),
+      helper: "Items still waiting for attention",
+      icon: <Inbox className="h-4 w-4" />,
+    },
+    {
+      title: "Critical",
+      value: summary.critical.toLocaleString(),
+      helper: "Highest severity alerts",
+      icon: <ShieldAlert className="h-4 w-4" />,
+    },
+    {
+      title: "Action Required",
+      value: summary.actionRequired.toLocaleString(),
+      helper: "Flagged by the backend for follow-up",
+      icon: <CheckCircle2 className="h-4 w-4" />,
+    },
+  ];
 
   const toggleSelectedId = (id: string) => {
     setSelectedIds((current) =>
@@ -380,7 +417,6 @@ export default function UserNotificationsTable() {
     try {
       await action();
       await loadNotifications(false);
-      setSecondsLeft(REFRESH_SECONDS);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -389,6 +425,42 @@ export default function UserNotificationsTable() {
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleBulkAction = (value: string) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || busy) return;
+
+    if (value === "mark-read") {
+      void runAction(async () => {
+        await apiPatch(
+          "/user/notifications/bulk/read",
+          { notificationIds: ids },
+          "user",
+        );
+        setSelectedIds([]);
+      });
+    }
+
+    if (value === "archive") {
+      void runAction(async () => {
+        await Promise.all(
+          ids.map((id) => apiPatch(`/user/notifications/${id}/archive`, {}, "user")),
+        );
+        setSelectedIds([]);
+      });
+    }
+
+    if (value === "delete") {
+      void runAction(async () => {
+        await apiPost(
+          "/user/notifications/bulk/delete",
+          { notificationIds: ids },
+          "user",
+        );
+        setSelectedIds([]);
+      });
     }
   };
 
@@ -405,12 +477,12 @@ export default function UserNotificationsTable() {
       filename: "alpha-queue-user-notifications",
       format,
       columns: [
-        { label: "Title", value: (row: UserNotification) => row.title },
+        { label: "Notification", value: (row: UserNotification) => row.title },
         { label: "Message", value: (row) => row.message },
         { label: "Type", value: (row) => formatOptionLabel(row.type) },
-        { label: "Source", value: (row) => formatOptionLabel(row.source) },
         { label: "Severity", value: (row) => formatOptionLabel(row.severity) },
         { label: "Status", value: (row) => formatOptionLabel(row.status) },
+        { label: "Source", value: (row) => formatOptionLabel(row.source) },
         { label: "Created", value: (row) => row.createdAtLabel },
       ],
       rows,
@@ -418,36 +490,23 @@ export default function UserNotificationsTable() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Total"
-          value={summary.total}
-          helper="Notifications currently visible to this user."
-        />
-        <SummaryCard
-          label="Unread"
-          value={summary.unread}
-          helper="Items that still need attention."
-        />
-        <SummaryCard
-          label="Critical"
-          value={summary.critical}
-          helper="High-severity alerts."
-        />
-        <SummaryCard
-          label="Action Required"
-          value={summary.actionRequired}
-          helper="Items flagged by the backend for follow-up."
-        />
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {kpiCards.map((card, index) => (
+          <KpiMetricCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            helper={card.helper}
+            icon={card.icon}
+            index={index}
+          />
+        ))}
       </div>
 
-      <Table>
-        <TableTop>
-          <TableTitleBlock
-            title="User Notifications"
-            description={`Showing ${filteredNotifications.length} notification${filteredNotifications.length === 1 ? "" : "s"} from the live user feed.`}
-          />
+      <Table className="flex min-h-[540px] flex-col max-h-[calc(100vh-20rem)]">
+        <TableTop className="shrink-0">
+          <TableTitleBlock title="User Notifications" />
 
           <TableControls>
             <TableSearch
@@ -457,117 +516,186 @@ export default function UserNotificationsTable() {
               onChange={setSearch}
             />
 
+            <RefreshButton
+              className="h-14"
+              disabled={busy}
+              onClick={() => {
+                void loadNotifications(false);
+              }}
+            />
+
+            <Dropdown>
+              <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span>Filter</span>
+                  {activeFilterCount > 0 ? (
+                    <span
+                      className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                      style={{
+                        background: "rgba(var(--brand-rgb), 0.12)",
+                        color: "var(--color-brand-600)",
+                      }}
+                    >
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </span>
+              </DropdownTrigger>
+
+              <DropdownContent
+                align="right"
+                widthClassName="w-[420px] max-w-[calc(100vw-2rem)]"
+                className="max-h-[calc(100vh-8rem)] overflow-y-auto"
+              >
+                <div className="space-y-4 p-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Type
+                      </p>
+                      <ListBox
+                        value={typeFilter}
+                        onValueChange={setTypeFilter}
+                        options={toFilterOptions(filterValues.type, "Types")}
+                        triggerClassName="h-11 px-3"
+                        maxHeightClassName="max-h-52"
+                        ariaLabel="Filter notifications by type"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Severity
+                      </p>
+                      <ListBox
+                        value={severityFilter}
+                        onValueChange={setSeverityFilter}
+                        options={toFilterOptions(
+                          filterValues.severity,
+                          "Severity",
+                        )}
+                        triggerClassName="h-11 px-3"
+                        maxHeightClassName="max-h-52"
+                        ariaLabel="Filter notifications by severity"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Status
+                      </p>
+                      <ListBox
+                        value={statusFilter}
+                        onValueChange={setStatusFilter}
+                        options={toFilterOptions(filterValues.status, "Status")}
+                        triggerClassName="h-11 px-3"
+                        maxHeightClassName="max-h-52"
+                        ariaLabel="Filter notifications by status"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Source
+                      </p>
+                      <ListBox
+                        value={sourceFilter}
+                        onValueChange={setSourceFilter}
+                        options={sourceFilterOptions}
+                        triggerClassName="h-11 px-3"
+                        maxHeightClassName="max-h-52"
+                        ariaLabel="Filter notifications by source"
+                      />
+                    </div>
+                  </div>
+
+                  {activeFilterCount > 0 ? (
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full text-sm"
+                      onClick={() => {
+                        setTypeFilter("all");
+                        setSeverityFilter("all");
+                        setStatusFilter("all");
+                        setSourceFilter("all");
+                      }}
+                    >
+                      Reset Filters
+                    </Button>
+                  ) : null}
+                </div>
+              </DropdownContent>
+            </Dropdown>
+
             <TableExportDropdown
               disabled={filteredNotifications.length === 0}
               onExport={exportNotifications}
             />
+
+            <ListBox
+              value=""
+              options={[
+                {
+                  value: "mark-read",
+                  label: "Mark selected read",
+                  disabled: selectedIds.length === 0,
+                },
+                {
+                  value: "archive",
+                  label: "Archive selected",
+                  disabled: selectedIds.length === 0,
+                },
+                {
+                  value: "delete",
+                  label: "Delete selected",
+                  disabled: selectedIds.length === 0,
+                },
+              ]}
+              onValueChange={handleBulkAction}
+              placeholder={
+                <span className="inline-flex items-center gap-2">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span>Actions</span>
+                  {selectedIds.length > 0 ? (
+                    <span
+                      className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                      style={{
+                        background: "rgba(var(--brand-rgb), 0.12)",
+                        color: "var(--color-brand-600)",
+                      }}
+                    >
+                      {selectedIds.length}
+                    </span>
+                  ) : null}
+                </span>
+              }
+              disabled={busy || selectedIds.length === 0}
+              className="w-full md:w-auto"
+              triggerClassName="h-14 min-w-[180px] px-6 text-base"
+              align="right"
+              ariaLabel="Notification actions"
+            />
           </TableControls>
         </TableTop>
 
-        <div className="px-6 pb-6">
-          <div className="flex flex-wrap gap-3">
-            <SelectField
-              label="Type"
-              value={typeFilter}
-              options={filterOptions.type}
-              onChange={setTypeFilter}
-            />
-            <SelectField
-              label="Severity"
-              value={severityFilter}
-              options={filterOptions.severity}
-              onChange={setSeverityFilter}
-            />
-            <SelectField
-              label="Status"
-              value={statusFilter}
-              options={filterOptions.status}
-              onChange={setStatusFilter}
-            />
-            <SelectField
-              label="Source"
-              value={sourceFilter}
-              options={filterOptions.source}
-              onChange={setSourceFilter}
-            />
+        {selectedVisibleCount > 0 ? (
+          <div className="shrink-0 border-b border-[var(--border)] px-6 py-3 text-sm font-medium text-[var(--muted)]">
+            {selectedVisibleCount} visible notification
+            {selectedVisibleCount === 1 ? "" : "s"} selected
           </div>
+        ) : null}
 
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <Button
-              variant="secondary"
-              iconLeft={<RefreshCw className="h-4 w-4" />}
-              disabled={busy}
-              onClick={() =>
-                runAction(async () => {
-                  await loadNotifications(false);
-                })
-              }
-            >
-              Refresh ({secondsLeft}s)
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={busy || selectedIds.length === 0}
-              onClick={() =>
-                runAction(async () => {
-                  await apiPatch(
-                    "/user/notifications/bulk/read",
-                    { notificationIds: selectedIds },
-                    "user",
-                  );
-                  setSelectedIds([]);
-                })
-              }
-            >
-              Mark Selected Read
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={busy || selectedIds.length === 0}
-              onClick={() =>
-                runAction(async () => {
-                  await Promise.all(
-                    selectedIds.map((id) =>
-                      apiPatch(`/user/notifications/${id}/archive`, {}, "user"),
-                    ),
-                  );
-                  setSelectedIds([]);
-                })
-              }
-            >
-              Archive Selected
-            </Button>
-
-            <Button
-              variant="outline"
-              iconLeft={<Trash2 className="h-4 w-4" />}
-              disabled={busy || selectedIds.length === 0}
-              onClick={() =>
-                runAction(async () => {
-                  await apiPost(
-                    "/user/notifications/bulk/delete",
-                    { notificationIds: selectedIds },
-                    "user",
-                  );
-                  setSelectedIds([]);
-                })
-              }
-            >
-              Delete Selected
-            </Button>
-          </div>
-
-          {error ? (
-            <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        {error ? (
+          <div className="shrink-0 px-6 pb-2 pt-4">
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
-            </div>
-          ) : null}
-        </div>
+            </p>
+          </div>
+        ) : null}
 
-        <TableMain>
-          <TableGrid minWidthClassName="min-w-[1500px]">
+        <TableMain className="min-h-0 flex-1">
+          <TableGrid minWidthClassName="flex h-full min-w-[1360px] flex-col">
             <TableHeader columnsClassName={columnsClassName}>
               <TableCell className="justify-center">
                 <TableCheckbox
@@ -575,173 +703,86 @@ export default function UserNotificationsTable() {
                   onToggle={toggleSelectAllVisible}
                 />
               </TableCell>
-              <TableHeaderCell
-                label="Notification"
-                sortable
-                active={sortKey === "title"}
-                direction={sortDir}
-                onClick={() => handleSort("title")}
-              />
-              <TableHeaderCell
-                label="Type"
-                sortable
-                active={sortKey === "type"}
-                direction={sortDir}
-                onClick={() => handleSort("type")}
-              />
-              <TableHeaderCell
-                label="Source"
-                sortable
-                active={sortKey === "source"}
-                direction={sortDir}
-                onClick={() => handleSort("source")}
-              />
-              <TableHeaderCell
-                label="Severity"
-                sortable
-                active={sortKey === "severity"}
-                direction={sortDir}
-                onClick={() => handleSort("severity")}
-              />
-              <TableHeaderCell
-                label="Status"
-                sortable
-                active={sortKey === "status"}
-                direction={sortDir}
-                onClick={() => handleSort("status")}
-              />
-              <TableHeaderCell
-                label="Created"
-                sortable
-                active={sortKey === "createdAt"}
-                direction={sortDir}
-                onClick={() => handleSort("createdAt")}
-              />
-              <TableHeaderCell label="Actions" />
+
+              {notificationTableColumns.map((column) => (
+                <TableHeaderCell
+                  key={column.key}
+                  label={column.label}
+                  sortable
+                  active={sortKey === column.key}
+                  direction={sortDir}
+                  onClick={() => handleSort(column.key)}
+                />
+              ))}
             </TableHeader>
 
-            <TableBody>
-              {loading ? (
-                <TableEmptyState text="Loading notifications..." />
-              ) : filteredNotifications.length === 0 ? (
-                <TableEmptyState text="No notifications matched the current filters." />
-              ) : (
-                filteredNotifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    onClick={() => setDetailsNotification(notification)}
-                    className={`grid w-full cursor-pointer border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
-                  >
-                    <TableCell className="justify-center">
-                      <TableCheckbox
-                        checked={selectedIds.includes(notification.id)}
-                        onToggle={() => toggleSelectedId(notification.id)}
-                      />
-                    </TableCell>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TableBody>
+                {loading ? (
+                  <TableEmptyState text="Loading notifications..." />
+                ) : filteredNotifications.length === 0 ? (
+                  <TableEmptyState
+                    text={
+                      hasActiveFilters
+                        ? "No notifications match these filters"
+                        : "No notifications found"
+                    }
+                  />
+                ) : (
+                  filteredNotifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      onClick={() => setDetailsNotification(notification)}
+                      className={`grid w-full cursor-pointer items-center border-b border-[var(--border)] px-6 py-5 transition last:border-b-0 hover:bg-brand-50/30 ${columnsClassName}`}
+                    >
+                      <TableCell className="justify-center">
+                        <TableCheckbox
+                          checked={selectedIds.includes(notification.id)}
+                          onToggle={() => toggleSelectedId(notification.id)}
+                        />
+                      </TableCell>
 
-                    <TableCell className="flex-col items-start">
-                      <p className="font-semibold text-[var(--title)]">
-                        {notification.title}
-                      </p>
-                      <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-                        {notification.message}
-                      </p>
-                    </TableCell>
+                      <TableCell className="min-w-0 flex-col items-start">
+                        <p className="w-full truncate text-base font-semibold text-[var(--title)]">
+                          {notification.title}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-[var(--muted)]">
+                          {notification.message}
+                        </p>
+                      </TableCell>
 
-                    <TableCell className="text-[var(--title)]">
-                      {formatOptionLabel(notification.type)}
-                    </TableCell>
+                      <TableCell className="text-base font-medium text-[var(--title)]">
+                        {formatOptionLabel(notification.type)}
+                      </TableCell>
 
-                    <TableCell className="text-[var(--title)]">
-                      {formatOptionLabel(notification.source)}
-                    </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          label={formatOptionLabel(notification.severity)}
+                          tone={getSeverityTone(notification.severity)}
+                          className="px-4 py-2 text-sm"
+                        />
+                      </TableCell>
 
-                    <TableCell>
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${severityTone[notification.severity]}`}
-                      >
-                        {formatOptionLabel(notification.severity)}
-                      </span>
-                    </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          label={formatOptionLabel(notification.status)}
+                          tone={getStatusTone(notification.status)}
+                          className="px-4 py-2 text-sm"
+                        />
+                      </TableCell>
 
-                    <TableCell>
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone[notification.status]}`}
-                      >
-                        {formatOptionLabel(notification.status)}
-                      </span>
-                    </TableCell>
+                      <TableCell className="text-base font-medium text-[var(--title)]">
+                        {formatOptionLabel(notification.source)}
+                      </TableCell>
 
-                    <TableCell className="text-[var(--title)]">
-                      {notification.createdAtLabel}
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        {notification.canMarkAsRead ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void runAction(async () => {
-                                await apiPatch(
-                                  `/user/notifications/${notification.id}/read`,
-                                  {},
-                                  "user",
-                                );
-                              });
-                            }}
-                          >
-                            Mark Read
-                          </Button>
-                        ) : null}
-
-                        {notification.canArchive ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void runAction(async () => {
-                                await apiPatch(
-                                  `/user/notifications/${notification.id}/archive`,
-                                  {},
-                                  "user",
-                                );
-                              });
-                            }}
-                          >
-                            Archive
-                          </Button>
-                        ) : null}
-
-                        {notification.canDelete ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void runAction(async () => {
-                                await apiDelete(
-                                  `/user/notifications/${notification.id}`,
-                                  "user",
-                                );
-                              });
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </div>
-                ))
-              )}
-            </TableBody>
+                      <TableCell className="text-base text-[var(--muted)]">
+                        {notification.createdAtLabel}
+                      </TableCell>
+                    </div>
+                  ))
+                )}
+              </TableBody>
+            </div>
           </TableGrid>
         </TableMain>
       </Table>
@@ -750,7 +791,7 @@ export default function UserNotificationsTable() {
         open={Boolean(detailsNotification)}
         onClose={() => setDetailsNotification(null)}
       >
-        <div className="space-y-4 pr-8">
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
           <div className="flex items-center gap-3">
             <div
               className="flex h-11 w-11 items-center justify-center rounded-xl"
@@ -773,35 +814,54 @@ export default function UserNotificationsTable() {
               background: "var(--surface-2)",
             }}
           >
-            <p className="text-sm text-[var(--title)]">
+            <p className="text-sm leading-6 text-[var(--title)]">
               {detailsNotification?.message}
             </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div
-              className="rounded-xl border p-4"
-              style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Type
-              </p>
-              <p className="mt-2 text-sm font-semibold text-[var(--title)]">
-                {detailsNotification ? formatOptionLabel(detailsNotification.type) : "-"}
-              </p>
-            </div>
-
-            <div
-              className="rounded-xl border p-4"
-              style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Source
-              </p>
-              <p className="mt-2 text-sm font-semibold text-[var(--title)]">
-                {detailsNotification ? formatOptionLabel(detailsNotification.source) : "-"}
-              </p>
-            </div>
+            {[
+              [
+                "Type",
+                detailsNotification
+                  ? formatOptionLabel(detailsNotification.type)
+                  : "-",
+              ],
+              [
+                "Severity",
+                detailsNotification
+                  ? formatOptionLabel(detailsNotification.severity)
+                  : "-",
+              ],
+              [
+                "Status",
+                detailsNotification
+                  ? formatOptionLabel(detailsNotification.status)
+                  : "-",
+              ],
+              [
+                "Source",
+                detailsNotification
+                  ? formatOptionLabel(detailsNotification.source)
+                  : "-",
+              ],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border p-4"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface-2)",
+                }}
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  {label}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--title)]">
+                  {value}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </Modal>

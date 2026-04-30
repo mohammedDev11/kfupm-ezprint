@@ -1150,42 +1150,6 @@
 //   );
 // }
 
-// function WalletPreview() {
-//   return (
-//     <div className="space-y-3">
-//       <SurfaceBox className="p-4">
-//         <div className="mb-3 flex items-center justify-between">
-//           <MiniLine width="w-14" opacity={0.25} />
-//           <MiniBadge label="Balance" active />
-//         </div>
-//         <MiniLine width="w-24" height="h-4" opacity={0.96} />
-//         <div
-//           className="mt-4 h-2.5 rounded-full"
-//           style={{
-//             background: "color-mix(in srgb, var(--surface-3) 78%, transparent)",
-//           }}
-//         >
-//           <div
-//             className="h-full w-8/12 rounded-full"
-//             style={{ background: "var(--inverse-surface)" }}
-//           />
-//         </div>
-//       </SurfaceBox>
-
-//       <div className="grid grid-cols-2 gap-2">
-//         {[1, 2].map((i) => (
-//           <SurfaceBox key={i} className="p-3">
-//             <MiniLine width="w-12" opacity={0.22} />
-//             <div className="mt-2">
-//               <MiniLine width="w-14" height="h-3" opacity={0.92} />
-//             </div>
-//           </SurfaceBox>
-//         ))}
-//       </div>
-//     </div>
-//   );
-// }
-
 // function RedeemPreview() {
 //   return (
 //     <div className="space-y-3">
@@ -1355,9 +1319,6 @@
 
 //     case "/sections/user/pending-jobs":
 //       return <PendingJobsPreview />;
-
-//     case "/sections/user/wallet":
-//       return <WalletPreview />;
 
 //     case "/sections/user/redeem":
 //       return <RedeemPreview />;

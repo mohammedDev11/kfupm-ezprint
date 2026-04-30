@@ -7,7 +7,6 @@
 //   RiSettings3Line,
 //   RiInformationLine,
 //   RiHistoryLine,
-//   RiWallet3Line,
 //   RiUploadCloud2Line,
 //   RiLogoutBoxRLine, // ✅ logout icon
 // } from "react-icons/ri";
@@ -160,12 +159,6 @@
 //         video: TEST_VIDEO,
 //       },
 //       {
-//         label: "Wallet",
-//         icon: RiWallet3Line,
-//         href: "/sections/user/wallet",
-//         video: TEST_VIDEO,
-//       },
-//       {
 //         label: "Redeem",
 //         icon: MdOutlinePayments,
 //         href: "/sections/user/redeem",
@@ -224,7 +217,6 @@
 //   RiNotification3Line,
 //   RiSettings3Line,
 //   RiHistoryLine,
-//   RiWallet3Line,
 //   RiUploadCloud2Line,
 //   RiLogoutBoxRLine,
 // } from "react-icons/ri";
@@ -394,13 +386,6 @@
 //         darkVideoSrc: TEST_DARK_VIDEO,
 //       },
 //       {
-//         label: "Wallet",
-//         icon: RiWallet3Line,
-//         href: "/sections/user/wallet",
-//         lightVideoSrc: TEST_LIGHT_VIDEO,
-//         darkVideoSrc: TEST_DARK_VIDEO,
-//       },
-//       {
 //         label: "Redeem",
 //         icon: MdOutlinePayments,
 //         href: "/sections/user/redeem",
@@ -462,7 +447,6 @@ import {
   RiNotification3Line,
   RiSettings3Line,
   RiHistoryLine,
-  RiWallet3Line,
   RiUploadCloud2Line,
   RiLogoutBoxRLine,
 } from "react-icons/ri";
@@ -520,6 +504,13 @@ export const adminSidebarSections: SidebarSection[] = [
         label: "Accounts",
         icon: HiOutlineUserCircle,
         href: "/sections/admin/accounts",
+        lightVideoSrc: "/videos/admin/accounts-light.mov",
+        darkVideoSrc: "/videos/admin/accounts-dark.mov",
+      },
+      {
+        label: "Redeem Codes",
+        icon: MdOutlinePayments,
+        href: "/sections/admin/redeem-codes",
         lightVideoSrc: "/videos/admin/accounts-light.mov",
         darkVideoSrc: "/videos/admin/accounts-dark.mov",
       },
@@ -627,13 +618,6 @@ export const userSidebarSections: SidebarSection[] = [
         href: "/sections/user/history",
         lightVideoSrc: "/videos/user/history-light.mov",
         darkVideoSrc: "/videos/user/history-dark.mov",
-      },
-      {
-        label: "Wallet",
-        icon: RiWallet3Line,
-        href: "/sections/user/wallet",
-        lightVideoSrc: "/videos/user/wallet-light.mov",
-        darkVideoSrc: "/videos/user/wallet-dark.mov",
       },
       {
         label: "Redeem",

@@ -5,9 +5,9 @@ const {
 } = require("./quota.validation");
 const {
   adjustUserQuotaData,
-  redeemQuotaData,
   refundJobData,
 } = require("./quota.service");
+const { redeemCodeForUserData } = require("../redeem-codes/redeem-codes.service");
 
 const getActor = (req) => ({
   userId: req.userId,
@@ -20,7 +20,7 @@ const getActor = (req) => ({
 const redeemQuota = async (req, res, next) => {
   try {
     const payload = normalizeRedeemPayload(req.body);
-    const data = await redeemQuotaData(getActor(req), payload);
+    const data = await redeemCodeForUserData(getActor(req), payload);
 
     return res.status(200).json({
       success: true,

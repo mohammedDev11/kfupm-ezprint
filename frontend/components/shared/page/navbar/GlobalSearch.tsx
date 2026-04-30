@@ -82,6 +82,13 @@ const extraSuggestionsByRole: Record<NavbarRole, SearchSuggestion[]> = {
       href: "/sections/admin/reports",
       keywords: "reports analytics exports usage",
     },
+    {
+      id: "admin-search-redeem-codes",
+      title: "Redeem codes",
+      subtitle: "Generate and manage quota vouchers",
+      href: "/sections/admin/redeem-codes",
+      keywords: "redeem codes vouchers quota top up",
+    },
   ],
   user: [
     {
@@ -99,11 +106,11 @@ const extraSuggestionsByRole: Record<NavbarRole, SearchSuggestion[]> = {
       keywords: "jobs recent pending history release",
     },
     {
-      id: "user-search-wallet",
-      title: "Check wallet",
-      subtitle: "Balance, quota, and transactions",
-      href: "/sections/user/wallet",
-      keywords: "wallet balance quota transactions",
+      id: "user-search-history",
+      title: "Transaction history",
+      subtitle: "Quota activity and balance changes",
+      href: "/sections/user/history",
+      keywords: "history balance quota transactions",
     },
   ],
 };

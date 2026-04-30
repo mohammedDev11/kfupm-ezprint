@@ -14,6 +14,7 @@ const notificationAdminRoutes = require("../modules/notifications/notifications.
 const logRoutes = require("../modules/logs/logs.routes");
 const quotaRoutes = require("../modules/quota/quota.routes");
 const quotaAdminRoutes = require("../modules/quota/quota.admin.routes");
+const redeemCodeAdminRoutes = require("../modules/redeem-codes/redeem-codes.routes");
 const reportRoutes = require("../modules/reports/reports.routes");
 const printerScreenRoutes = require("../modules/printer-screen/printer-screen.routes");
 
@@ -42,6 +43,7 @@ router.use("/admin/queues", queueRoutes);
 router.use("/admin/notifications", notificationAdminRoutes);
 router.use("/admin/logs", logRoutes);
 router.use("/admin/quota", quotaAdminRoutes);
+router.use("/admin/redeem-codes", redeemCodeAdminRoutes);
 router.use("/admin/reports", reportRoutes);
 
 module.exports = router;

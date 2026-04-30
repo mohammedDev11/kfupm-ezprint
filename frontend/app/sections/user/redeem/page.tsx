@@ -7,7 +7,7 @@ const page = () => {
       <PageIntro
         title="Redeem Card"
         description="Add quota to your account by entering your voucher code."
-      />{" "}
+      />
       <RedeemCardBox />
     </div>
   );

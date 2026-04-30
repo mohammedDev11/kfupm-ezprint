@@ -6,6 +6,7 @@ const {
   getQuotaTransactions,
   getDashboard,
 } = require("./users.controller");
+const { redeemQuota } = require("../quota/quota.controller");
 
 const router = express.Router();
 
@@ -15,5 +16,6 @@ router.get("/profile", getProfile);
 router.get("/quota/overview", getQuotaOverview);
 router.get("/quota/transactions", getQuotaTransactions);
 router.get("/dashboard", getDashboard);
+router.post("/redeem", redeemQuota);
 
 module.exports = router;

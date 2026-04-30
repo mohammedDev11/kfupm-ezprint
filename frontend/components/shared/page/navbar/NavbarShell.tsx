@@ -4,7 +4,17 @@ import Logo from "@/components/shared/page/Logo";
 import { cn } from "@/lib/cn";
 import { sidebarSectionsByRole, type NavbarRole } from "@/lib/mock-data/Navbar";
 import useIsClient from "@/lib/useIsClient";
-import { getSession } from "@/services/api";
+import { getSession, logoutAllSessions } from "@/services/api";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Bell,
+  LogOut,
+  Settings,
+  UserRound,
+  View,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FiMoon, FiSun } from "react-icons/fi";
@@ -40,6 +50,9 @@ function FrameUserBadge({
   placement?: "up" | "down";
 }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
   const session = isClient ? getSession(role) : null;
   const fullName =
     session?.user.fullName ||
@@ -51,13 +64,62 @@ function FrameUserBadge({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || "")
     .join("");
+  const profileHref = role === "admin" ? "/sections/user/profile" : "/sections/user/profile";
+  const notificationHref = `/sections/${role}/notifications`;
+  const settingsHref = `/sections/${role}/settings`;
+  const actions = [
+    {
+      label: "Profile",
+      href: profileHref,
+      icon: <UserRound className="h-4 w-4" />,
+    },
+    {
+      label: "Notifications",
+      href: notificationHref,
+      icon: <Bell className="h-4 w-4" />,
+    },
+    {
+      label: "Settings",
+      href: settingsHref,
+      icon: <Settings className="h-4 w-4" />,
+    },
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  const handleLogout = () => {
+    logoutAllSessions();
+    setOpen(false);
+    router.push("/");
+  };
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <div ref={menuRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -65,43 +127,128 @@ function FrameUserBadge({
         style={{
           color: "var(--color-brand-500)",
           background: "rgba(201, 106, 90, 0.12)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+          boxShadow: open
+            ? "0 0 0 4px rgba(var(--brand-rgb),0.12), inset 0 1px 0 rgba(255,255,255,0.06)"
+            : "inset 0 1px 0 rgba(255,255,255,0.06)",
         }}
         aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label="Show user profile"
+        aria-haspopup="menu"
+        aria-label="Open profile menu"
       >
         {initials}
       </button>
 
-      {open ? (
-        <div
-          className={cn(
-            "absolute right-0 z-50 min-w-56 rounded-[1rem] border px-4 py-3 text-sm shadow-2xl backdrop-blur-xl",
-            placement === "up"
-              ? "bottom-[calc(100%+0.55rem)]"
-              : "top-[calc(100%+0.55rem)]",
-          )}
-          style={{
-            borderColor: "var(--border)",
-            background:
-              "linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
-            boxShadow:
-              "0 18px 42px rgba(var(--shadow-color), 0.18), inset 0 1px 0 rgba(255,255,255,0.07)",
-          }}
-          role="dialog"
-        >
-          <p className="whitespace-nowrap font-semibold text-[var(--title)]">
-            {fullName}
-          </p>
-          <p
-            className="mt-1 text-[0.66rem] font-semibold uppercase tracking-[0.24em]"
-            style={{ color: "var(--muted)" }}
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: placement === "up" ? 8 : -8,
+              scale: 0.96,
+            }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{
+              opacity: 0,
+              y: placement === "up" ? 8 : -8,
+              scale: 0.96,
+            }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            className={cn(
+              "absolute right-0 z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border p-2 text-sm shadow-2xl backdrop-blur-xl",
+              placement === "up"
+                ? "bottom-[calc(100%+0.65rem)] origin-bottom-right"
+                : "top-[calc(100%+0.65rem)] origin-top-right",
+            )}
+            style={{
+              borderColor: "var(--border)",
+              background:
+                "linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
+              boxShadow:
+                "0 18px 42px rgba(var(--shadow-color), 0.18), inset 0 1px 0 rgba(255,255,255,0.07)",
+            }}
+            role="menu"
           >
-            {roleLabel}
-          </p>
-        </div>
-      ) : null}
+            <div className="flex items-center gap-3 rounded-lg px-3 py-3">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                style={{
+                  color: "var(--color-brand-500)",
+                  background: "rgba(var(--brand-rgb), 0.12)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                }}
+              >
+                {initials}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-[var(--title)]">
+                  {fullName}
+                </p>
+                <p className="mt-1 text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-[var(--muted)]">
+                  {roleLabel}
+                </p>
+              </div>
+            </div>
+
+            <div className="my-2 h-px bg-[var(--border)]" />
+
+            <div className="space-y-1">
+              {actions.map((action) => {
+                const active =
+                  pathname === action.href ||
+                  (action.href !== "/" && pathname.startsWith(`${action.href}/`));
+
+                return (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    onClick={() => setOpen(false)}
+                    role="menuitem"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium transition hover:bg-[var(--surface-2)] hover:text-[var(--color-brand-500)]"
+                    style={{
+                      background: active ? "rgba(var(--brand-rgb), 0.1)" : "transparent",
+                      color: active ? "var(--color-brand-600)" : "var(--paragraph)",
+                    }}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)]">
+                      {action.icon}
+                    </span>
+                    <span>{action.label}</span>
+                  </Link>
+                );
+              })}
+
+              {role === "admin" ? (
+                <Link
+                  href="/sections/user/dashboard"
+                  onClick={() => setOpen(false)}
+                  role="menuitem"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium text-[var(--paragraph)] transition hover:bg-[var(--surface-2)] hover:text-[var(--color-brand-500)]"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)]">
+                    <View className="h-4 w-4" />
+                  </span>
+                  <span>Switch to User View</span>
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="my-2 h-px bg-[var(--border)]" />
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              role="menuitem"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-medium text-[var(--paragraph)] transition hover:bg-[var(--surface-2)] hover:text-[var(--color-brand-500)]"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)]">
+                <LogOut className="h-4 w-4" />
+              </span>
+              <span>Log out</span>
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
