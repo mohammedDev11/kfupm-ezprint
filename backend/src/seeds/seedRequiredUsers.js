@@ -13,7 +13,7 @@ const requiredUsers = [
     userType: "Student",
     department: "Software Engineering",
     standing: "Student",
-    password: "Mohammed@202279720",
+    password: "12345678",
   },
   {
     username: "202322750",
@@ -23,7 +23,7 @@ const requiredUsers = [
     userType: "Student",
     department: "Software Engineering",
     standing: "Student",
-    password: "Ali@202322750",
+    password: "12345678",
   },
   {
     username: "202261120",
@@ -33,7 +33,7 @@ const requiredUsers = [
     userType: "Student",
     department: "Software Engineering",
     standing: "Student",
-    password: "AliAref@202261120",
+    password: "12345678",
   },
   {
     username: "d-ccm",
@@ -43,7 +43,7 @@ const requiredUsers = [
     userType: "Faculty",
     department: "CCM",
     standing: "Faculty",
-    password: "Abdullah@CCM1",
+    password: "12345678",
   },
   {
     username: "khadijah.safwan",
@@ -53,7 +53,7 @@ const requiredUsers = [
     userType: "Faculty",
     department: "CCM",
     standing: "Faculty",
-    password: "Khadijah@CCM1",
+    password: "12345678",
   },
   {
     username: "abdulmohseen.alali",
@@ -63,7 +63,7 @@ const requiredUsers = [
     userType: "Staff",
     department: "CCM",
     standing: "Staff",
-    password: "Abdulmohseen@CCM1",
+    password: "12345678",
   },
 ];
 

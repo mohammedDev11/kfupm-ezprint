@@ -1,24 +1,40 @@
 "use client";
 
+import SegmentToggle from "@/components/shared/actions/SegmentToggle";
 import Button from "@/components/ui/button/Button";
 import Input from "@/components/ui/input/Input";
-import { getCurrentSession, loginLocal, logoutAllSessions } from "@/services/api";
+import {
+  getCurrentSession,
+  loginLocal,
+  logoutAllSessions,
+} from "@/services/api";
 import { ShieldCheck, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import SectionHeader from "../components/SectionHeader";
 
+type LoginTarget = "user" | "admin";
+
 const DEMO_LOGINS = [
   {
-    label: "Admin Demo",
+    label: "Admin",
     username: "admin",
-    password: "admin123",
+    password: "12345678",
+    targetArea: "admin" as LoginTarget,
     icon: <ShieldCheck className="h-4 w-4" />,
   },
   {
-    label: "User Demo",
+    label: "SubAdmin",
+    username: "subadmin",
+    password: "12345678",
+    targetArea: "admin" as LoginTarget,
+    icon: <ShieldCheck className="h-4 w-4" />,
+  },
+  {
+    label: "Real User",
     username: "202279720",
-    password: "user12345",
+    password: "12345678",
+    targetArea: "user" as LoginTarget,
     icon: <UserRound className="h-4 w-4" />,
   },
 ];
@@ -33,12 +49,22 @@ const SSO = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionSummary, setSessionSummary] = useState(currentSession);
+  const [targetArea, setTargetArea] = useState<LoginTarget>("user");
 
-  const redirectForRole = (role: string) => {
-    router.push(role === "Admin" || role === "SubAdmin" ? "/sections/admin/dashboard" : "/sections/user/dashboard");
+  const redirectForSession = (role: string, nextTargetArea = targetArea) => {
+    const canUseAdminArea = role === "Admin" || role === "SubAdmin";
+
+    router.push(
+      nextTargetArea === "admin" && canUseAdminArea
+        ? "/sections/admin/dashboard"
+        : "/sections/user/dashboard",
+    );
   };
 
-  const handleLogin = async (nextUsername = emailOrUsername, nextPassword = password) => {
+  const handleLogin = async (
+    nextUsername = emailOrUsername,
+    nextPassword = password,
+  ) => {
     setLoading(true);
     setError("");
 
@@ -49,7 +75,7 @@ const SSO = () => {
       });
 
       setSessionSummary(session);
-      redirectForRole(session.user.role);
+      redirectForSession(session.user.role);
     } catch (loginError) {
       setError(
         loginError instanceof Error
@@ -67,7 +93,7 @@ const SSO = () => {
         <div className="space-y-6">
           <SectionHeader
             title="Temporary Local Login"
-            description="Use the local development login for tomorrow's demo. This replaces KFUPM SSO for now and routes you into the real user/admin flow."
+            description="Use any real Admin Users username with password 12345678. Admin and SubAdmin accounts route to admin, while every signed-in account can also use the user flow."
           />
 
           <div
@@ -77,7 +103,7 @@ const SSO = () => {
               borderColor: "var(--border)",
             }}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               {DEMO_LOGINS.map((demo) => (
                 <button
                   key={demo.label}
@@ -85,6 +111,7 @@ const SSO = () => {
                   onClick={() => {
                     setEmailOrUsername(demo.username);
                     setPassword(demo.password);
+                    setTargetArea(demo.targetArea);
                   }}
                   className="flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition hover:border-brand-500/50 hover:bg-brand-50/20"
                   style={{
@@ -116,7 +143,8 @@ const SSO = () => {
         >
           <h2 className="title-md">Sign In</h2>
           <p className="paragraph mt-2">
-            Log in as either the seeded user or admin account. This is the temporary auth path until SSO is implemented.
+            Sign in with a real database username and the temporary local
+            password. The old admin/admin123 shortcut is still accepted locally.
           </p>
 
           <form
@@ -133,7 +161,7 @@ const SSO = () => {
               <Input
                 value={emailOrUsername}
                 onChange={(event) => setEmailOrUsername(event.target.value)}
-                placeholder="admin or 202279720"
+                placeholder="202279720, admin, or subadmin"
                 autoComplete="username"
               />
             </div>
@@ -146,9 +174,36 @@ const SSO = () => {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Enter your password"
+                placeholder="12345678"
                 autoComplete="current-password"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-[var(--muted)]">
+                Open area after sign in
+              </label>
+              <SegmentToggle
+                options={[
+                  {
+                    value: "user",
+                    label: "User Area",
+                    icon: <UserRound className="h-4 w-4" />,
+                  },
+                  {
+                    value: "admin",
+                    label: "Admin Area",
+                    icon: <ShieldCheck className="h-4 w-4" />,
+                  },
+                ]}
+                value={targetArea}
+                onChange={(value) => setTargetArea(value as LoginTarget)}
+                className="w-full justify-center"
+                buttonClassName="flex-1"
+              />
+              <p className="text-xs text-[var(--muted)]">
+                Admin Area opens only for Admin and SubAdmin accounts.
+              </p>
             </div>
 
             {error ? (
@@ -188,7 +243,9 @@ const SSO = () => {
                 <>
                   <Button
                     variant="secondary"
-                    onClick={() => redirectForRole(sessionSummary.user.role)}
+                    onClick={() =>
+                      redirectForSession(sessionSummary.user.role)
+                    }
                   >
                     Continue
                   </Button>

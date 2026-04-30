@@ -2,6 +2,7 @@ const app = require("./app");
 const env = require("./config/env");
 const { connectDatabase } = require("./config/db");
 const { ensureDefaultPrinterSetup } = require("./modules/printers/printer.provision.service");
+const { ensureLocalDemoPasswords } = require("./seeds/localDemoPasswords");
 
 const getMongoConnectionSummary = () => {
   const uri = env.mongoUri || "";
@@ -48,6 +49,7 @@ const startServer = async () => {
     const connection = await connectDatabase();
     console.log(`MongoDB connected: ${connection.name}`);
     await ensureDefaultPrinterSetup();
+    await ensureLocalDemoPasswords();
 
     app.listen(env.port, () => {
       console.log(

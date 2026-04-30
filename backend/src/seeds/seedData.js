@@ -13,7 +13,7 @@ const usersSeed = [
         remaining: 500,
       },
     },
-    password: "admin123",
+    password: "12345678",
   },
   {
     username: "subadmin",
@@ -29,7 +29,7 @@ const usersSeed = [
         remaining: 250,
       },
     },
-    password: "subadmin123",
+    password: "12345678",
   },
   {
     username: "202279720",
@@ -45,7 +45,7 @@ const usersSeed = [
         remaining: 24.5,
       },
     },
-    password: "user12345",
+    password: "12345678",
   },
   {
     username: "202322750",
@@ -61,7 +61,7 @@ const usersSeed = [
         remaining: 50,
       },
     },
-    password: "user12345",
+    password: "12345678",
   },
 ];
 

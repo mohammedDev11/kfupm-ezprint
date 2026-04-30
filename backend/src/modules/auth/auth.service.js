@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const env = require("../../config/env");
 const User = require("../../models/User");
+const { isLocalDemoLegacyPassword } = require("../../seeds/localDemoPasswords");
 
 const signAccessToken = (user) => {
   return jwt.sign(
@@ -61,7 +62,10 @@ const loginLocalUser = async ({ emailOrUsername, password }) => {
     throw error;
   }
 
-  const isPasswordValid = await user.validatePassword(password);
+  const isPasswordValid =
+    (user.passwordHash && await user.validatePassword(password)) ||
+    isLocalDemoLegacyPassword(user.username, password);
+
   if (!isPasswordValid) {
     const error = new Error("Invalid credentials.");
     error.status = 401;

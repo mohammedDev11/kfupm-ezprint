@@ -8,7 +8,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node src/seeds/seedDatabase.js",
-    "seed:required-users": "node src/seeds/seedRequiredUsers.js"
+    "seed:required-users": "node src/seeds/seedRequiredUsers.js",
+    "seed:local-demo-passwords": "node src/seeds/localDemoPasswords.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
