@@ -345,54 +345,82 @@ export default function NavbarShell({
     </main>
   );
 
-  const renderShellBar = (placement: "top" | "bottom") => (
-    <header
-      className={cn(
-        "z-20 hidden md:flex items-center justify-between gap-3 px-4 py-3 backdrop-blur-sm",
-        placement === "top" ? "border-b" : "border-t",
-      )}
-      style={{
-        background: "var(--background)",
-        borderColor: "transparent",
-      }}
-    >
-      <Logo />
+  const renderShellBar = (placement: "top" | "bottom") => {
+    const isDockMode = resolvedMode === "top" || resolvedMode === "bottom";
 
-      <div className="min-w-0 flex-1 px-4">
-        {resolvedMode === "left" || resolvedMode === "right" ? (
-          <GlobalSearch mode="full" role={role} sections={sections} />
-        ) : null}
-        {resolvedMode === "top" ? (
-          <DockNavbarTop sections={sections} inFrame />
-        ) : null}
-        {resolvedMode === "bottom" ? (
-          <DockNavbarBottom sections={sections} inFrame className="mx-auto" />
-        ) : null}
-      </div>
+    return (
+      <header
+        className={cn(
+          "z-20 hidden md:flex items-center justify-between overflow-visible",
+          isDockMode
+            ? "self-center rounded-[2rem] px-3 py-2 shadow-2xl backdrop-blur-md"
+            : "gap-3 px-4 py-3 backdrop-blur-sm",
+          isDockMode && placement === "top" && "mt-1.5",
+          isDockMode && placement === "bottom" && "mb-3",
+          !isDockMode && (placement === "top" ? "border-b" : "border-t"),
+        )}
+        style={{
+          width: isDockMode ? "100%" : undefined,
+          gap: isDockMode ? "clamp(0.5rem, 0.9vw, 0.9rem)" : undefined,
+          background: isDockMode
+            ? "linear-gradient(180deg, var(--background), color-mix(in srgb, var(--background) 88%, var(--surface)))"
+            : "var(--background)",
+          borderColor: isDockMode
+            ? "var(--border)"
+            : "transparent",
+          boxShadow: isDockMode
+            ? "0 18px 48px rgba(var(--shadow-color), 0.18), inset 0 1px 0 rgba(255,255,255,0.06)"
+            : undefined,
+        }}
+      >
+        <Logo />
 
-      <div className="flex shrink-0 items-center gap-2">
-        {resolvedMode !== "left" && resolvedMode !== "right" ? (
-          <GlobalSearch
-            mode="compact"
-            role={role}
-            sections={sections}
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            isDockMode ? "px-1 lg:px-2" : "px-4",
+          )}
+        >
+          {resolvedMode === "left" || resolvedMode === "right" ? (
+            <GlobalSearch mode="full" role={role} sections={sections} />
+          ) : null}
+          {resolvedMode === "top" ? (
+            <DockNavbarTop sections={sections} inFrame />
+          ) : null}
+          {resolvedMode === "bottom" ? (
+            <DockNavbarBottom sections={sections} inFrame className="mx-auto" />
+          ) : null}
+        </div>
+
+        <div
+          className={cn(
+            "flex shrink-0 items-center",
+            isDockMode ? "gap-1.5" : "gap-2",
+          )}
+        >
+          {resolvedMode !== "left" && resolvedMode !== "right" ? (
+            <GlobalSearch
+              mode="compact"
+              role={role}
+              sections={sections}
+              placement={placement === "bottom" ? "up" : "down"}
+            />
+          ) : null}
+          <NavbarModeSwitcher
+            value={resolvedMode}
+            onChange={handleModeChange}
             placement={placement === "bottom" ? "up" : "down"}
           />
-        ) : null}
-        <NavbarModeSwitcher
-          value={resolvedMode}
-          onChange={handleModeChange}
-          placement={placement === "bottom" ? "up" : "down"}
-        />
-        <ShellThemeButton />
-        <FrameUserBadge
-          role={role}
-          isClient={isClient}
-          placement={placement === "bottom" ? "up" : "down"}
-        />
-      </div>
-    </header>
-  );
+          <ShellThemeButton />
+          <FrameUserBadge
+            role={role}
+            isClient={isClient}
+            placement={placement === "bottom" ? "up" : "down"}
+          />
+        </div>
+      </header>
+    );
+  };
 
   return (
     <>

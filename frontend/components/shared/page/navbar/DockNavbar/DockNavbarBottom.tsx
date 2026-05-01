@@ -11,10 +11,6 @@ import useIsClient from "@/lib/useIsClient";
 import {
   AnimatePresence,
   motion,
-  useMotionValue,
-  useSpring,
-  useTransform,
-  type MotionValue,
 } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -29,7 +25,9 @@ type DockNavbarBottomProps = {
 
 type DockItemProps = {
   item: SidebarItem;
-  mouseX: MotionValue<number>;
+  index: number;
+  hoveredIndex: number | null;
+  setHoveredIndex: (index: number | null) => void;
 };
 
 type PreviewPortalProps = {
@@ -39,6 +37,19 @@ type PreviewPortalProps = {
   active: boolean;
   onPreviewEnter: () => void;
   onPreviewLeave: () => void;
+};
+
+const DOCK_ITEM_SIZE = "clamp(2.4rem, 3.4vw, 3rem)";
+
+const getDockItemTransform = (hoveredIndex: number | null, index: number) => {
+  if (hoveredIndex === null) return { scale: 1, y: 0 };
+
+  const distance = Math.abs(hoveredIndex - index);
+  if (distance === 0) return { scale: 1.25, y: -10 };
+  if (distance === 1) return { scale: 1.12, y: -5 };
+  if (distance === 2) return { scale: 1.05, y: -2 };
+
+  return { scale: 1, y: 0 };
 };
 
 function WindowChrome({
@@ -242,7 +253,12 @@ function PreviewPortal({
   );
 }
 
-function DockItem({ item, mouseX }: DockItemProps) {
+function DockItem({
+  item,
+  index,
+  hoveredIndex,
+  setHoveredIndex,
+}: DockItemProps) {
   const ref = useRef<HTMLAnchorElement | null>(null);
   const pathname = usePathname();
 
@@ -265,6 +281,7 @@ function DockItem({ item, mouseX }: DockItemProps) {
 
   const openPreview = () => {
     clearCloseTimeout();
+    setHoveredIndex(index);
     setHoveredIcon(true);
   };
 
@@ -279,38 +296,6 @@ function DockItem({ item, mouseX }: DockItemProps) {
   useEffect(() => {
     return () => clearCloseTimeout();
   }, []);
-
-  const distance = useTransform(mouseX, (value) => {
-    const rect = ref.current?.getBoundingClientRect();
-    if (!rect) return 0;
-    return value - (rect.left + rect.width / 2);
-  });
-
-  const widthTransform = useTransform(distance, [-160, 0, 160], [52, 76, 52]);
-  const heightTransform = useTransform(distance, [-160, 0, 160], [52, 76, 52]);
-  const iconScaleTransform = useTransform(
-    distance,
-    [-160, 0, 160],
-    [1, 1.18, 1],
-  );
-
-  const width = useSpring(widthTransform, {
-    mass: 0.1,
-    stiffness: 170,
-    damping: 14,
-  });
-
-  const height = useSpring(heightTransform, {
-    mass: 0.1,
-    stiffness: 170,
-    damping: 14,
-  });
-
-  const iconScale = useSpring(iconScaleTransform, {
-    mass: 0.1,
-    stiffness: 170,
-    damping: 14,
-  });
 
   return (
     <div className="relative flex shrink-0 items-center justify-center">
@@ -330,7 +315,14 @@ function DockItem({ item, mouseX }: DockItemProps) {
       />
 
       <motion.div
-        style={{ width, height }}
+        animate={getDockItemTransform(hoveredIndex, index)}
+        transition={{ type: "spring", stiffness: 260, damping: 20, mass: 0.22 }}
+        style={{
+          width: DOCK_ITEM_SIZE,
+          height: DOCK_ITEM_SIZE,
+          transformOrigin: "bottom center",
+          willChange: "transform",
+        }}
         className="relative flex aspect-square items-center justify-center"
       >
         <Link
@@ -344,13 +336,18 @@ function DockItem({ item, mouseX }: DockItemProps) {
           className={cn(
             "relative flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border transition-colors duration-200",
             active
-              ? "inverse-surface shadow-lg-inverse"
+              ? "text-[var(--color-brand-500)]"
               : "text-[var(--foreground)]",
           )}
           style={{
-            borderColor: active ? "transparent" : "var(--border)",
+            background: active
+              ? "linear-gradient(180deg, color-mix(in srgb, var(--color-brand-500) 16%, var(--surface)), color-mix(in srgb, var(--color-brand-500) 10%, var(--surface-2)))"
+              : undefined,
+            borderColor: active
+              ? "color-mix(in srgb, var(--color-brand-500) 30%, var(--border))"
+              : "var(--border)",
             boxShadow: active
-              ? undefined
+              ? "0 10px 24px rgba(var(--shadow-color), 0.10), inset 0 1px 0 rgba(255,255,255,0.08)"
               : "0 8px 24px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.10)",
             backdropFilter: "blur(18px)",
           }}
@@ -365,19 +362,16 @@ function DockItem({ item, mouseX }: DockItemProps) {
             />
           )}
 
-          <motion.div
-            style={{ scale: iconScale }}
-            className="relative z-[1] flex items-center justify-center"
-          >
+          <div className="relative z-[1] flex items-center justify-center">
             <Icon
-              className={cn(
-                "text-[1.45rem]",
-                active
-                  ? "text-[var(--color-brand-500)]"
-                  : "text-[var(--foreground)]",
-              )}
+              className="text-[1.28rem] 2xl:text-[1.38rem]"
+              style={{
+                color: active
+                  ? "color-mix(in srgb, var(--color-brand-500) 72%, var(--foreground))"
+                  : "var(--foreground)",
+              }}
             />
-          </motion.div>
+          </div>
         </Link>
       </motion.div>
     </div>
@@ -389,8 +383,8 @@ export default function DockNavbarBottom({
   inFrame = false,
   className,
 }: DockNavbarBottomProps) {
-  const mouseX = useMotionValue<number>(Infinity);
   const dockItems = useMemo(() => getDockItems(sections), [sections]);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   return (
     <div
@@ -400,25 +394,35 @@ export default function DockNavbarBottom({
         className,
       )}
     >
-      <motion.div
-        onMouseMove={(event) => mouseX.set(event.pageX)}
-        onMouseLeave={() => mouseX.set(Infinity)}
-        className="flex w-full items-center justify-center"
+      <div
+        onMouseLeave={() => setHoveredIndex(null)}
+        className="flex h-[76px] w-full items-center justify-center overflow-visible"
       >
         <div
           className={cn(
-            "flex w-fit items-end gap-3 overflow-x-auto px-4 pt-4 pb-3",
+            "flex w-fit items-center overflow-visible rounded-[2rem] border px-2.5 py-2 shadow-2xl backdrop-blur-md",
             inFrame ? "max-w-full" : "max-w-[calc(100vw-2rem)]",
           )}
           style={{
-            background: "transparent",
+            gap: "clamp(0.45rem, 0.75vw, 0.75rem)",
+            background:
+              "linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 92%, var(--background)))",
+            borderColor: "var(--border)",
+            boxShadow:
+              "0 16px 38px rgba(var(--shadow-color), 0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
-          {dockItems.map((item) => (
-            <DockItem key={item.href} item={item} mouseX={mouseX} />
+          {dockItems.map((item, index) => (
+            <DockItem
+              key={item.href}
+              item={item}
+              index={index}
+              hoveredIndex={hoveredIndex}
+              setHoveredIndex={setHoveredIndex}
+            />
           ))}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

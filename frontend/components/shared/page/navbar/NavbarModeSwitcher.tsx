@@ -71,7 +71,7 @@ export default function NavbarModeSwitcher({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[1rem] px-3 text-sm font-semibold transition-all duration-300 text-[var(--color-brand-500)]"
+        className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-[1rem] px-3 text-sm font-semibold text-[var(--muted)] transition-all duration-300 hover:text-[var(--foreground)]"
         style={{
           background:
             "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
@@ -115,12 +115,12 @@ export default function NavbarModeSwitcher({
                 className={cn(
                   "flex w-full cursor-pointer items-center gap-2 rounded-[0.8rem] px-3 py-2.5 text-left text-sm font-medium transition-all duration-200",
                   active
-                    ? "text-[var(--color-brand-500)]"
-                    : "text-[var(--paragraph)] hover:text-[var(--color-brand-500)]",
+                    ? "text-[var(--foreground)]"
+                    : "text-[var(--paragraph)] hover:text-[var(--foreground)]",
                 )}
                 style={{
                   background: active
-                    ? "rgba(var(--brand-rgb), 0.12)"
+                    ? "color-mix(in srgb, var(--surface-3) 48%, transparent)"
                     : "transparent",
                 }}
                 role="menuitem"
