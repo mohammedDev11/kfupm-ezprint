@@ -3,13 +3,8 @@
 import PageIntro from "@/components/shared/page/Text/PageIntro";
 import Button from "@/components/ui/button/Button";
 import { FileUpload } from "@/components/ui/button/file-upload";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox from "@/components/ui/listbox/ListBox";
 import { apiGet, apiUpload } from "@/services/api";
 import { KeyRound, MonitorUp } from "lucide-react";
 import Link from "next/link";
@@ -177,6 +172,14 @@ const Page = () => {
   const selectedQueuePrinterNames = selectedQueuePrinterTargets
     .map((printer) => printer.name)
     .filter(Boolean);
+  const queueOptions = useMemo(
+    () =>
+      queues.map((queue) => ({
+        value: queue.id,
+        label: queue.name,
+      })),
+    [queues],
+  );
 
   const handleFilesChange = (nextFiles: File[]) => {
     setFiles(nextFiles);
@@ -290,28 +293,16 @@ const Page = () => {
                 <label className="text-sm font-medium text-[var(--muted)]">
                   Queue
                 </label>
-                <Dropdown
+                <ListBox
                   value={selectedQueueId}
                   onValueChange={(value) => setSelectedQueueId(value)}
-                  fullWidth
-                >
-                  <DropdownTrigger className="h-12 w-full">
-                    {selectedQueue?.name || "Select queue"}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {queues.length === 0 ? (
-                      <DropdownItem value="">
-                        No Secure Release queues available
-                      </DropdownItem>
-                    ) : (
-                      queues.map((queue) => (
-                        <DropdownItem key={queue.id} value={queue.id}>
-                          {queue.name}
-                        </DropdownItem>
-                      ))
-                    )}
-                  </DropdownContent>
-                </Dropdown>
+                  options={queueOptions}
+                  placeholder={selectedQueue?.name || "Select queue"}
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Select queue"
+                  emptyText="No Secure Release queues available"
+                />
               </div>
 
               <div className="space-y-2">
@@ -376,45 +367,29 @@ const Page = () => {
                 <label className="text-sm font-medium text-[var(--muted)]">
                   Color
                 </label>
-                <Dropdown
+                <ListBox
                   value={colorMode}
                   onValueChange={(value) => setColorMode(value)}
-                  fullWidth
-                >
-                  <DropdownTrigger className="h-12 w-full">
-                    {colorMode}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {COLOR_OPTIONS.map((option) => (
-                      <DropdownItem key={option} value={option}>
-                        {option}
-                      </DropdownItem>
-                    ))}
-                  </DropdownContent>
-                </Dropdown>
+                  options={COLOR_OPTIONS}
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Select color mode"
+                />
               </div>
 
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium text-[var(--muted)]">
                   Sides
                 </label>
-                <Dropdown
+                <ListBox
                   value={printMode}
                   onValueChange={(value) => setPrintMode(value)}
-                  fullWidth
-                >
-                  <DropdownTrigger className="h-12 w-full">
-                    {DUPLEX_OPTIONS.find((option) => option.value === printMode)?.label ||
-                      "Select mode"}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {DUPLEX_OPTIONS.map((option) => (
-                      <DropdownItem key={option.value} value={option.value}>
-                        {option.label}
-                      </DropdownItem>
-                    ))}
-                  </DropdownContent>
-                </Dropdown>
+                  options={DUPLEX_OPTIONS}
+                  placeholder="Select mode"
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Select print sides"
+                />
               </div>
             </div>
 

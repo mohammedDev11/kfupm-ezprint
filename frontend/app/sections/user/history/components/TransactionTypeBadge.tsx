@@ -17,17 +17,12 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import StatusBadge, {
   type StatusTone,
 } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
@@ -35,6 +30,7 @@ import { apiGet } from "@/services/api";
 import {
   Check,
   CreditCard,
+  FileOutput,
   FileText,
   Maximize2,
   Minimize2,
@@ -42,6 +38,7 @@ import {
   Plus,
   RotateCcw,
   SlidersHorizontal,
+  Trash2,
   WalletCards,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -113,6 +110,12 @@ const directionFilterOptions: ListBoxOption[] = [
   { label: "All Directions", value: "all" },
   { label: "Credit", value: "in" },
   { label: "Debit", value: "out" },
+];
+
+const exportFormatOptions: ListBoxOption[] = [
+  { label: "PDF", value: "PDF" },
+  { label: "Excel", value: "Excel" },
+  { label: "CSV", value: "CSV" },
 ];
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -222,6 +225,8 @@ export default function UserTransactionHistoryTable() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedTransaction, setSelectedTransaction] =
     useState<TransactionItem | null>(null);
+  const [exportMethod, setExportMethod] = useState<TableExportFormat>("PDF");
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
 
   const loadTransactions = useCallback(
@@ -409,15 +414,24 @@ export default function UserTransactionHistoryTable() {
     );
   };
 
-  const exportTransactions = (format: TableExportFormat) => {
-    const rows = selectedTransactions.length
-      ? selectedTransactions
-      : filteredTransactions;
+  const handleExportChange = (value: string) => {
+    if (selectedTransactions.length === 0) return;
+
+    setExportMethod(value as TableExportFormat);
+    setIsExportModalOpen(true);
+  };
+
+  const removeSelectedTransactionFromExport = (id: string) => {
+    setSelectedIds((current) => current.filter((item) => item !== id));
+  };
+
+  const exportTransactions = () => {
+    if (selectedTransactions.length === 0) return;
 
     exportTableData({
       title: "User Transaction History",
       filename: "alpha-queue-transaction-history",
-      format,
+      format: exportMethod,
       columns: [
         { label: "Date", value: (row: TransactionItem) => row.date },
         { label: "Description", value: (row) => row.description },
@@ -431,8 +445,10 @@ export default function UserTransactionHistoryTable() {
         { label: "Method", value: (row) => row.method },
         { label: "Reference", value: (row) => row.note },
       ],
-      rows,
+      rows: selectedTransactions,
     });
+
+    setIsExportModalOpen(false);
   };
 
   const renderTransactionsTable = (expanded = false) => (
@@ -464,9 +480,12 @@ export default function UserTransactionHistoryTable() {
             onClick={() => void loadTransactions("refresh")}
           />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
-              <span className="flex items-center gap-2">
+          <ListBox
+            value=""
+            options={[]}
+            className="w-auto shrink-0 self-start md:self-auto"
+            placeholder={
+              <span className="flex items-center gap-2 text-[var(--foreground)]">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
                 {activeFilterCount > 0 ? (
@@ -481,63 +500,80 @@ export default function UserTransactionHistoryTable() {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
-
-            <DropdownContent align="right" widthClassName="w-[380px]">
-              <div className="space-y-4 p-2">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Type
-                    </p>
-                    <ListBox
-                      value={typeFilter}
-                      onValueChange={(value) =>
-                        setTypeFilter(value as TransactionFilterType)
-                      }
-                      options={typeFilterOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by transaction type"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Direction
-                    </p>
-                    <ListBox
-                      value={directionFilter}
-                      onValueChange={(value) =>
-                        setDirectionFilter(value as DirectionFilter)
-                      }
-                      options={directionFilterOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by transaction direction"
-                    />
-                  </div>
+            }
+            triggerClassName="h-14 w-auto min-w-[150px] px-6 text-base"
+            contentClassName="w-[380px] !overflow-visible"
+            maxHeightClassName="max-h-none !overflow-visible"
+            align="right"
+            ariaLabel="Filter transaction history"
+          >
+            <div className="space-y-4 p-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Type
+                  </p>
+                  <ListBox
+                    value={typeFilter}
+                    onValueChange={(value) =>
+                      setTypeFilter(value as TransactionFilterType)
+                    }
+                    options={typeFilterOptions}
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                    ariaLabel="Filter by transaction type"
+                  />
                 </div>
 
-                {activeFilterCount > 0 ? (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full text-sm"
-                    onClick={() => {
-                      setTypeFilter("all");
-                      setDirectionFilter("all");
-                    }}
-                  >
-                    Reset Filters
-                  </Button>
-                ) : null}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Direction
+                  </p>
+                  <ListBox
+                    value={directionFilter}
+                    onValueChange={(value) =>
+                      setDirectionFilter(value as DirectionFilter)
+                    }
+                    options={directionFilterOptions}
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                    ariaLabel="Filter by transaction direction"
+                  />
+                </div>
               </div>
-            </DropdownContent>
-          </Dropdown>
 
-          <TableExportDropdown
-            disabled={filteredTransactions.length === 0}
-            onExport={exportTransactions}
+              {activeFilterCount > 0 ? (
+                <Button
+                  variant="outline"
+                  className="h-11 w-full text-sm"
+                  onClick={() => {
+                    setTypeFilter("all");
+                    setDirectionFilter("all");
+                  }}
+                >
+                  Reset Filters
+                </Button>
+              ) : null}
+            </div>
+          </ListBox>
+
+          <ListBox
+            value=""
+            options={exportFormatOptions}
+            className="w-auto shrink-0 self-start md:self-auto"
+            disabled={selectedTransactions.length === 0}
+            onValueChange={handleExportChange}
+            placeholder={
+              <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
+                <FileOutput className="h-4 w-4" />
+                Export
+              </span>
+            }
+            triggerClassName="h-14 w-auto min-w-[160px] px-6 text-base"
+            contentClassName="w-[220px]"
+            optionClassName="py-4 text-base"
+            align="right"
+            ariaLabel="Export transaction history"
           />
 
           <button
@@ -687,6 +723,127 @@ export default function UserTransactionHistoryTable() {
 
         {renderTransactionsTable()}
       </div>
+
+      <Modal
+        open={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      >
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+          <div
+            className="border-b pb-4"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <h3 className="title-md flex items-center gap-2">
+              <FileOutput className="h-5 w-5 text-brand-500" />
+              Export selected transactions
+            </h3>
+            <p className="paragraph mt-2">
+              Review the transactions to export, remove any row if needed, then
+              choose the export format.
+            </p>
+            <p className="paragraph mt-2">
+              Total selected:{" "}
+              <span className="font-semibold">
+                {selectedTransactions.length}
+              </span>
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+            <div
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              {selectedTransactions.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  No transactions selected.
+                </div>
+              ) : (
+                selectedTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[var(--title)]">
+                        {transaction.description}
+                      </p>
+                      <p className="truncate text-sm text-[var(--muted)]">
+                        {transaction.date} • {getTypeLabel(transaction.type)} •{" "}
+                        {formatSignedAmount(transaction)}
+                      </p>
+                    </div>
+
+                    <ExpandedButton
+                      id={`remove-export-transaction-${transaction.id}`}
+                      label="Remove"
+                      icon={Trash2}
+                      variant="danger"
+                      onClick={() =>
+                        removeSelectedTransactionFromExport(transaction.id)
+                      }
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Export Method
+              </p>
+
+              <ListBox
+                options={exportFormatOptions}
+                value={exportMethod}
+                onValueChange={(value) =>
+                  setExportMethod(value as TableExportFormat)
+                }
+                triggerClassName="h-12 w-full"
+                contentClassName="w-full"
+                ariaLabel="Export method"
+              />
+
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Selected format:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {exportMethod}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={exportTransactions}
+              className="px-8"
+              disabled={selectedTransactions.length === 0}
+            >
+              Export
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={Boolean(selectedTransaction)}

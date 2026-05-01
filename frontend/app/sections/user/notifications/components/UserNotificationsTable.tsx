@@ -16,15 +16,10 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import StatusBadge, { type StatusTone } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
@@ -32,10 +27,12 @@ import { apiGet, apiPatch, apiPost } from "@/services/api";
 import {
   Bell,
   CheckCircle2,
+  FileOutput,
   Inbox,
   MoreHorizontal,
   ShieldAlert,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -136,6 +133,18 @@ const toFilterOptions = (values: string[], label: string): ListBoxOption[] =>
     label: value === "all" ? `All ${label}` : formatOptionLabel(value),
   }));
 
+const exportFormatOptions: TableExportFormat[] = ["PDF", "Excel", "CSV"];
+const toolbarExportOptions: ListBoxOption[] = exportFormatOptions.map((format) => ({
+  value: format,
+  label: format,
+  selectedLabel: (
+    <span className="inline-flex items-center gap-2">
+      <FileOutput className="h-4 w-4" />
+      Export
+    </span>
+  ),
+}));
+
 const parseSortableDate = (value: string) => {
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? value : timestamp;
@@ -187,6 +196,8 @@ export default function UserNotificationsTable() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [exportMethod, setExportMethod] = useState<TableExportFormat>("PDF");
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [detailsNotification, setDetailsNotification] =
     useState<UserNotification | null>(null);
 
@@ -410,6 +421,14 @@ export default function UserNotificationsTable() {
     setSelectedIds((current) => Array.from(new Set([...current, ...visibleIds])));
   };
 
+  const selectedNotifications = useMemo(
+    () =>
+      notifications.filter((notification) =>
+        selectedIds.includes(notification.id),
+      ),
+    [notifications, selectedIds],
+  );
+
   const runAction = async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -464,18 +483,24 @@ export default function UserNotificationsTable() {
     }
   };
 
-  const exportNotifications = (format: TableExportFormat) => {
-    const rows =
-      selectedIds.length > 0
-        ? filteredNotifications.filter((notification) =>
-            selectedIds.includes(notification.id),
-          )
-        : filteredNotifications;
+  const handleExportChange = (value: string) => {
+    if (selectedNotifications.length === 0) return;
+
+    setExportMethod(value as TableExportFormat);
+    setIsExportModalOpen(true);
+  };
+
+  const removeSelectedNotificationFromExport = (id: string) => {
+    setSelectedIds((current) => current.filter((item) => item !== id));
+  };
+
+  const exportNotifications = () => {
+    if (selectedNotifications.length === 0) return;
 
     exportTableData({
       title: "User Notifications",
       filename: "alpha-queue-user-notifications",
-      format,
+      format: exportMethod,
       columns: [
         { label: "Notification", value: (row: UserNotification) => row.title },
         { label: "Message", value: (row) => row.message },
@@ -485,8 +510,10 @@ export default function UserNotificationsTable() {
         { label: "Source", value: (row) => formatOptionLabel(row.source) },
         { label: "Created", value: (row) => row.createdAtLabel },
       ],
-      rows,
+      rows: selectedNotifications,
     });
+
+    setIsExportModalOpen(false);
   };
 
   return (
@@ -524,9 +551,12 @@ export default function UserNotificationsTable() {
               }}
             />
 
-            <Dropdown>
-              <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
-                <span className="flex items-center gap-2">
+            <ListBox
+              value=""
+              options={[]}
+              className="w-auto shrink-0 self-start md:self-auto"
+              placeholder={
+                <span className="flex items-center gap-2 text-[var(--foreground)]">
                   <SlidersHorizontal className="h-4 w-4" />
                   <span>Filter</span>
                   {activeFilterCount > 0 ? (
@@ -541,96 +571,108 @@ export default function UserNotificationsTable() {
                     </span>
                   ) : null}
                 </span>
-              </DropdownTrigger>
-
-              <DropdownContent
-                align="right"
-                widthClassName="w-[420px] max-w-[calc(100vw-2rem)]"
-                className="max-h-[calc(100vh-8rem)] overflow-y-auto"
-              >
-                <div className="space-y-4 p-2">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Type
-                      </p>
-                      <ListBox
-                        value={typeFilter}
-                        onValueChange={setTypeFilter}
-                        options={toFilterOptions(filterValues.type, "Types")}
-                        triggerClassName="h-11 px-3"
-                        maxHeightClassName="max-h-52"
-                        ariaLabel="Filter notifications by type"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Severity
-                      </p>
-                      <ListBox
-                        value={severityFilter}
-                        onValueChange={setSeverityFilter}
-                        options={toFilterOptions(
-                          filterValues.severity,
-                          "Severity",
-                        )}
-                        triggerClassName="h-11 px-3"
-                        maxHeightClassName="max-h-52"
-                        ariaLabel="Filter notifications by severity"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Status
-                      </p>
-                      <ListBox
-                        value={statusFilter}
-                        onValueChange={setStatusFilter}
-                        options={toFilterOptions(filterValues.status, "Status")}
-                        triggerClassName="h-11 px-3"
-                        maxHeightClassName="max-h-52"
-                        ariaLabel="Filter notifications by status"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Source
-                      </p>
-                      <ListBox
-                        value={sourceFilter}
-                        onValueChange={setSourceFilter}
-                        options={sourceFilterOptions}
-                        triggerClassName="h-11 px-3"
-                        maxHeightClassName="max-h-52"
-                        ariaLabel="Filter notifications by source"
-                      />
-                    </div>
+              }
+              triggerClassName="h-14 w-auto min-w-[150px] px-6 text-base"
+              contentClassName="w-[420px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-8rem)] overflow-y-auto"
+              maxHeightClassName="max-h-none"
+              align="right"
+              ariaLabel="Filter user notifications"
+            >
+              <div className="space-y-4 p-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Type
+                    </p>
+                    <ListBox
+                      value={typeFilter}
+                      onValueChange={setTypeFilter}
+                      options={toFilterOptions(filterValues.type, "Types")}
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                      ariaLabel="Filter notifications by type"
+                    />
                   </div>
 
-                  {activeFilterCount > 0 ? (
-                    <Button
-                      variant="outline"
-                      className="h-11 w-full text-sm"
-                      onClick={() => {
-                        setTypeFilter("all");
-                        setSeverityFilter("all");
-                        setStatusFilter("all");
-                        setSourceFilter("all");
-                      }}
-                    >
-                      Reset Filters
-                    </Button>
-                  ) : null}
-                </div>
-              </DropdownContent>
-            </Dropdown>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Severity
+                    </p>
+                    <ListBox
+                      value={severityFilter}
+                      onValueChange={setSeverityFilter}
+                      options={toFilterOptions(
+                        filterValues.severity,
+                        "Severity",
+                      )}
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                      ariaLabel="Filter notifications by severity"
+                    />
+                  </div>
 
-            <TableExportDropdown
-              disabled={filteredNotifications.length === 0}
-              onExport={exportNotifications}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Status
+                    </p>
+                    <ListBox
+                      value={statusFilter}
+                      onValueChange={setStatusFilter}
+                      options={toFilterOptions(filterValues.status, "Status")}
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                      ariaLabel="Filter notifications by status"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Source
+                    </p>
+                    <ListBox
+                      value={sourceFilter}
+                      onValueChange={setSourceFilter}
+                      options={sourceFilterOptions}
+                      triggerClassName="h-11 px-3"
+                      maxHeightClassName="max-h-52"
+                      ariaLabel="Filter notifications by source"
+                    />
+                  </div>
+                </div>
+
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full text-sm"
+                    onClick={() => {
+                      setTypeFilter("all");
+                      setSeverityFilter("all");
+                      setStatusFilter("all");
+                      setSourceFilter("all");
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                ) : null}
+              </div>
+            </ListBox>
+
+            <ListBox
+              options={toolbarExportOptions}
+              onValueChange={handleExportChange}
+              placeholder={
+                <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
+                  <FileOutput className="h-4 w-4" />
+                  Export
+                </span>
+              }
+              disabled={selectedNotifications.length === 0}
+              className="w-auto shrink-0 self-start md:self-auto"
+              triggerClassName="h-14 w-auto min-w-[160px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[220px]"
+              optionClassName="py-4 text-base"
+              align="right"
+              ariaLabel="Export selected notifications"
             />
 
             <ListBox
@@ -654,7 +696,7 @@ export default function UserNotificationsTable() {
               ]}
               onValueChange={handleBulkAction}
               placeholder={
-                <span className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
                   <MoreHorizontal className="h-4 w-4" />
                   <span>Actions</span>
                   {selectedIds.length > 0 ? (
@@ -671,8 +713,8 @@ export default function UserNotificationsTable() {
                 </span>
               }
               disabled={busy || selectedIds.length === 0}
-              className="w-full md:w-auto"
-              triggerClassName="h-14 min-w-[180px] px-6 text-base"
+              className="w-auto shrink-0 self-start md:self-auto"
+              triggerClassName="h-14 w-auto min-w-[180px] px-6 text-base"
               align="right"
               ariaLabel="Notification actions"
             />
@@ -786,6 +828,128 @@ export default function UserNotificationsTable() {
           </TableGrid>
         </TableMain>
       </Table>
+
+      <Modal
+        open={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      >
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+          <div
+            className="border-b pb-4"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <h3 className="title-md flex items-center gap-2">
+              <FileOutput className="h-5 w-5 text-brand-500" />
+              Export selected notifications
+            </h3>
+            <p className="paragraph mt-2">
+              Review the notifications to export, remove any row if needed,
+              then choose the export format.
+            </p>
+            <p className="paragraph mt-2">
+              Total selected:{" "}
+              <span className="font-semibold">
+                {selectedNotifications.length}
+              </span>
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+            <div
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              {selectedNotifications.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  No notifications selected.
+                </div>
+              ) : (
+                selectedNotifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[var(--title)]">
+                        {notification.title}
+                      </p>
+                      <p className="truncate text-sm text-[var(--muted)]">
+                        {formatOptionLabel(notification.type)} •{" "}
+                        {formatOptionLabel(notification.status)} •{" "}
+                        {notification.createdAtLabel}
+                      </p>
+                    </div>
+
+                    <ExpandedButton
+                      id={`remove-export-notification-${notification.id}`}
+                      label="Remove"
+                      icon={Trash2}
+                      variant="danger"
+                      onClick={() =>
+                        removeSelectedNotificationFromExport(notification.id)
+                      }
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Export Method
+              </p>
+
+              <ListBox
+                options={exportFormatOptions}
+                value={exportMethod}
+                onValueChange={(value) =>
+                  setExportMethod(value as TableExportFormat)
+                }
+                triggerClassName="h-12 w-full"
+                contentClassName="w-full"
+                ariaLabel="Export method"
+              />
+
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Selected format:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {exportMethod}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={exportNotifications}
+              className="px-8"
+              disabled={selectedNotifications.length === 0}
+            >
+              Export
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={Boolean(detailsNotification)}
