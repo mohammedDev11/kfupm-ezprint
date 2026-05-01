@@ -183,6 +183,13 @@ function SidebarNavItem({
     (item.href !== "/" && pathname.startsWith(`${item.href}/`));
 
   const hasPreviewVideo = Boolean(item.lightVideoSrc || item.darkVideoSrc);
+  const labelBounds = shortcutLabel
+    ? side === "right"
+      ? "left-[4.25rem] right-[78px] text-right"
+      : "left-[78px] right-[4.25rem]"
+    : side === "right"
+      ? "left-4 right-[78px] text-right"
+      : "left-[78px] right-4";
 
   return (
     <>
@@ -192,8 +199,7 @@ function SidebarNavItem({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={cn(
-          "ezprint-sidebar-link group relative flex h-[3.7rem] items-center rounded-full px-3 transition-all duration-300",
-          isExpanded ? "justify-start" : "justify-center",
+          "ezprint-sidebar-link group relative flex h-[3.7rem] items-center rounded-full px-0 transition-all duration-300",
           active
             ? "ezprint-sidebar-link-active border-transparent text-[var(--color-brand-500)] outline-none ring-0"
             : "text-[var(--paragraph)] hover:text-[var(--color-brand-500)]",
@@ -213,7 +219,8 @@ function SidebarNavItem({
 
         <span
           className={cn(
-            "relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-300",
+            "absolute top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 shrink-0 items-center justify-center rounded-full transition-colors duration-300",
+            side === "right" ? "right-[22px]" : "left-[22px]",
             active && "text-[var(--color-brand-500)]",
           )}
         >
@@ -229,19 +236,30 @@ function SidebarNavItem({
 
         <span
           className={cn(
-            "relative z-10 ml-3 min-w-0 overflow-hidden whitespace-nowrap text-[0.96rem] font-medium tracking-[-0.01em] transition-all duration-300",
+            "pointer-events-none absolute top-1/2 z-10 min-w-0 -translate-y-1/2 overflow-hidden whitespace-nowrap text-[0.96rem] font-medium tracking-[-0.01em] transition-[opacity,transform] duration-300",
+            labelBounds,
             isExpanded
-              ? "max-w-none flex-1 opacity-100"
-              : "max-w-0 flex-none opacity-0",
-            active ? "translate-x-0" : "group-hover:translate-x-0.5",
+              ? "translate-x-0 opacity-100"
+              : side === "right"
+                ? "translate-x-1 opacity-0"
+                : "-translate-x-1 opacity-0",
           )}
         >
           <span className="block truncate">{item.label}</span>
         </span>
 
-        {isExpanded && shortcutLabel ? (
+        {shortcutLabel ? (
           <kbd
-            className="relative z-10 ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[0.64rem] font-semibold leading-4 transition-colors duration-300"
+            aria-hidden={!isExpanded}
+            className={cn(
+              "pointer-events-none absolute top-1/2 z-10 shrink-0 -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[0.64rem] font-semibold leading-4 transition-[opacity,transform,color,background-color,border-color] duration-300",
+              side === "right" ? "left-4" : "right-4",
+              isExpanded
+                ? "translate-x-0 opacity-100"
+                : side === "right"
+                  ? "-translate-x-1 opacity-0"
+                  : "translate-x-1 opacity-0",
+            )}
             style={{
               borderColor: "var(--border)",
               background:
@@ -256,7 +274,10 @@ function SidebarNavItem({
 
         {active && isExpanded && !shortcutLabel ? (
           <span
-            className="absolute right-4 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+            className={cn(
+              "absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full",
+              side === "right" ? "left-4" : "right-4",
+            )}
             style={{
               background: "rgba(var(--support-rgb), 0.95)",
               boxShadow: "0 0 14px rgba(var(--support-rgb), 0.55)",
