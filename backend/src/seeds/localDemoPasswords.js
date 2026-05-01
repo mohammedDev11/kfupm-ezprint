@@ -52,6 +52,9 @@ const isLocalDemoAuthEnabled = () => env.nodeEnv !== "production";
 const getLocalDemoUser = (username) =>
   LOCAL_DEMO_USER_MAP.get(normalizeUsername(username));
 
+const isLocalDemoPassword = (password) =>
+  isLocalDemoAuthEnabled() && password === LOCAL_DEMO_PASSWORD;
+
 const isLocalDemoLegacyPassword = (username, password) => {
   if (!isLocalDemoAuthEnabled()) {
     return false;
@@ -154,5 +157,6 @@ if (require.main === module) {
 module.exports = {
   LOCAL_DEMO_PASSWORD,
   ensureLocalDemoPasswords,
+  isLocalDemoPassword,
   isLocalDemoLegacyPassword,
 };

@@ -12,6 +12,9 @@ const scopeAllowsRole = (scope: Scope, role: string) => {
   return role === "User" || role === "Admin" || role === "SubAdmin";
 };
 
+const getRoutingRole = (user: { role?: string; systemRole?: string }) =>
+  user.systemRole || user.role || "User";
+
 export default function RoleGuard({
   scope,
   children,
@@ -25,7 +28,7 @@ export default function RoleGuard({
   useEffect(() => {
     const session = getSession(scope);
 
-    if (!session || !scopeAllowsRole(scope, session.user.role)) {
+    if (!session || !scopeAllowsRole(scope, getRoutingRole(session.user))) {
       router.replace("/");
       return;
     }

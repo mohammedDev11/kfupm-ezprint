@@ -1,6 +1,5 @@
 "use client";
 
-import SegmentToggle from "@/components/shared/actions/SegmentToggle";
 import Button from "@/components/ui/button/Button";
 import Input from "@/components/ui/input/Input";
 import {
@@ -13,31 +12,31 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import SectionHeader from "../components/SectionHeader";
 
-type LoginTarget = "user" | "admin";
-
 const DEMO_LOGINS = [
   {
     label: "Admin",
     username: "admin",
     password: "12345678",
-    targetArea: "admin" as LoginTarget,
     icon: <ShieldCheck className="h-4 w-4" />,
   },
   {
     label: "SubAdmin",
     username: "subadmin",
     password: "12345678",
-    targetArea: "admin" as LoginTarget,
     icon: <ShieldCheck className="h-4 w-4" />,
   },
   {
-    label: "Real User",
+    label: "User",
     username: "202279720",
     password: "12345678",
-    targetArea: "user" as LoginTarget,
     icon: <UserRound className="h-4 w-4" />,
   },
 ];
+
+const getRoutingRole = (user: { role?: string; systemRole?: string }) =>
+  user.systemRole || user.role || "User";
+
+const isAdminRole = (role: string) => role === "Admin" || role === "SubAdmin";
 
 const SSO = () => {
   const router = useRouter();
@@ -49,13 +48,10 @@ const SSO = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionSummary, setSessionSummary] = useState(currentSession);
-  const [targetArea, setTargetArea] = useState<LoginTarget>("user");
 
-  const redirectForSession = (role: string, nextTargetArea = targetArea) => {
-    const canUseAdminArea = role === "Admin" || role === "SubAdmin";
-
+  const redirectForSession = (role: string) => {
     router.push(
-      nextTargetArea === "admin" && canUseAdminArea
+      isAdminRole(role)
         ? "/sections/admin/dashboard"
         : "/sections/user/dashboard",
     );
@@ -75,7 +71,7 @@ const SSO = () => {
       });
 
       setSessionSummary(session);
-      redirectForSession(session.user.role);
+      redirectForSession(getRoutingRole(session.user));
     } catch (loginError) {
       setError(
         loginError instanceof Error
@@ -93,7 +89,7 @@ const SSO = () => {
         <div className="space-y-6">
           <SectionHeader
             title="Temporary Local Login"
-            description="Use any real Admin Users username with password 12345678. Admin and SubAdmin accounts route to admin, while every signed-in account can also use the user flow."
+            description="Sign in with your real username and password. Admin accounts open the admin dashboard; users open the user dashboard."
           />
 
           <div
@@ -111,7 +107,6 @@ const SSO = () => {
                   onClick={() => {
                     setEmailOrUsername(demo.username);
                     setPassword(demo.password);
-                    setTargetArea(demo.targetArea);
                   }}
                   className="flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition hover:border-brand-500/50 hover:bg-brand-50/20"
                   style={{
@@ -143,8 +138,8 @@ const SSO = () => {
         >
           <h2 className="title-md">Sign In</h2>
           <p className="paragraph mt-2">
-            Sign in with a real database username and the temporary local
-            password. The old admin/admin123 shortcut is still accepted locally.
+            Sign in with your real username and password. Admin accounts open
+            the admin dashboard; users open the user dashboard.
           </p>
 
           <form
@@ -177,33 +172,6 @@ const SSO = () => {
                 placeholder="12345678"
                 autoComplete="current-password"
               />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-[var(--muted)]">
-                Open area after sign in
-              </label>
-              <SegmentToggle
-                options={[
-                  {
-                    value: "user",
-                    label: "User Area",
-                    icon: <UserRound className="h-4 w-4" />,
-                  },
-                  {
-                    value: "admin",
-                    label: "Admin Area",
-                    icon: <ShieldCheck className="h-4 w-4" />,
-                  },
-                ]}
-                value={targetArea}
-                onChange={(value) => setTargetArea(value as LoginTarget)}
-                className="w-full justify-center"
-                buttonClassName="flex-1"
-              />
-              <p className="text-xs text-[var(--muted)]">
-                Admin Area opens only for Admin and SubAdmin accounts.
-              </p>
             </div>
 
             {error ? (
@@ -244,7 +212,7 @@ const SSO = () => {
                   <Button
                     variant="secondary"
                     onClick={() =>
-                      redirectForSession(sessionSummary.user.role)
+                      redirectForSession(getRoutingRole(sessionSummary.user))
                     }
                   >
                     Continue

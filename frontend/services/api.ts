@@ -7,7 +7,8 @@ export type AuthUser = {
   username: string;
   fullName: string;
   email: string;
-  role: "Admin" | "SubAdmin" | "User";
+  role: string;
+  systemRole?: string;
 };
 
 export type AuthSession = {
@@ -52,6 +53,8 @@ const CURRENT_SCOPE_KEY = "alpha_queue_current_scope";
 
 const roleToScope = (role: string): Scope =>
   role === "Admin" || role === "SubAdmin" ? "admin" : "user";
+
+const getUserRoutingRole = (user: AuthUser) => user.systemRole || user.role || "User";
 
 const readJson = <T>(key: string): T | null => {
   if (typeof window === "undefined") {
@@ -183,7 +186,7 @@ export const loginLocal = async (
   }
 
   const session: AuthSession = {
-    scope: roleToScope(user.role),
+    scope: roleToScope(getUserRoutingRole(user)),
     token,
     user,
   };

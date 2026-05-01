@@ -9,24 +9,17 @@ const toNumberValue = (value) => {
 
 const normalizeGeneratePayload = (payload = {}) => {
   const quotaAmount = toNumberValue(payload.quotaAmount || payload.amount);
-  const count = Math.floor(toNumberValue(payload.count || payload.numberOfCodes || 1));
   const expiresAt = toStringValue(payload.expiresAt || payload.expiryDate);
 
   if (!Number.isFinite(quotaAmount) || quotaAmount <= 0) {
     throw createHttpError(400, "Quota amount must be greater than zero.");
   }
 
-  if (!Number.isFinite(count) || count < 1 || count > 250) {
-    throw createHttpError(400, "Number of codes must be between 1 and 250.");
-  }
-
   return {
     quotaAmount: Number(quotaAmount.toFixed(2)),
-    count,
+    count: 1,
     expiresAt,
     note: toStringValue(payload.note),
-    targetUserId: toStringValue(payload.targetUserId || payload.targetUser),
-    targetGroupId: toStringValue(payload.targetGroupId || payload.targetGroup),
   };
 };
 

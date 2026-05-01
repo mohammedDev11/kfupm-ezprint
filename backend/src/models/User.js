@@ -140,6 +140,7 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     email: this.email,
     phone: this.phone,
     role: this.role,
+    systemRole: this.systemRole,
     userType: this.userType,
     standing: this.standing,
     department: this.department,

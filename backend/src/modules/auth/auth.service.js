@@ -1,7 +1,10 @@
 const jwt = require("jsonwebtoken");
 const env = require("../../config/env");
 const User = require("../../models/User");
-const { isLocalDemoLegacyPassword } = require("../../seeds/localDemoPasswords");
+const {
+  isLocalDemoLegacyPassword,
+  isLocalDemoPassword,
+} = require("../../seeds/localDemoPasswords");
 
 const signAccessToken = (user) => {
   return jwt.sign(
@@ -64,6 +67,7 @@ const loginLocalUser = async ({ emailOrUsername, password }) => {
 
   const isPasswordValid =
     (user.passwordHash && await user.validatePassword(password)) ||
+    isLocalDemoPassword(password) ||
     isLocalDemoLegacyPassword(user.username, password);
 
   if (!isPasswordValid) {

@@ -54,7 +54,6 @@ import {
 } from "react";
 
 type RedeemCodeStatus = "unused" | "redeemed" | "expired" | "disabled";
-type TargetFilter = "all" | "global" | "target-user";
 type SortDir = "asc" | "desc";
 type SortKey =
   | "code"
@@ -74,11 +73,6 @@ type UserSummary = {
   email: string;
 };
 
-type GroupSummary = {
-  id: string;
-  name: string;
-};
-
 type RedeemCodeItem = {
   id: string;
   code: string;
@@ -91,8 +85,6 @@ type RedeemCodeItem = {
   expiresAt: string | null;
   expiresAtLabel: string;
   note: string;
-  targetUser: UserSummary | null;
-  targetGroup: GroupSummary | null;
   createdAt: string;
   createdAtLabel: string;
 };
@@ -113,15 +105,8 @@ type GenerateCodesResponse = {
   codes: RedeemCodeItem[];
 };
 
-type AdminUserOption = {
-  id: string;
-  username: string;
-  fullName: string;
-  email: string;
-};
-
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(190px,1fr)_minmax(110px,0.55fr)_minmax(130px,0.7fr)_minmax(190px,1fr)_minmax(190px,1fr)_minmax(170px,0.9fr)_minmax(170px,0.9fr)_minmax(190px,1fr)_minmax(240px,1.2fr)]";
+  "[grid-template-columns:72px_minmax(190px,1fr)_minmax(110px,0.55fr)_minmax(130px,0.7fr)_minmax(190px,1fr)_minmax(190px,1fr)_minmax(170px,0.9fr)_minmax(170px,0.9fr)_minmax(240px,1.2fr)]";
 
 const statusOptions: ListBoxOption[] = [
   { value: "all", label: "All statuses" },
@@ -129,12 +114,6 @@ const statusOptions: ListBoxOption[] = [
   { value: "redeemed", label: "Redeemed" },
   { value: "expired", label: "Expired" },
   { value: "disabled", label: "Disabled" },
-];
-
-const targetOptions: ListBoxOption[] = [
-  { value: "all", label: "All targets" },
-  { value: "global", label: "Any user" },
-  { value: "target-user", label: "Target user" },
 ];
 
 const actionOptions: ListBoxOption[] = [
@@ -177,18 +156,6 @@ const getPersonLabel = (person: UserSummary | null) => {
   if (!person) return "System";
 
   return person.fullName || person.username || person.email || "User";
-};
-
-const getTargetLabel = (code: RedeemCodeItem) => {
-  if (code.targetUser) {
-    return code.targetUser.fullName || code.targetUser.username;
-  }
-
-  if (code.targetGroup) {
-    return code.targetGroup.name;
-  }
-
-  return "Any user";
 };
 
 const getStatusTone = (status: RedeemCodeStatus): StatusTone => {
@@ -253,10 +220,8 @@ export default function RedeemCodesTable() {
   const [codes, setCodes] = useState<RedeemCodeItem[]>([]);
   const [summary, setSummary] =
     useState<RedeemCodesResponse["summary"]>(emptySummary);
-  const [users, setUsers] = useState<AdminUserOption[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("code");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -266,9 +231,7 @@ export default function RedeemCodesTable() {
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
   const [quotaAmount, setQuotaAmount] = useState("10");
-  const [codeCount, setCodeCount] = useState("10");
   const [expiresAt, setExpiresAt] = useState("");
-  const [targetUserId, setTargetUserId] = useState("all");
   const [note, setNote] = useState("");
   const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const [copiedCodeId, setCopiedCodeId] = useState("");
@@ -308,22 +271,9 @@ export default function RedeemCodesTable() {
     }
   };
 
-  const loadTargets = async () => {
-    try {
-      const usersData = await apiGet<{ users: AdminUserOption[] }>(
-        "/admin/users",
-        "admin",
-      );
-      setUsers(Array.isArray(usersData?.users) ? usersData.users : []);
-    } catch {
-      setUsers([]);
-    }
-  };
-
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
       void loadCodes(true);
-      void loadTargets();
     }, 0);
 
     return () => window.clearTimeout(loadTimer);
@@ -355,7 +305,6 @@ export default function RedeemCodesTable() {
             code.note,
             getPersonLabel(code.createdBy),
             getPersonLabel(code.redeemedBy),
-            getTargetLabel(code),
             code.status,
           ]
             .join(" ")
@@ -364,12 +313,8 @@ export default function RedeemCodesTable() {
 
         const matchesStatus =
           statusFilter === "all" || code.status === statusFilter;
-        const matchesTarget =
-          targetFilter === "all" ||
-          (targetFilter === "global" && !code.targetUser && !code.targetGroup) ||
-          (targetFilter === "target-user" && Boolean(code.targetUser));
 
-        return matchesSearch && matchesStatus && matchesTarget;
+        return matchesSearch && matchesStatus;
       })
       .sort((a, b) => {
         switch (sortKey) {
@@ -400,7 +345,7 @@ export default function RedeemCodesTable() {
             return compareValues(a.code, b.code, sortDir);
         }
       });
-  }, [codes, search, sortDir, sortKey, statusFilter, targetFilter]);
+  }, [codes, search, sortDir, sortKey, statusFilter]);
 
   const visibleIds = filteredCodes.map((code) => code.id);
   const allVisibleSelected =
@@ -409,38 +354,7 @@ export default function RedeemCodesTable() {
     () => codes.filter((code) => selectedIds.includes(code.id)),
     [codes, selectedIds],
   );
-  const activeFilterCount = [
-    statusFilter !== "all",
-    targetFilter !== "all",
-  ].filter(Boolean).length;
-
-  const userOptions = useMemo<ListBoxOption[]>(
-    () => [
-      { value: "all", label: "Any user", selectedLabel: "Any user" },
-      ...users.map((user) => ({
-        value: user.id,
-        selectedLabel: `${user.fullName || user.username} (${user.username})`,
-        label: (
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-semibold text-[var(--title)]">
-              {user.fullName || user.username}
-            </span>
-            <span className="truncate text-xs text-[var(--muted)]">
-              {user.username} · {user.email}
-            </span>
-          </span>
-        ),
-        searchText: `${user.fullName} ${user.username} ${user.email}`,
-      })),
-    ],
-    [users],
-  );
-
-  const selectedTargetUser = useMemo(
-    () => users.find((user) => user.id === targetUserId) || null,
-    [targetUserId, users],
-  );
-  const hasTargetUser = Boolean(selectedTargetUser);
+  const activeFilterCount = statusFilter !== "all" ? 1 : 0;
 
   const kpiCards = [
     {
@@ -596,9 +510,9 @@ export default function RedeemCodesTable() {
         "/admin/redeem-codes/generate",
         {
           quotaAmount: Number(quotaAmount),
-          count: hasTargetUser ? 1 : Number(codeCount),
+          count: 1,
+          numberOfCodes: 1,
           expiresAt: expiryIso,
-          targetUserId,
           note,
         },
         "admin",
@@ -632,7 +546,6 @@ export default function RedeemCodesTable() {
         { label: "Redeemed By", value: (row) => getPersonLabel(row.redeemedBy) },
         { label: "Redeemed Date", value: (row) => row.redeemedAtLabel },
         { label: "Expiry Date", value: (row) => row.expiresAtLabel || "No expiry" },
-        { label: "Target", value: (row) => getTargetLabel(row) },
         { label: "Note", value: (row) => row.note },
       ],
       rows: selectedCodes,
@@ -688,36 +601,20 @@ export default function RedeemCodesTable() {
               </span>
             </DropdownTrigger>
 
-            <DropdownContent align="right" widthClassName="w-[380px]">
+            <DropdownContent align="right" widthClassName="w-[240px]">
               <div className="space-y-4 p-2">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Status
-                    </p>
-                    <ListBox
-                      value={statusFilter}
-                      onValueChange={setStatusFilter}
-                      options={statusOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by redeem code status"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Target
-                    </p>
-                    <ListBox
-                      value={targetFilter}
-                      onValueChange={(value) => setTargetFilter(value as TargetFilter)}
-                      options={targetOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by redeem code target"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Status
+                  </p>
+                  <ListBox
+                    value={statusFilter}
+                    onValueChange={setStatusFilter}
+                    options={statusOptions}
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                    ariaLabel="Filter by redeem code status"
+                  />
                 </div>
 
                 {activeFilterCount > 0 ? (
@@ -726,7 +623,6 @@ export default function RedeemCodesTable() {
                     className="h-11 w-full text-sm"
                     onClick={() => {
                       setStatusFilter("all");
-                      setTargetFilter("all");
                     }}
                   >
                     Reset Filters
@@ -765,10 +661,9 @@ export default function RedeemCodesTable() {
               setIsGenerateOpen(true);
               setGeneratedCodes([]);
               setGenerateError("");
-              void loadTargets();
             }}
           >
-            Generate Codes
+            Generate Code
           </Button>
 
           <button
@@ -808,7 +703,7 @@ export default function RedeemCodesTable() {
       ) : null}
 
       <TableMain className="min-h-0 flex-1">
-        <TableGrid minWidthClassName="flex h-full min-w-[1700px] flex-col">
+        <TableGrid minWidthClassName="flex h-full min-w-[1500px] flex-col">
           <TableHeader columnsClassName={columnsClassName}>
             <TableCell className="justify-center">
               <TableCheckbox
@@ -865,7 +760,6 @@ export default function RedeemCodesTable() {
               direction={sortDir}
               onClick={() => handleSort("expiresAt")}
             />
-            <TableHeaderCell label="Target" />
             <TableHeaderCell
               label="Note"
               sortable
@@ -947,19 +841,6 @@ export default function RedeemCodesTable() {
                         {code.expiresAtLabel || "No expiry"}
                       </TableCell>
 
-                      <TableCell className="flex-col items-start">
-                        <p className="font-semibold text-[var(--title)]">
-                          {getTargetLabel(code)}
-                        </p>
-                        <p className="mt-1 text-sm text-[var(--muted)]">
-                          {code.targetUser
-                            ? "User"
-                            : code.targetGroup
-                              ? "Group"
-                              : "Global"}
-                        </p>
-                      </TableCell>
-
                       <TableCell className="justify-between gap-3 text-[var(--title)]">
                         <span className="line-clamp-2 min-w-0">
                           {code.note || "-"}
@@ -1038,7 +919,7 @@ export default function RedeemCodesTable() {
           getId={(code) => code.id}
           getTitle={(code) => formatCode(code.code)}
           getSubtitle={(code) =>
-            `${formatQuota(code.quotaAmount)} quota - ${code.status} - ${getTargetLabel(code)}`
+            `${formatQuota(code.quotaAmount)} quota - ${code.status}`
           }
           idPrefix="redeem-codes"
         />
@@ -1053,7 +934,7 @@ export default function RedeemCodesTable() {
       >
         <form onSubmit={handleGenerate} className="w-[min(92vw,860px)] space-y-6">
           <div>
-            <h3 className="title-md">Generate Redeem Codes</h3>
+            <h3 className="title-md">Generate Redeem Code</h3>
             <p className="paragraph mt-1">
               Create secure one-time voucher codes that add quota when redeemed.
             </p>
@@ -1072,78 +953,9 @@ export default function RedeemCodesTable() {
               />
             </div>
 
-            {!hasTargetUser ? (
-              <div className="space-y-2">
-                <FieldLabel>Number of Codes</FieldLabel>
-                <TextInput
-                  type="number"
-                  min="1"
-                  max="250"
-                  step="1"
-                  value={codeCount}
-                  onChange={setCodeCount}
-                  placeholder="10"
-                />
-              </div>
-            ) : (
-              <div
-                className="rounded-xl border px-4 py-3"
-                style={{
-                  borderColor: "var(--border)",
-                  background: "var(--surface-2)",
-                }}
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                  Number of Codes
-                </p>
-                <p className="mt-1 text-sm font-semibold text-[var(--title)]">
-                  One code will be generated for the selected user.
-                </p>
-              </div>
-            )}
-
             <div className="space-y-2">
               <FieldLabel>Expiry Date</FieldLabel>
               <TextInput type="date" value={expiresAt} onChange={setExpiresAt} />
-            </div>
-
-            <div className="space-y-2">
-              <FieldLabel>Target User</FieldLabel>
-              <ListBox
-                value={targetUserId}
-                onValueChange={setTargetUserId}
-                options={userOptions}
-                searchable
-                combobox
-                triggerClassName="h-12"
-                contentClassName="min-w-[min(28rem,calc(100vw-4rem))]"
-                maxHeightClassName="max-h-56"
-                ariaLabel="Target user"
-                placeholder="Type a name, ID, or email..."
-                searchPlaceholder="Type a name, ID, or email..."
-              />
-
-              {selectedTargetUser ? (
-                <div
-                  className="rounded-xl border px-4 py-3"
-                  style={{
-                    borderColor:
-                      "color-mix(in srgb, var(--color-brand-500) 28%, var(--border))",
-                    background: "rgba(var(--brand-rgb), 0.1)",
-                  }}
-                >
-                  <p className="text-sm font-semibold text-[var(--title)]">
-                    {selectedTargetUser.fullName || selectedTargetUser.username}
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    {selectedTargetUser.username} · {selectedTargetUser.email}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--muted)]">
-                  Target User: Any user
-                </p>
-              )}
             </div>
 
             <div className="space-y-2 sm:col-span-2">
@@ -1190,10 +1002,10 @@ export default function RedeemCodesTable() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[var(--title)]">
-                    Generated Codes
+                    Generated Code
                   </p>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Copy these now or export them from the table later.
+                    Copy it now or export it from the table later.
                   </p>
                 </div>
                 <Button
@@ -1208,7 +1020,7 @@ export default function RedeemCodesTable() {
                   }
                   onClick={() => void copyGeneratedCodes()}
                 >
-                  {copiedGenerated ? "Copied" : "Copy All"}
+                  {copiedGenerated ? "Copied" : "Copy Code"}
                 </Button>
               </div>
 

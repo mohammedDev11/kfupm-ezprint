@@ -1,9 +1,7 @@
 const crypto = require("crypto");
-const mongoose = require("mongoose");
 
 const RedeemCode = require("../../models/RedeemCode");
 const User = require("../../models/User");
-const Group = require("../../models/Group");
 const { createHttpError } = require("../../utils/http");
 const { formatDateTimeLabel } = require("../../utils/formatters");
 const { applyQuotaChange } = require("../quota/quota.service");
@@ -24,13 +22,6 @@ const normalizeCodeValue = (value = "") =>
   String(value || "").replace(/[\s-]/g, "").trim().toUpperCase();
 
 const roundAmount = (value) => Number(Number(value || 0).toFixed(2));
-
-const isEmptyTarget = (value = "") =>
-  !value || ["all", "none", "any"].includes(String(value).trim().toLowerCase());
-
-const toIdString = (value) => value?.toString?.() || "";
-
-const sameId = (left, right) => toIdString(left) === toIdString(right);
 
 const randomNumericCode = () => {
   let code = "";
@@ -76,43 +67,6 @@ const buildGroupSummary = (group) => {
     id: group._id.toString(),
     name: group.name || "",
   };
-};
-
-const resolveUserTarget = async (targetUserId) => {
-  if (isEmptyTarget(targetUserId)) return null;
-
-  const query = mongoose.isValidObjectId(targetUserId)
-    ? { _id: targetUserId }
-    : {
-        $or: [
-          { username: targetUserId.toLowerCase() },
-          { email: targetUserId.toLowerCase() },
-        ],
-      };
-
-  const user = await User.findOne(query).select("username fullName email groupId");
-
-  if (!user) {
-    throw createHttpError(400, "Target user was not found.");
-  }
-
-  return user;
-};
-
-const resolveGroupTarget = async (targetGroupId) => {
-  if (isEmptyTarget(targetGroupId)) return null;
-
-  const query = mongoose.isValidObjectId(targetGroupId)
-    ? { _id: targetGroupId }
-    : { name: targetGroupId };
-
-  const group = await Group.findOne(query).select("name");
-
-  if (!group) {
-    throw createHttpError(400, "Target group was not found.");
-  }
-
-  return group;
 };
 
 const syncExpiredCodes = async () => {
@@ -245,13 +199,8 @@ const generateUniqueCodes = async (count) => {
 };
 
 const generateRedeemCodesData = async (actor, payload) => {
-  const [targetUser, targetGroup] = await Promise.all([
-    resolveUserTarget(payload.targetUserId),
-    resolveGroupTarget(payload.targetGroupId),
-  ]);
   const expiresAt = parseExpiryDate(payload.expiresAt);
-  const codeCount = targetUser ? 1 : payload.count;
-  const generatedCodes = await generateUniqueCodes(codeCount);
+  const generatedCodes = await generateUniqueCodes(1);
   const docs = await RedeemCode.insertMany(
     generatedCodes.map((code) => ({
       code,
@@ -259,8 +208,8 @@ const generateRedeemCodesData = async (actor, payload) => {
       expiresAt,
       note: payload.note,
       createdBy: actor.userId || null,
-      targetUser: targetUser?._id || null,
-      targetGroup: targetGroup?._id || null,
+      targetUser: null,
+      targetGroup: null,
     })),
   );
 
@@ -278,8 +227,6 @@ const generateRedeemCodesData = async (actor, payload) => {
         count: docs.length,
         quotaAmount: payload.quotaAmount,
         expiresAt,
-        targetUser: targetUser?.username || "",
-        targetGroup: targetGroup?.name || "",
       },
     },
   });
@@ -485,24 +432,6 @@ const redeemCodeForUserData = async (actor, payload) => {
     await throwRedeemError(actor, normalizedCode, 410, "Redeem code has expired.");
   }
 
-  if (code.targetUser && !sameId(code.targetUser, user._id)) {
-    await throwRedeemError(
-      actor,
-      normalizedCode,
-      403,
-      "Redeem code is assigned to another user.",
-    );
-  }
-
-  if (code.targetGroup && !sameId(code.targetGroup, user.groupId)) {
-    await throwRedeemError(
-      actor,
-      normalizedCode,
-      403,
-      "Redeem code is assigned to another group.",
-    );
-  }
-
   const claimedCode = await RedeemCode.findOneAndUpdate(
     {
       _id: code._id,
@@ -540,7 +469,7 @@ const redeemCodeForUserData = async (actor, payload) => {
         : `Redeem code ${normalizedCode}`,
       method: "Redeem Code",
       reference: {
-        groupId: code.targetGroup || null,
+        groupId: null,
       },
       actor,
       notificationMessage: `A redeem code added ${roundAmount(code.quotaAmount).toFixed(2)} quota to your account.`,
