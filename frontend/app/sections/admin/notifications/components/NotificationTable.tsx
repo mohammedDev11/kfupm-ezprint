@@ -2,12 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import {
   Table,
@@ -80,6 +75,49 @@ const statusOrder: Record<Notification["status"], number> = {
   resolved: 3,
   dismissed: 4,
 };
+
+const typeFilterOptions = [
+  { value: "all", label: "All Types" },
+  { value: "printer_alert", label: "Printer Alert" },
+  { value: "device_error", label: "Device Error" },
+  { value: "toner_low", label: "Toner Low" },
+  { value: "queue_warning", label: "Queue Warning" },
+  { value: "maintenance_reminder", label: "Maintenance Reminder" },
+  { value: "system_warning", label: "System Warning" },
+  { value: "job_issue", label: "Job Issue" },
+];
+
+const severityFilterOptions = [
+  { value: "all", label: "All Severities" },
+  { value: "info", label: "Info" },
+  { value: "warning", label: "Warning" },
+  { value: "error", label: "Error" },
+  { value: "critical", label: "Critical" },
+];
+
+const statusFilterOptions = [
+  { value: "all", label: "All Statuses" },
+  { value: "unread", label: "Unread" },
+  { value: "read", label: "Read" },
+  { value: "resolved", label: "Resolved" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+const sourceFilterOptions = [
+  { value: "all", label: "All Sources" },
+  { value: "Printer", label: "Printer" },
+  { value: "Device", label: "Device" },
+  { value: "Queue", label: "Queue" },
+  { value: "System", label: "System" },
+  { value: "Report Scheduler", label: "Report Scheduler" },
+];
+
+const actionOptions = [
+  { value: "read", label: "Read" },
+  { value: "resolve", label: "Resolve" },
+  { value: "dismiss", label: "Dismiss" },
+  { value: "delete", label: "Delete" },
+];
 
 function parseNotificationDate(dateStr: string) {
   const parsed = new Date(dateStr);
@@ -251,7 +289,7 @@ export default function NotificationTable({
             wrapperClassName="w-full md:w-[440px]"
           />
 
-          <Dropdown
+          <ListBox
             value={filters.type}
             onValueChange={(value) =>
               setFilters((prev) => ({
@@ -259,27 +297,14 @@ export default function NotificationTable({
                 type: value as NotificationType | "all",
               }))
             }
-          >
-            <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-              {filters.type === "all"
-                ? "All Types"
-                : formatTypeLabel(filters.type)}
-            </DropdownTrigger>
-            <DropdownContent widthClassName="w-[220px]">
-              <DropdownItem value="all">All Types</DropdownItem>
-              <DropdownItem value="printer_alert">Printer Alert</DropdownItem>
-              <DropdownItem value="device_error">Device Error</DropdownItem>
-              <DropdownItem value="toner_low">Toner Low</DropdownItem>
-              <DropdownItem value="queue_warning">Queue Warning</DropdownItem>
-              <DropdownItem value="maintenance_reminder">
-                Maintenance Reminder
-              </DropdownItem>
-              <DropdownItem value="system_warning">System Warning</DropdownItem>
-              <DropdownItem value="job_issue">Job Issue</DropdownItem>
-            </DropdownContent>
-          </Dropdown>
+            options={typeFilterOptions}
+            className="w-auto"
+            triggerClassName="h-12 min-w-[170px] px-5 text-base"
+            contentClassName="w-[220px]"
+            ariaLabel="Filter notifications by type"
+          />
 
-          <Dropdown
+          <ListBox
             value={filters.severity}
             onValueChange={(value) =>
               setFilters((prev) => ({
@@ -287,22 +312,14 @@ export default function NotificationTable({
                 severity: value as NotificationFilters["severity"],
               }))
             }
-          >
-            <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-              {filters.severity === "all"
-                ? "All Severities"
-                : formatLabel(filters.severity)}
-            </DropdownTrigger>
-            <DropdownContent widthClassName="w-[220px]">
-              <DropdownItem value="all">All Severities</DropdownItem>
-              <DropdownItem value="info">Info</DropdownItem>
-              <DropdownItem value="warning">Warning</DropdownItem>
-              <DropdownItem value="error">Error</DropdownItem>
-              <DropdownItem value="critical">Critical</DropdownItem>
-            </DropdownContent>
-          </Dropdown>
+            options={severityFilterOptions}
+            className="w-auto"
+            triggerClassName="h-12 min-w-[170px] px-5 text-base"
+            contentClassName="w-[220px]"
+            ariaLabel="Filter notifications by severity"
+          />
 
-          <Dropdown
+          <ListBox
             value={filters.status}
             onValueChange={(value) =>
               setFilters((prev) => ({
@@ -310,22 +327,14 @@ export default function NotificationTable({
                 status: value as NotificationStatus | "all",
               }))
             }
-          >
-            <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-              {filters.status === "all"
-                ? "All Statuses"
-                : formatLabel(filters.status)}
-            </DropdownTrigger>
-            <DropdownContent widthClassName="w-[220px]">
-              <DropdownItem value="all">All Statuses</DropdownItem>
-              <DropdownItem value="unread">Unread</DropdownItem>
-              <DropdownItem value="read">Read</DropdownItem>
-              <DropdownItem value="resolved">Resolved</DropdownItem>
-              <DropdownItem value="dismissed">Dismissed</DropdownItem>
-            </DropdownContent>
-          </Dropdown>
+            options={statusFilterOptions}
+            className="w-auto"
+            triggerClassName="h-12 min-w-[170px] px-5 text-base"
+            contentClassName="w-[220px]"
+            ariaLabel="Filter notifications by status"
+          />
 
-          <Dropdown
+          <ListBox
             value={filters.source}
             onValueChange={(value) =>
               setFilters((prev) => ({
@@ -333,57 +342,33 @@ export default function NotificationTable({
                 source: value as NotificationSource | "all",
               }))
             }
-          >
-            <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-              {filters.source === "all" ? "All Sources" : filters.source}
-            </DropdownTrigger>
-            <DropdownContent widthClassName="w-[220px]">
-              <DropdownItem value="all">All Sources</DropdownItem>
-              <DropdownItem value="Printer">Printer</DropdownItem>
-              <DropdownItem value="Device">Device</DropdownItem>
-              <DropdownItem value="Queue">Queue</DropdownItem>
-              <DropdownItem value="System">System</DropdownItem>
-              <DropdownItem value="Report Scheduler">
-                Report Scheduler
-              </DropdownItem>
-            </DropdownContent>
-          </Dropdown>
+            options={sourceFilterOptions}
+            className="w-auto"
+            triggerClassName="h-12 min-w-[170px] px-5 text-base"
+            contentClassName="w-[220px]"
+            ariaLabel="Filter notifications by source"
+          />
 
           <RefreshTimer secondsLeft={secondsLeft} onRefreshNow={onRefreshNow} />
 
-          <div
-            className={
-              selectedIds.length === 0 ? "pointer-events-none opacity-50" : ""
-            }
-          >
-            <Dropdown
-              onValueChange={(value) => {
-                if (value === "read") onBulkRead(selectedIds);
-                if (value === "resolve") onBulkResolve(selectedIds);
-                if (value === "dismiss") onBulkDismiss(selectedIds);
-                if (value === "delete") onBulkDelete(selectedIds);
-              }}
-            >
-              <DropdownTrigger className="h-12 min-w-[170px] px-5 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                <DropdownItem value="read" className="py-4 text-lg">
-                  Read
-                </DropdownItem>
-                <DropdownItem value="resolve" className="py-4 text-lg">
-                  Resolve
-                </DropdownItem>
-                <DropdownItem value="dismiss" className="py-4 text-lg">
-                  Dismiss
-                </DropdownItem>
-                <DropdownItem value="delete" className="py-4 text-lg">
-                  Delete
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
-          </div>
+          <ListBox
+            value=""
+            options={actionOptions}
+            onValueChange={(value) => {
+              if (value === "read") onBulkRead(selectedIds);
+              if (value === "resolve") onBulkResolve(selectedIds);
+              if (value === "dismiss") onBulkDismiss(selectedIds);
+              if (value === "delete") onBulkDelete(selectedIds);
+            }}
+            placeholder="Actions"
+            disabled={selectedIds.length === 0}
+            className="w-auto"
+            triggerClassName="h-12 min-w-[170px] px-5 text-base"
+            contentClassName="w-[220px]"
+            optionClassName="py-4 text-lg"
+            align="right"
+            ariaLabel="Notification actions"
+          />
         </TableControls>
       </TableTop>
 

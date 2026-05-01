@@ -2,7 +2,6 @@
 
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
-import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -18,15 +17,10 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import StatusBadge, { type StatusTone } from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, type TableExportFormat } from "@/lib/export";
@@ -36,6 +30,7 @@ import {
   Check,
   ClipboardList,
   Copy,
+  FileOutput,
   Gift,
   Maximize2,
   Minimize2,
@@ -120,6 +115,17 @@ const actionOptions: ListBoxOption[] = [
   { value: "disable", label: "Disable selected" },
   { value: "delete", label: "Delete selected" },
 ];
+const exportFormatOptions: TableExportFormat[] = ["PDF", "Excel", "CSV"];
+const toolbarExportOptions: ListBoxOption[] = exportFormatOptions.map((format) => ({
+  value: format,
+  label: format,
+  selectedLabel: (
+    <span className="inline-flex items-center gap-2">
+      <FileOutput className="h-4 w-4" />
+      Export
+    </span>
+  ),
+}));
 
 const emptySummary: RedeemCodesResponse["summary"] = {
   total: 0,
@@ -582,8 +588,9 @@ export default function RedeemCodesTable() {
             onClick={() => loadCodes(false)}
           />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+          <ListBox
+            options={[]}
+            placeholder={
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
@@ -599,9 +606,14 @@ export default function RedeemCodesTable() {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
-
-            <DropdownContent align="right" widthClassName="w-[240px]">
+            }
+            className="w-auto"
+            triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[240px]"
+            maxHeightClassName=""
+            align="right"
+            ariaLabel="Filter redeem codes"
+          >
               <div className="space-y-4 p-2">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -629,12 +641,24 @@ export default function RedeemCodesTable() {
                   </Button>
                 ) : null}
               </div>
-            </DropdownContent>
-          </Dropdown>
+          </ListBox>
 
-          <TableExportDropdown
+          <ListBox
+            options={toolbarExportOptions}
+            onValueChange={(value) => handleExportChange(value as TableExportFormat)}
+            placeholder={
+              <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
+                <FileOutput className="h-4 w-4" />
+                Export
+              </span>
+            }
             disabled={selectedIds.length === 0}
-            onExport={handleExportChange}
+            className="w-auto"
+            triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[220px]"
+            optionClassName="py-4 text-base"
+            align="right"
+            ariaLabel="Export selected redeem codes"
           />
 
           <ListBox
@@ -901,28 +925,120 @@ export default function RedeemCodesTable() {
       {renderTable()}
 
       <Modal open={isExportModalOpen} onClose={() => setIsExportModalOpen(false)}>
-        <SelectedRowsExportModal
-          title="Export selected redeem codes"
-          description="Review the redeem codes to export, remove any row if needed, then choose the export format."
-          rows={selectedCodes}
-          emptyText="Select rows to export."
-          exportMethod={exportMethod}
-          onExportMethodChange={setExportMethod}
-          onRemove={(id) =>
-            setSelectedIds((current) => current.filter((item) => item !== id))
-          }
-          onCancel={() => setIsExportModalOpen(false)}
-          onExport={() => {
-            exportCodes(exportMethod);
-            setIsExportModalOpen(false);
-          }}
-          getId={(code) => code.id}
-          getTitle={(code) => formatCode(code.code)}
-          getSubtitle={(code) =>
-            `${formatQuota(code.quotaAmount)} quota - ${code.status}`
-          }
-          idPrefix="redeem-codes"
-        />
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+          <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+            <h3 className="title-md flex items-center gap-2">
+              <FileOutput className="h-5 w-5 text-brand-500" />
+              Export selected redeem codes
+            </h3>
+            <p className="paragraph mt-2">
+              Review the redeem codes to export, remove any row if needed, then
+              choose the export format.
+            </p>
+            <p className="paragraph mt-2">
+              Total selected:{" "}
+              <span className="font-semibold">{selectedCodes.length}</span>
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+            <div
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              {selectedCodes.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Select rows to export.
+                </div>
+              ) : (
+                selectedCodes.map((code) => (
+                  <div
+                    key={code.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[var(--title)]">
+                        {formatCode(code.code)}
+                      </p>
+                      <p className="truncate text-sm text-[var(--muted)]">
+                        {formatQuota(code.quotaAmount)} quota - {code.status}
+                      </p>
+                    </div>
+
+                    <ExpandedButton
+                      id={`remove-export-redeem-codes-${code.id}`}
+                      label="Remove"
+                      icon={Trash2}
+                      variant="danger"
+                      onClick={() =>
+                        setSelectedIds((current) =>
+                          current.filter((item) => item !== code.id),
+                        )
+                      }
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Export Method
+              </p>
+
+              <ListBox
+                options={exportFormatOptions}
+                value={exportMethod}
+                onValueChange={(value) =>
+                  setExportMethod(value as TableExportFormat)
+                }
+                triggerClassName="h-12 w-full"
+                contentClassName="w-full"
+                ariaLabel="Export method"
+              />
+
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Selected format:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {exportMethod}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                exportCodes(exportMethod);
+                setIsExportModalOpen(false);
+              }}
+              className="px-8"
+              disabled={selectedCodes.length === 0}
+            >
+              Export
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal

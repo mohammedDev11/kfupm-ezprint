@@ -159,13 +159,8 @@
 import { GroupItem } from "@/lib/mock-data/Admin/groups";
 import Button from "@/components/ui/button/Button";
 import ExpandedButton from "@/components/ui/button/ExpandedButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { FileOutput, Trash2, WalletCards, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -205,10 +200,20 @@ const GroupActionModal = ({
 
   useEffect(() => {
     if (!open) return;
-    setWorkingIds(selectedGroups.map((group) => group.id));
-    setFormat("PDF");
-    setQuota("");
-    setNote("");
+
+    let isActive = true;
+    queueMicrotask(() => {
+      if (!isActive) return;
+
+      setWorkingIds(selectedGroups.map((group) => group.id));
+      setFormat("PDF");
+      setQuota("");
+      setNote("");
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [open, selectedGroups]);
 
   const workingGroups = useMemo(
@@ -362,28 +367,17 @@ const GroupActionModal = ({
                       Export Method
                     </p>
 
-                    <Dropdown
+                    <ListBox
+                      options={exportFormatOptions}
                       value={format}
                       onValueChange={(value) =>
                         setFormat(value as ExportFormat)
                       }
-                      fullWidth
-                    >
-                      <DropdownTrigger className="h-[96px] w-full rounded-[24px] px-8 text-[22px] font-medium">
-                        {format}
-                      </DropdownTrigger>
-                      <DropdownContent widthClassName="w-full">
-                        {exportFormatOptions.map((option) => (
-                          <DropdownItem
-                            key={option}
-                            value={option}
-                            className="py-4 text-lg"
-                          >
-                            {option}
-                          </DropdownItem>
-                        ))}
-                      </DropdownContent>
-                    </Dropdown>
+                      triggerClassName="h-[96px] w-full rounded-[24px] px-8 text-[22px] font-medium [&>span]:text-[22px]"
+                      contentClassName="w-full"
+                      optionClassName="py-4 text-lg"
+                      ariaLabel="Export method"
+                    />
 
                     <p className="paragraph text-[18px]">
                       Selected format:{" "}

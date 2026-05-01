@@ -119,6 +119,7 @@ type DropdownTriggerProps = {
   placeholder?: React.ReactNode;
   className?: string;
   showChevron?: boolean;
+  disabled?: boolean;
 };
 
 export function DropdownTrigger({
@@ -126,13 +127,18 @@ export function DropdownTrigger({
   placeholder = "Select",
   className = "",
   showChevron = true,
+  disabled = false,
 }: DropdownTriggerProps) {
   const { open, setOpen, selectedLabel, fullWidth } = useDropdown();
 
   return (
     <button
       type="button"
-      onClick={() => setOpen((prev) => !prev)}
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        setOpen((prev) => !prev);
+      }}
       className={`flex items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left transition ${
         fullWidth ? "w-full" : "w-auto"
       } ${className}`}

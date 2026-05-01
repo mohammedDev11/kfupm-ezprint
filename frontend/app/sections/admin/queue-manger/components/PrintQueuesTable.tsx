@@ -1036,12 +1036,6 @@ import {
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import FloatingInput from "@/components/ui/input/FloatingInput";
 import FormFieldInput from "@/components/ui/input/FormFieldInput";
 import ListBox from "@/components/ui/listbox/ListBox";
@@ -1635,43 +1629,29 @@ function QueueEditorModal({
               />
 
               <EditField label="Queue Type">
-                <Dropdown
+                <ListBox
+                  options={typeOptions}
                   value={draft.type}
                   onValueChange={(value) =>
                     updateDraft("type", value as QueueTableItem["type"])
                   }
-                >
-                  <DropdownTrigger className="h-14 w-full px-4 text-left">
-                    {draft.type}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {typeOptions.map((option) => (
-                      <DropdownItem key={option} value={option}>
-                        {option}
-                      </DropdownItem>
-                    ))}
-                  </DropdownContent>
-                </Dropdown>
+                  triggerClassName="h-14 w-full px-4 text-left"
+                  contentClassName="w-full"
+                  ariaLabel="Queue type"
+                />
               </EditField>
 
               <EditField label="Status">
-                <Dropdown
+                <ListBox
+                  options={statusOptions}
                   value={draft.status}
                   onValueChange={(value) =>
                     updateDraft("status", value as QueueStatus)
                   }
-                >
-                  <DropdownTrigger className="h-14 w-full px-4 text-left">
-                    {draft.status}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {statusOptions.map((option) => (
-                      <DropdownItem key={option} value={option}>
-                        {option}
-                      </DropdownItem>
-                    ))}
-                  </DropdownContent>
-                </Dropdown>
+                  triggerClassName="h-14 w-full px-4 text-left"
+                  contentClassName="w-full"
+                  ariaLabel="Queue status"
+                />
               </EditField>
             </div>
           )}
@@ -2125,8 +2105,9 @@ const PrintQueuesTable = () => {
 
           <RefreshButton className="h-14" onClick={() => loadQueues()} />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+          <ListBox
+            options={[]}
+            placeholder={
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
@@ -2142,9 +2123,14 @@ const PrintQueuesTable = () => {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
-
-            <DropdownContent align="right" widthClassName="w-[380px]">
+            }
+            className="w-auto"
+            triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[380px]"
+            maxHeightClassName=""
+            align="right"
+            ariaLabel="Filter print queues"
+          >
               <div className="space-y-4 p-2">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -2262,8 +2248,7 @@ const PrintQueuesTable = () => {
                   </Button>
                 ) : null}
               </div>
-            </DropdownContent>
-          </Dropdown>
+          </ListBox>
 
           <Button
             variant="primary"

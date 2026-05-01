@@ -21,13 +21,8 @@ import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
 import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import {
   UserAccountItem,
@@ -78,6 +73,30 @@ const columnsClassName =
 const formatMoney = (value: number) => value.toFixed(2);
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+const exportFormatOptions: ExportMethod[] = ["PDF", "Excel", "CSV"];
+const toolbarExportOptions = [
+  { value: "CSV", label: "CSV", selectedLabel: "Export" },
+  { value: "PDF", label: "PDF", selectedLabel: "Export" },
+  { value: "Excel", label: "Excel", selectedLabel: "Export" },
+];
+const toolbarActionOptions = [
+  {
+    value: "delete-selected",
+    label: "Delete selected",
+    selectedLabel: "Actions",
+  },
+  { value: "assign-quota", label: "Assign quota", selectedLabel: "Actions" },
+  {
+    value: "restrict-selected",
+    label: "Restrict selected",
+    selectedLabel: "Actions",
+  },
+  {
+    value: "unrestrict-selected",
+    label: "Unrestrict selected",
+    selectedLabel: "Actions",
+  },
+];
 const fallbackRoleOptions: UserRole[] = ["Admin", "SubAdmin", "User"];
 const fallbackDepartmentOptions: UserDepartment[] = [
   "Software Engineering",
@@ -515,6 +534,8 @@ const UserAccountsTable = () => {
   };
 
   const handleActionChange = (value: string) => {
+    if (selectedUsers.length === 0) return;
+
     const nextValue = value as ActionValue;
 
     if (nextValue === "restrict-selected") {
@@ -674,59 +695,35 @@ const UserAccountsTable = () => {
               Filter
             </Button>
 
-            <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger
-                className={`h-14 min-w-[160px] px-6 text-base ${
-                  selectedUsers.length === 0 ? "pointer-events-none opacity-50" : ""
-                }`}
-              >
-                Export
-              </DropdownTrigger>
+            <ListBox
+              options={toolbarExportOptions}
+              onValueChange={handleExportChange}
+              placeholder={
+                <span className="text-[var(--foreground)]">Export</span>
+              }
+              disabled={selectedUsers.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[220px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="Export selected users"
+            />
 
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                <DropdownItem value="CSV" className="py-4 text-lg">
-                  CSV
-                </DropdownItem>
-
-                <DropdownItem value="PDF" className="py-4 text-lg">
-                  PDF
-                </DropdownItem>
-
-                <DropdownItem value="Excel" className="py-4 text-lg">
-                  Excel
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
-
-            <Dropdown onValueChange={handleActionChange}>
-              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[280px]">
-                <DropdownItem value="delete-selected" className="py-4 text-lg">
-                  Delete selected
-                </DropdownItem>
-
-                <DropdownItem value="assign-quota" className="py-4 text-lg">
-                  Assign quota
-                </DropdownItem>
-
-                <DropdownItem
-                  value="restrict-selected"
-                  className="py-4 text-lg"
-                >
-                  Restrict selected
-                </DropdownItem>
-
-                <DropdownItem
-                  value="unrestrict-selected"
-                  className="py-4 text-lg"
-                >
-                  Unrestrict selected
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
+            <ListBox
+              options={toolbarActionOptions}
+              onValueChange={handleActionChange}
+              placeholder={
+                <span className="text-[var(--foreground)]">Actions</span>
+              }
+              disabled={selectedUsers.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[180px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[280px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="User account actions"
+            />
 
             <button
               type="button"
@@ -1455,23 +1452,16 @@ const UserAccountsTable = () => {
                   Export Method
                 </p>
 
-                <Dropdown
+                <ListBox
+                  options={exportFormatOptions}
                   value={exportMethod}
                   onValueChange={(value) =>
                     setExportMethod(value as ExportMethod)
                   }
-                  fullWidth
-                >
-                  <DropdownTrigger className="h-12 w-full">
-                    {exportMethod}
-                  </DropdownTrigger>
-
-                  <DropdownContent widthClassName="w-full">
-                    <DropdownItem value="PDF">PDF</DropdownItem>
-                    <DropdownItem value="Excel">Excel</DropdownItem>
-                    <DropdownItem value="CSV">CSV</DropdownItem>
-                  </DropdownContent>
-                </Dropdown>
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Export method"
+                />
 
                 <p className="mt-4 text-sm text-[var(--muted)]">
                   Selected format:{" "}

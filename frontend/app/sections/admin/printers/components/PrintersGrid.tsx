@@ -24,11 +24,7 @@ import {
   TableTop,
 } from "@/components/shared/table/Table";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
   type PrinterCapability,
@@ -249,8 +245,9 @@ const PrintersGrid = () => {
 
           <RefreshButton className="h-14" onClick={loadPrinters} />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+          <ListBox
+            options={[]}
+            placeholder={
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
@@ -266,9 +263,14 @@ const PrintersGrid = () => {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
-
-            <DropdownContent align="right" widthClassName="w-[360px]">
+            }
+            className="w-auto"
+            triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[360px]"
+            maxHeightClassName=""
+            align="right"
+            ariaLabel="Filter printers"
+          >
               <div className="space-y-4 p-2">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -351,8 +353,7 @@ const PrintersGrid = () => {
                   </Button>
                 ) : null}
               </div>
-            </DropdownContent>
-          </Dropdown>
+          </ListBox>
 
           {/*<MainButton
             label="Add Printer"

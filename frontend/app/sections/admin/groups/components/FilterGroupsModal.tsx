@@ -158,12 +158,7 @@ import SegmentToggle, {
 } from "@/components/shared/actions/SegmentToggle";
 import RangeSlider from "@/components/ui/Range/RangeSlider";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { Lock, LockOpen } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -190,6 +185,7 @@ const restrictionOptions: SegmentOption[] = [
     icon: <Lock className="h-4 w-4" />,
   },
 ];
+const periodFilterOptions = ["All", ...groupPeriodOptions];
 
 const FilterGroupsModal = ({
   open,
@@ -203,7 +199,17 @@ const FilterGroupsModal = ({
 
   useEffect(() => {
     if (!open) return;
-    setLocalFilters(value);
+
+    let isActive = true;
+    queueMicrotask(() => {
+      if (isActive) {
+        setLocalFilters(value);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [open, value]);
 
   const resetFilters = () => {
@@ -244,7 +250,8 @@ const FilterGroupsModal = ({
 
             <div className="space-y-2">
               <label className="paragraph font-medium">Schedule Period</label>
-              <Dropdown
+              <ListBox
+                options={periodFilterOptions}
                 value={localFilters.period}
                 onValueChange={(value) =>
                   setLocalFilters((prev) => ({
@@ -252,20 +259,10 @@ const FilterGroupsModal = ({
                     period: value as GroupFilters["period"],
                   }))
                 }
-                fullWidth
-              >
-                <DropdownTrigger className="h-[52px] w-full px-4">
-                  {localFilters.period}
-                </DropdownTrigger>
-                <DropdownContent widthClassName="w-full">
-                  <DropdownItem value="All">All</DropdownItem>
-                  {groupPeriodOptions.map((option) => (
-                    <DropdownItem key={option} value={option}>
-                      {option}
-                    </DropdownItem>
-                  ))}
-                </DropdownContent>
-              </Dropdown>
+                triggerClassName="h-[52px] w-full px-4"
+                contentClassName="w-full"
+                ariaLabel="Schedule period"
+              />
             </div>
           </div>
 

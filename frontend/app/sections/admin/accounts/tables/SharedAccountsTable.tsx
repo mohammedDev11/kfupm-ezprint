@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Crown,
+  FileOutput,
   Link2,
   Maximize2,
   Minimize2,
@@ -25,7 +26,6 @@ import React, {
 
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
-import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -43,13 +43,8 @@ import {
 } from "@/components/shared/table/Table";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
@@ -179,6 +174,34 @@ export type SharedAccountsTableHandle = {
 
 const columnsClassName =
   "[grid-template-columns:72px_minmax(220px,1.2fr)_minmax(190px,1fr)_minmax(210px,0.85fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_minmax(140px,0.8fr)_minmax(200px,1fr)]";
+const sharedExportFormatOptions: ExportMethod[] = ["PDF", "Excel", "CSV"];
+const sharedToolbarExportOptions = [
+  { value: "CSV", label: "CSV", selectedLabel: "Export" },
+  { value: "PDF", label: "PDF", selectedLabel: "Export" },
+  { value: "Excel", label: "Excel", selectedLabel: "Export" },
+];
+const sharedToolbarActionOptions = [
+  {
+    value: "export-groups",
+    label: "Export Shared Accounts",
+    selectedLabel: "Actions",
+  },
+  {
+    value: "archive-group",
+    label: "Archive Group",
+    selectedLabel: "Actions",
+  },
+  {
+    value: "delete-group",
+    label: "Delete Group",
+    selectedLabel: "Actions",
+  },
+  {
+    value: "refresh-data",
+    label: "Refresh Data",
+    selectedLabel: "Actions",
+  },
+];
 
 const sharedAccountsTableColumns: {
   key: SharedAccountSortKey;
@@ -1776,23 +1799,116 @@ function SharedAccountsTable(_props, ref) {
 
       <Modal open={Boolean(actionValue)} onClose={() => setActionValue(null)}>
         {actionValue === "export-groups" ? (
-          <SelectedRowsExportModal
-            title="Export selected shared accounts"
-            description="Review the shared accounts to export, remove any row if needed, then choose the export format."
-            rows={selectedGroups}
-            emptyText="No shared accounts selected."
-            exportMethod={exportMethod}
-            onExportMethodChange={setExportMethod}
-            onRemove={removeSelectedGroupFromAction}
-            onCancel={() => setActionValue(null)}
-            onExport={handleExportConfirmed}
-            getId={(group) => group.id}
-            getTitle={(group) => group.personName}
-            getSubtitle={(group) =>
-              `${group.primaryAccount} • ${group.department}`
-            }
-            idPrefix="shared-accounts"
-          />
+          <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+            <div
+              className="border-b pb-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <h3 className="title-md flex items-center gap-2">
+                <FileOutput className="h-5 w-5 text-brand-500" />
+                Export selected shared accounts
+              </h3>
+              <p className="paragraph mt-2">
+                Review the shared accounts to export, remove any row if needed,
+                then choose the export format.
+              </p>
+              <p className="paragraph mt-2">
+                Total selected:{" "}
+                <span className="font-semibold">{selectedGroups.length}</span>
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+              <div
+                className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+                style={{ scrollbarWidth: "thin" }}
+              >
+                {selectedGroups.length === 0 ? (
+                  <div
+                    className="rounded-2xl border p-5 text-sm"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    No shared accounts selected.
+                  </div>
+                ) : (
+                  selectedGroups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-[var(--title)]">
+                          {group.personName}
+                        </p>
+                        <p className="truncate text-sm text-[var(--muted)]">
+                          {group.primaryAccount} • {group.department}
+                        </p>
+                      </div>
+
+                      <ExpandedButton
+                        id={`remove-export-shared-accounts-${group.id}`}
+                        label="Remove"
+                        icon={Trash2}
+                        variant="danger"
+                        onClick={() => removeSelectedGroupFromAction(group.id)}
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div
+                className="rounded-2xl border p-4"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface-2)",
+                }}
+              >
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  Export Method
+                </p>
+
+                <ListBox
+                  options={sharedExportFormatOptions}
+                  value={exportMethod}
+                  onValueChange={(value) =>
+                    setExportMethod(value as ExportMethod)
+                  }
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Export method"
+                />
+
+                <p className="mt-4 text-sm text-[var(--muted)]">
+                  Selected format:{" "}
+                  <span className="font-semibold text-[var(--title)]">
+                    {exportMethod}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActionValue(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportConfirmed}
+                className="px-8"
+                disabled={selectedGroups.length === 0}
+              >
+                Export
+              </Button>
+            </div>
+          </div>
         ) : (
         <div className="w-[min(92vw,720px)] max-w-full min-w-0 space-y-5 overflow-x-hidden">
           <div>
@@ -1928,63 +2044,39 @@ function SharedAccountsTable(_props, ref) {
               onClick={refreshSharedAccounts}
             />
 
-            <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger
-                className={`h-14 min-w-[160px] px-6 text-base ${
-                  selectedGroups.length === 0 ? "pointer-events-none opacity-50" : ""
-                }`}
-              >
-                Export
-              </DropdownTrigger>
+            <ListBox
+              options={sharedToolbarExportOptions}
+              onValueChange={handleExportChange}
+              placeholder={
+                <span className="text-[var(--foreground)]">Export</span>
+              }
+              disabled={selectedGroups.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[220px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="Export selected shared accounts"
+            />
 
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                <DropdownItem value="CSV" className="py-4 text-lg">
-                  CSV
-                </DropdownItem>
-                <DropdownItem value="PDF" className="py-4 text-lg">
-                  PDF
-                </DropdownItem>
-                <DropdownItem value="Excel" className="py-4 text-lg">
-                  Excel
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
-
-            <Dropdown
+            <ListBox
+              options={sharedToolbarActionOptions}
               onValueChange={(value) => {
-                if (value === "export-groups" && selectedGroups.length === 0) {
-                  return;
-                }
+                if (selectedGroups.length === 0) return;
 
                 setActionValue(value as ActionValue);
               }}
-            >
-              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[260px]">
-                <DropdownItem
-                  value="export-groups"
-                  className={`py-4 text-lg ${
-                    selectedGroups.length === 0
-                      ? "pointer-events-none opacity-50"
-                      : ""
-                  }`}
-                >
-                  Export Shared Accounts
-                </DropdownItem>
-                <DropdownItem value="archive-group" className="py-4 text-lg">
-                  Archive Group
-                </DropdownItem>
-                <DropdownItem value="delete-group" className="py-4 text-lg">
-                  Delete Group
-                </DropdownItem>
-                <DropdownItem value="refresh-data" className="py-4 text-lg">
-                  Refresh Data
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
+              placeholder={
+                <span className="text-[var(--foreground)]">Actions</span>
+              }
+              disabled={selectedGroups.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[180px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[260px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="Shared account actions"
+            />
 
             <button
               type="button"

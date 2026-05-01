@@ -245,13 +245,8 @@ import SegmentToggle, {
   SegmentOption,
 } from "@/components/shared/actions/SegmentToggle";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { Lock, LockOpen } from "lucide-react";
 import React, { useMemo, useState } from "react";
@@ -434,24 +429,16 @@ const AddGroupModal = ({ open, onClose, onCreate }: AddGroupModalProps) => {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="paragraph font-medium">Schedule Period</label>
-                <Dropdown
+                <ListBox
+                  options={groupPeriodOptions}
                   value={schedulePeriod}
                   onValueChange={(value) =>
                     setSchedulePeriod(value as GroupItem["period"])
                   }
-                  fullWidth
-                >
-                  <DropdownTrigger className="h-[52px] w-full px-4">
-                    {schedulePeriod}
-                  </DropdownTrigger>
-                  <DropdownContent widthClassName="w-full">
-                    {groupPeriodOptions.map((option) => (
-                      <DropdownItem key={option} value={option}>
-                        {option}
-                      </DropdownItem>
-                    ))}
-                  </DropdownContent>
-                </Dropdown>
+                  triggerClassName="h-[52px] w-full px-4"
+                  contentClassName="w-full"
+                  ariaLabel="Schedule period"
+                />
               </div>
 
               <div className="space-y-2">

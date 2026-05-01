@@ -2,7 +2,6 @@
 
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
-import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -18,25 +17,23 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
 import { apiGet } from "@/services/api";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileOutput,
   Maximize2,
   Minimize2,
   ScrollText,
   SlidersHorizontal,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -91,6 +88,17 @@ const columnsClassName =
 
 const typeOptions = ["all", "Print Job", "System", "User", "Printer"];
 const statusOptions = ["all", "Success", "Failed", "Warning"];
+const exportFormatOptions: TableExportFormat[] = ["PDF", "Excel", "CSV"];
+const toolbarExportOptions: ListBoxOption[] = exportFormatOptions.map((format) => ({
+  value: format,
+  label: format,
+  selectedLabel: (
+    <span className="inline-flex items-center gap-2">
+      <FileOutput className="h-4 w-4" />
+      Export
+    </span>
+  ),
+}));
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
@@ -371,8 +379,9 @@ const ActivityLogTable = () => {
 
           <RefreshButton className="h-14" onClick={() => loadLogs(false)} />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+          <ListBox
+            options={[]}
+            placeholder={
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
@@ -388,97 +397,116 @@ const ActivityLogTable = () => {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
+            }
+            className="w-auto"
+            triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[360px]"
+            maxHeightClassName=""
+            align="right"
+            ariaLabel="Filter logs"
+          >
+            <div className="space-y-4 p-2">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Type
+                </p>
 
-            <DropdownContent align="right" widthClassName="w-[360px]">
-              <div className="space-y-4 p-2">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Type
-                  </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {typeOptions.map((option) => {
+                    const isSelected = typeFilter === option;
 
-                  <div className="grid grid-cols-2 gap-2">
-                    {typeOptions.map((option) => {
-                      const isSelected = typeFilter === option;
-
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setTypeFilter(option)}
-                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
-                          style={{
-                            background: isSelected
-                              ? "rgba(var(--brand-rgb), 0.1)"
-                              : "var(--surface-2)",
-                            borderColor: isSelected
-                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
-                              : "var(--border)",
-                            color: isSelected
-                              ? "var(--color-brand-600)"
-                              : "var(--paragraph)",
-                          }}
-                        >
-                          {option === "all" ? "All" : option}
-                        </button>
-                      );
-                    })}
-                  </div>
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setTypeFilter(option)}
+                        className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                        style={{
+                          background: isSelected
+                            ? "rgba(var(--brand-rgb), 0.1)"
+                            : "var(--surface-2)",
+                          borderColor: isSelected
+                            ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                            : "var(--border)",
+                          color: isSelected
+                            ? "var(--color-brand-600)"
+                            : "var(--paragraph)",
+                        }}
+                      >
+                        {option === "all" ? "All" : option}
+                      </button>
+                    );
+                  })}
                 </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Status
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {statusOptions.map((option) => {
-                      const isSelected = statusFilter === option;
-
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setStatusFilter(option)}
-                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
-                          style={{
-                            background: isSelected
-                              ? "rgba(var(--brand-rgb), 0.1)"
-                              : "var(--surface-2)",
-                            borderColor: isSelected
-                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
-                              : "var(--border)",
-                            color: isSelected
-                              ? "var(--color-brand-600)"
-                              : "var(--paragraph)",
-                          }}
-                        >
-                          {option === "all" ? "All" : option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {activeFilterCount > 0 ? (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full text-sm"
-                    onClick={() => {
-                      setTypeFilter("all");
-                      setStatusFilter("all");
-                    }}
-                  >
-                    Reset Filters
-                  </Button>
-                ) : null}
               </div>
-            </DropdownContent>
-          </Dropdown>
 
-          <TableExportDropdown
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Status
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {statusOptions.map((option) => {
+                    const isSelected = statusFilter === option;
+
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setStatusFilter(option)}
+                        className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                        style={{
+                          background: isSelected
+                            ? "rgba(var(--brand-rgb), 0.1)"
+                            : "var(--surface-2)",
+                          borderColor: isSelected
+                            ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                            : "var(--border)",
+                          color: isSelected
+                            ? "var(--color-brand-600)"
+                            : "var(--paragraph)",
+                        }}
+                      >
+                        {option === "all" ? "All" : option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {activeFilterCount > 0 ? (
+                <Button
+                  variant="outline"
+                  className="h-11 w-full text-sm"
+                  onClick={() => {
+                    setTypeFilter("all");
+                    setStatusFilter("all");
+                  }}
+                >
+                  Reset Filters
+                </Button>
+              ) : null}
+            </div>
+          </ListBox>
+
+          <ListBox
+            options={toolbarExportOptions}
+            onValueChange={(value) =>
+              handleExportChange(value as TableExportFormat)
+            }
+            placeholder={
+              <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
+                <FileOutput className="h-4 w-4" />
+                Export
+              </span>
+            }
             disabled={selectedIds.length === 0}
-            onExport={handleExportChange}
+            className="w-auto"
+            triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[220px]"
+            optionClassName="py-4 text-base"
+            align="right"
+            ariaLabel="Export selected logs"
           />
 
           <button
@@ -630,23 +658,114 @@ const ActivityLogTable = () => {
       {renderLogsTable()}
 
       <Modal open={isExportModalOpen} onClose={() => setIsExportModalOpen(false)}>
-        <SelectedRowsExportModal
-          title="Export selected logs"
-          description="Review the logs to export, remove any row if needed, then choose the export format."
-          rows={selectedLogs}
-          emptyText="Select rows to export."
-          exportMethod={exportMethod}
-          onExportMethodChange={setExportMethod}
-          onRemove={removeSelectedLogFromExport}
-          onCancel={() => setIsExportModalOpen(false)}
-          onExport={handleExportConfirmed}
-          getId={(log) => log.id}
-          getTitle={(log) => log.title}
-          getSubtitle={(log) =>
-            `${log.time} - ${log.type} - ${log.user || "No user"} - ${log.status}`
-          }
-          idPrefix="logs"
-        />
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+          <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+            <h3 className="title-md flex items-center gap-2">
+              <FileOutput className="h-5 w-5 text-brand-500" />
+              Export selected logs
+            </h3>
+            <p className="paragraph mt-2">
+              Review the logs to export, remove any row if needed, then choose
+              the export format.
+            </p>
+            <p className="paragraph mt-2">
+              Total selected:{" "}
+              <span className="font-semibold">{selectedLogs.length}</span>
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+            <div
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              {selectedLogs.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Select rows to export.
+                </div>
+              ) : (
+                selectedLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[var(--title)]">
+                        {log.title}
+                      </p>
+                      <p className="truncate text-sm text-[var(--muted)]">
+                        {log.time} - {log.type} - {log.user || "No user"} -{" "}
+                        {log.status}
+                      </p>
+                    </div>
+
+                    <ExpandedButton
+                      id={`remove-export-logs-${log.id}`}
+                      label="Remove"
+                      icon={Trash2}
+                      variant="danger"
+                      onClick={() => removeSelectedLogFromExport(log.id)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Export Method
+              </p>
+
+              <ListBox
+                options={exportFormatOptions}
+                value={exportMethod}
+                onValueChange={(value) =>
+                  setExportMethod(value as TableExportFormat)
+                }
+                triggerClassName="h-12 w-full"
+                contentClassName="w-full"
+                ariaLabel="Export method"
+              />
+
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Selected format:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {exportMethod}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportConfirmed}
+              className="px-8"
+              disabled={selectedLogs.length === 0}
+            >
+              Export
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal open={Boolean(selectedLog)} onClose={() => setSelectedLog(null)}>

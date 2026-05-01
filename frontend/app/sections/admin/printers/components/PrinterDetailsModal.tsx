@@ -3,12 +3,7 @@
 import React, { useState } from "react";
 import Modal from "@/components/ui/modal/Modal";
 import FloatingInput from "@/components/ui/input/FloatingInput";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import { printerStatusOptions } from "@/lib/mock-data/Admin/printers";
 //import MainButton from "@/app/Mohammed/components/MainButton";
 //import SecondaryButton from "@/app/Mohammed/components/SecondaryButton";
@@ -52,16 +47,14 @@ const AddPrinterModal = ({ open, onClose }: AddPrinterModalProps) => {
             Status
           </p>
 
-          <Dropdown value={status} onValueChange={setStatus}>
-            <DropdownTrigger className="w-full">{status}</DropdownTrigger>
-            <DropdownContent widthClassName="w-full">
-              {printerStatusOptions.map((item) => (
-                <DropdownItem key={item} value={item}>
-                  {item}
-                </DropdownItem>
-              ))}
-            </DropdownContent>
-          </Dropdown>
+          <ListBox
+            options={printerStatusOptions}
+            value={status}
+            onValueChange={setStatus}
+            triggerClassName="w-full"
+            contentClassName="w-full"
+            ariaLabel="Printer status"
+          />
         </div>
 
         {/*<div className="flex flex-col gap-3 sm:flex-row sm:justify-end">

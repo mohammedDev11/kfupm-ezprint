@@ -3,18 +3,20 @@
 import React from "react";
 import Card from "@/components/ui/card/Card";
 import Button from "@/components/ui/button/Button";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
+import ListBox from "@/components/ui/listbox/ListBox";
 import { Save } from "lucide-react";
 import {
   formatRoleLabel,
   NotificationSettingsType,
   NotifyRoles,
 } from "@/lib/mock-data/Admin/notifications";
+
+const notifyRoleOptions: Array<{ value: NotifyRoles; label: string }> = [
+  { value: "admin_only", label: "Admin Only" },
+  { value: "sub_admin_only", label: "Sub-Admin Only" },
+  { value: "admin_and_sub_admin", label: "Admin & Sub-Admin" },
+  { value: "all_users", label: "All Users" },
+];
 
 type Props = {
   settings: NotificationSettingsType;
@@ -117,22 +119,17 @@ export default function NotificationSettingsPanel({
             <label className="mb-2 block text-sm font-medium text-muted">
               Notify Roles
             </label>
-            <Dropdown
+            <ListBox
               value={settings.notify_roles}
               onValueChange={(value) =>
                 updateSettings("notify_roles", value as NotifyRoles)
               }
-            >
-              <DropdownTrigger className="h-[48px] w-full">
-                {formatRoleLabel(settings.notify_roles)}
-              </DropdownTrigger>
-              <DropdownContent widthClassName="w-full min-w-[220px]">
-                <DropdownItem value="admin_only">Admin Only</DropdownItem>
-                <DropdownItem value="sub_admin_only">Sub-Admin Only</DropdownItem>
-                <DropdownItem value="admin_and_sub_admin">Admin & Sub-Admin</DropdownItem>
-                <DropdownItem value="all_users">All Users</DropdownItem>
-              </DropdownContent>
-            </Dropdown>
+              options={notifyRoleOptions}
+              placeholder={formatRoleLabel(settings.notify_roles)}
+              triggerClassName="h-[48px] w-full"
+              contentClassName="w-full min-w-[220px]"
+              ariaLabel="Notify roles"
+            />
           </div>
         </div>
       </Card>

@@ -13,6 +13,7 @@ export type ListBoxOption = {
 };
 
 type ListBoxProps = {
+  children?: React.ReactNode;
   options: Array<string | ListBoxOption>;
   value?: string;
   defaultValue?: string;
@@ -34,6 +35,7 @@ type ListBoxProps = {
 };
 
 export default function ListBox({
+  children,
   options,
   value,
   defaultValue = "",
@@ -308,51 +310,53 @@ export default function ListBox({
           ) : null}
 
           <div className={cn("overflow-y-auto", maxHeightClassName)}>
-            {filteredOptions.length === 0 ? (
+            {children ? (
+              children
+            ) : filteredOptions.length === 0 ? (
               <div className="px-3 py-3 text-sm font-medium text-[var(--muted)]">
                 {emptyText}
               </div>
-            ) : null}
+            ) : (
+              filteredOptions.map((option, index) => {
+                const isSelected = option.value === selectedValue;
+                const isActive = combobox && index === activeIndex;
 
-            {filteredOptions.map((option, index) => {
-              const isSelected = option.value === selectedValue;
-              const isActive = combobox && index === activeIndex;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    disabled={option.disabled}
+                    onClick={() => handleSelect(option)}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50",
+                      isSelected || isActive
+                        ? "bg-[var(--surface-2)]"
+                        : "bg-transparent",
+                      optionClassName,
+                    )}
+                    style={{
+                      color: "var(--paragraph)",
+                    }}
+                  >
+                    <div className="min-w-0 flex-1 truncate">
+                      {option.label}
+                    </div>
 
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  disabled={option.disabled}
-                  onClick={() => handleSelect(option)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50",
-                    isSelected || isActive
-                      ? "bg-[var(--surface-2)]"
-                      : "bg-transparent",
-                    optionClassName,
-                  )}
-                  style={{
-                    color: "var(--paragraph)",
-                  }}
-                >
-                  <div className="min-w-0 flex-1 truncate">
-                    {option.label}
-                  </div>
-
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                    {isSelected ? (
-                      <Check
-                        className="h-4 w-4"
-                        style={{ color: "var(--color-brand-500)" }}
-                      />
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                      {isSelected ? (
+                        <Check
+                          className="h-4 w-4"
+                          style={{ color: "var(--color-brand-500)" }}
+                        />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
       ) : null}

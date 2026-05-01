@@ -3,6 +3,7 @@
 import {
   CalendarClock,
   CircleDollarSign,
+  FileOutput,
   Info,
   Lock,
   Maximize2,
@@ -32,17 +33,12 @@ import {
 } from "@/components/shared/table/Table";
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
-import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import StatusBadge from "@/components/ui/badge/StatusBadge";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownItem,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import Input from "@/components/ui/input/Input";
+import ListBox from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/services/api";
@@ -145,6 +141,20 @@ const formatScheduleValue = (amount: number, period?: string) => {
 };
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+const exportFormatOptions: ExportMethod[] = ["PDF", "Excel", "CSV"];
+const resetPeriodOptions = ["None", "Monthly", "Semester", "Annual"];
+const toolbarExportOptions = [
+  { value: "CSV", label: "CSV", selectedLabel: "Export" },
+  { value: "PDF", label: "PDF", selectedLabel: "Export" },
+  { value: "Excel", label: "Excel", selectedLabel: "Export" },
+];
+const toolbarActionOptions = [
+  {
+    value: "delete-selected",
+    label: "Delete selected",
+    selectedLabel: "Actions",
+  },
+];
 
 const restrictedRank: Record<GroupItem["restricted"], number> = {
   Restricted: 1,
@@ -421,17 +431,22 @@ export default function PrintingGroupsTable() {
   };
 
   const handleActionChange = (value: string) => {
+    if (selectedGroups.length === 0) return;
+
     setActionModal(value as GroupActionValue);
   };
 
-  const handleDeleteSelected = () =>
-    runAction(async () => {
+  const handleDeleteSelected = () => {
+    if (selectedGroups.length === 0) return;
+
+    return runAction(async () => {
       await Promise.all(
         selectedIds.map((id) => apiDelete(`/admin/groups/${id}`, "admin")),
       );
       setSelectedIds([]);
       setActionModal(null);
     });
+  };
 
   const handleExportConfirmed = () => {
     exportGroups(exportMethod);
@@ -494,27 +509,20 @@ export default function PrintingGroupsTable() {
               onClick={() => loadGroups(false)}
             />
 
-            <Dropdown onValueChange={handleExportChange}>
-              <DropdownTrigger
-                className={`h-14 min-w-[160px] px-6 text-base ${
-                  selectedGroups.length === 0 ? "pointer-events-none opacity-50" : ""
-                }`}
-              >
-                Export
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[220px]">
-                <DropdownItem value="CSV" className="py-4 text-lg">
-                  CSV
-                </DropdownItem>
-                <DropdownItem value="PDF" className="py-4 text-lg">
-                  PDF
-                </DropdownItem>
-                <DropdownItem value="Excel" className="py-4 text-lg">
-                  Excel
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
+            <ListBox
+              options={toolbarExportOptions}
+              onValueChange={handleExportChange}
+              placeholder={
+                <span className="text-[var(--foreground)]">Export</span>
+              }
+              disabled={selectedGroups.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[220px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="Export selected groups"
+            />
 
             <Button
               variant="primary"
@@ -526,17 +534,20 @@ export default function PrintingGroupsTable() {
               Add Group
             </Button>
 
-            <Dropdown onValueChange={handleActionChange}>
-              <DropdownTrigger className="h-14 min-w-[180px] px-6 text-base">
-                Actions
-              </DropdownTrigger>
-
-              <DropdownContent align="right" widthClassName="w-[260px]">
-                <DropdownItem value="delete-selected" className="py-4 text-lg">
-                  Delete selected
-                </DropdownItem>
-              </DropdownContent>
-            </Dropdown>
+            <ListBox
+              options={toolbarActionOptions}
+              onValueChange={handleActionChange}
+              placeholder={
+                <span className="text-[var(--foreground)]">Actions</span>
+              }
+              disabled={selectedGroups.length === 0}
+              className="w-auto"
+              triggerClassName="h-14 min-w-[180px] px-6 text-base [&>span]:text-base"
+              contentClassName="w-[260px]"
+              optionClassName="py-4 text-lg"
+              align="right"
+              ariaLabel="Group actions"
+            />
 
             <button
               type="button"
@@ -769,7 +780,8 @@ export default function PrintingGroupsTable() {
               <span className="text-sm font-medium text-[var(--muted)]">
                 Reset Period
               </span>
-              <Dropdown
+              <ListBox
+                options={resetPeriodOptions}
                 value={form.resetPeriod}
                 onValueChange={(value) =>
                   setForm((current) => ({
@@ -777,19 +789,10 @@ export default function PrintingGroupsTable() {
                     resetPeriod: value,
                   }))
                 }
-                fullWidth
-              >
-                <DropdownTrigger className="h-14 w-full px-4 text-base">
-                  {form.resetPeriod}
-                </DropdownTrigger>
-                <DropdownContent widthClassName="w-full">
-                  {["None", "Monthly", "Semester", "Annual"].map((option) => (
-                    <DropdownItem key={option} value={option}>
-                      {option}
-                    </DropdownItem>
-                  ))}
-                </DropdownContent>
-              </Dropdown>
+                triggerClassName="h-14 w-full px-4 text-base"
+                contentClassName="w-full"
+                ariaLabel="Reset period"
+              />
             </label>
 
             <label
@@ -917,24 +920,113 @@ export default function PrintingGroupsTable() {
         ) : null}
 
         {actionModal === "export-groups" ? (
-          <SelectedRowsExportModal
-            title="Export selected groups"
-            description="Review the groups to export, remove any row if needed, then choose the export format."
-            rows={selectedGroups}
-            emptyText="No groups selected."
-            exportMethod={exportMethod}
-            onExportMethodChange={setExportMethod}
-            onRemove={removeSelectedGroupFromExport}
-            onCancel={() => setActionModal(null)}
-            onExport={handleExportConfirmed}
-            getId={(group) => group.id}
-            getTitle={(group) => group.name}
-            getSubtitle={(group) =>
-              `${group.members} members • ${group.restricted}`
-            }
-            idPrefix="groups"
-            exportDisabled={busy}
-          />
+          <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+            <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="title-md flex items-center gap-2">
+                <FileOutput className="h-5 w-5 text-brand-500" />
+                Export selected groups
+              </h3>
+              <p className="paragraph mt-2">
+                Review the groups to export, remove any row if needed, then
+                choose the export format.
+              </p>
+              <p className="paragraph mt-2">
+                Total selected:{" "}
+                <span className="font-semibold">{selectedGroups.length}</span>
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+              <div
+                className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+                style={{ scrollbarWidth: "thin" }}
+              >
+                {selectedGroups.length === 0 ? (
+                  <div
+                    className="rounded-2xl border p-5 text-sm"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    No groups selected.
+                  </div>
+                ) : (
+                  selectedGroups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-[var(--title)]">
+                          {group.name}
+                        </p>
+                        <p className="truncate text-sm text-[var(--muted)]">
+                          {group.members} members • {group.restricted}
+                        </p>
+                      </div>
+
+                      <ExpandedButton
+                        id={`remove-export-groups-${group.id}`}
+                        label="Remove"
+                        icon={Trash2}
+                        variant="danger"
+                        onClick={() => removeSelectedGroupFromExport(group.id)}
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div
+                className="rounded-2xl border p-4"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface-2)",
+                }}
+              >
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  Export Method
+                </p>
+
+                <ListBox
+                  options={exportFormatOptions}
+                  value={exportMethod}
+                  onValueChange={(value) =>
+                    setExportMethod(value as ExportMethod)
+                  }
+                  triggerClassName="h-12 w-full"
+                  contentClassName="w-full"
+                  ariaLabel="Export method"
+                />
+
+                <p className="mt-4 text-sm text-[var(--muted)]">
+                  Selected format:{" "}
+                  <span className="font-semibold text-[var(--title)]">
+                    {exportMethod}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setActionModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportConfirmed}
+                className="px-8"
+                disabled={busy || selectedGroups.length === 0}
+              >
+                Export
+              </Button>
+            </div>
+          </div>
         ) : null}
       </Modal>
 

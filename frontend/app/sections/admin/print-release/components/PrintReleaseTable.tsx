@@ -2,12 +2,14 @@
 
 import {
   Coins,
+  FileOutput,
   FileText,
   Maximize2,
   Minimize2,
   Play,
   SlidersHorizontal,
   Timer,
+  Trash2,
 } from "lucide-react";
 import {
   useEffect,
@@ -18,7 +20,6 @@ import {
 
 import KpiMetricCard from "@/components/shared/cards/KpiMetricCard";
 import FullscreenTablePortal from "@/components/shared/table/FullscreenTablePortal";
-import SelectedRowsExportModal from "@/components/shared/table/SelectedRowsExportModal";
 import {
   Table,
   TableBody,
@@ -34,14 +35,9 @@ import {
   TableTitleBlock,
   TableTop,
 } from "@/components/shared/table/Table";
-import TableExportDropdown from "@/components/shared/table/TableExportDropdown";
 import Button from "@/components/ui/button/Button";
+import ExpandedButton from "@/components/ui/button/ExpandedButton";
 import RefreshButton from "@/components/ui/button/RefreshButton";
-import {
-  Dropdown,
-  DropdownContent,
-  DropdownTrigger,
-} from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import Modal from "@/components/ui/modal/Modal";
 import { exportTableData, TableExportFormat } from "@/lib/export";
@@ -97,6 +93,17 @@ const pagesFilterOptions: Array<{ value: PagesFilter; label: string }> = [
   { value: "single", label: "1 page" },
   { value: "multiple", label: "Multiple pages" },
 ];
+const exportFormatOptions: TableExportFormat[] = ["PDF", "Excel", "CSV"];
+const toolbarExportOptions: ListBoxOption[] = exportFormatOptions.map((format) => ({
+  value: format,
+  label: format,
+  selectedLabel: (
+    <span className="inline-flex items-center gap-2">
+      <FileOutput className="h-4 w-4" />
+      Export
+    </span>
+  ),
+}));
 
 const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
 const getExportTimestamp = () =>
@@ -486,8 +493,9 @@ export default function PrintReleaseTable() {
             onClick={() => loadJobs(false)}
           />
 
-          <Dropdown>
-            <DropdownTrigger className="h-14 min-w-[150px] px-6 text-base">
+          <ListBox
+            options={[]}
+            placeholder={
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 <span>Filter</span>
@@ -503,129 +511,148 @@ export default function PrintReleaseTable() {
                   </span>
                 ) : null}
               </span>
-            </DropdownTrigger>
-
-            <DropdownContent align="right" widthClassName="w-[380px]">
-              <div className="space-y-4 p-2">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Printer
-                    </p>
-                    <ListBox
-                      value={printerFilter}
-                      onValueChange={setPrinterFilter}
-                      options={printerFilterOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by printer"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      User
-                    </p>
-                    <ListBox
-                      value={userFilter}
-                      onValueChange={setUserFilter}
-                      options={userFilterOptions}
-                      triggerClassName="h-11 px-3"
-                      maxHeightClassName="max-h-52"
-                      ariaLabel="Filter by user"
-                    />
-                  </div>
+            }
+            className="w-auto"
+            triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[380px]"
+            maxHeightClassName=""
+            align="right"
+            ariaLabel="Filter print release jobs"
+          >
+            <div className="space-y-4 p-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Printer
+                  </p>
+                  <ListBox
+                    value={printerFilter}
+                    onValueChange={setPrinterFilter}
+                    options={printerFilterOptions}
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                    ariaLabel="Filter by printer"
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Cost
+                    User
                   </p>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {costFilterOptions.map((option) => {
-                      const isSelected = costFilter === option.value;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setCostFilter(option.value)}
-                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
-                          style={{
-                            background: isSelected
-                              ? "rgba(var(--brand-rgb), 0.1)"
-                              : "var(--surface-2)",
-                            borderColor: isSelected
-                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
-                              : "var(--border)",
-                            color: isSelected
-                              ? "var(--color-brand-600)"
-                              : "var(--paragraph)",
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ListBox
+                    value={userFilter}
+                    onValueChange={setUserFilter}
+                    options={userFilterOptions}
+                    triggerClassName="h-11 px-3"
+                    maxHeightClassName="max-h-52"
+                    ariaLabel="Filter by user"
+                  />
                 </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Pages
-                  </p>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {pagesFilterOptions.map((option) => {
-                      const isSelected = pagesFilter === option.value;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setPagesFilter(option.value)}
-                          className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
-                          style={{
-                            background: isSelected
-                              ? "rgba(var(--brand-rgb), 0.1)"
-                              : "var(--surface-2)",
-                            borderColor: isSelected
-                              ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
-                              : "var(--border)",
-                            color: isSelected
-                              ? "var(--color-brand-600)"
-                              : "var(--paragraph)",
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {activeFilterCount > 0 ? (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full text-sm"
-                    onClick={() => {
-                      setPrinterFilter("all");
-                      setUserFilter("all");
-                      setCostFilter("all");
-                      setPagesFilter("all");
-                    }}
-                  >
-                    Reset Filters
-                  </Button>
-                ) : null}
               </div>
-            </DropdownContent>
-          </Dropdown>
 
-          <TableExportDropdown
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Cost
+                </p>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {costFilterOptions.map((option) => {
+                    const isSelected = costFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCostFilter(option.value)}
+                        className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                        style={{
+                          background: isSelected
+                            ? "rgba(var(--brand-rgb), 0.1)"
+                            : "var(--surface-2)",
+                          borderColor: isSelected
+                            ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                            : "var(--border)",
+                          color: isSelected
+                            ? "var(--color-brand-600)"
+                            : "var(--paragraph)",
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Pages
+                </p>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {pagesFilterOptions.map((option) => {
+                    const isSelected = pagesFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPagesFilter(option.value)}
+                        className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+                        style={{
+                          background: isSelected
+                            ? "rgba(var(--brand-rgb), 0.1)"
+                            : "var(--surface-2)",
+                          borderColor: isSelected
+                            ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                            : "var(--border)",
+                          color: isSelected
+                            ? "var(--color-brand-600)"
+                            : "var(--paragraph)",
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {activeFilterCount > 0 ? (
+                <Button
+                  variant="outline"
+                  className="h-11 w-full text-sm"
+                  onClick={() => {
+                    setPrinterFilter("all");
+                    setUserFilter("all");
+                    setCostFilter("all");
+                    setPagesFilter("all");
+                  }}
+                >
+                  Reset Filters
+                </Button>
+              ) : null}
+            </div>
+          </ListBox>
+
+          <ListBox
+            options={toolbarExportOptions}
+            onValueChange={(value) =>
+              handleExportChange(value as TableExportFormat)
+            }
+            placeholder={
+              <span className="inline-flex items-center gap-2 text-[var(--foreground)]">
+                <FileOutput className="h-4 w-4" />
+                Export
+              </span>
+            }
             disabled={selectedIds.length === 0}
-            onExport={handleExportChange}
+            className="w-auto"
+            triggerClassName="h-14 min-w-[160px] px-6 text-base [&>span]:text-base"
+            contentClassName="w-[220px]"
+            optionClassName="py-4 text-base"
+            align="right"
+            ariaLabel="Export selected print release jobs"
           />
 
           <button
@@ -820,23 +847,115 @@ export default function PrintReleaseTable() {
       {renderReleaseTable()}
 
       <Modal open={isExportModalOpen} onClose={() => setIsExportModalOpen(false)}>
-        <SelectedRowsExportModal
-          title="Export selected print jobs"
-          description="Review the print jobs to export, remove any row if needed, then choose the export format."
-          rows={selectedJobs}
-          emptyText="Select rows to export."
-          exportMethod={exportMethod}
-          onExportMethodChange={setExportMethod}
-          onRemove={removeSelectedJobFromExport}
-          onCancel={() => setIsExportModalOpen(false)}
-          onExport={handleExportConfirmed}
-          getId={(job) => job.id}
-          getTitle={(job) => job.documentName}
-          getSubtitle={(job) =>
-            `${job.jobId} - ${job.userName} - ${job.printerName} - ${job.pages} page${job.pages === 1 ? "" : "s"} - ${formatMoney(job.cost)}`
-          }
-          idPrefix="print-jobs"
-        />
+        <div className="w-[min(92vw,760px)] space-y-5 pr-4">
+          <div className="border-b pb-4" style={{ borderColor: "var(--border)" }}>
+            <h3 className="title-md flex items-center gap-2">
+              <FileOutput className="h-5 w-5 text-brand-500" />
+              Export selected print jobs
+            </h3>
+            <p className="paragraph mt-2">
+              Review the print jobs to export, remove any row if needed, then
+              choose the export format.
+            </p>
+            <p className="paragraph mt-2">
+              Total selected:{" "}
+              <span className="font-semibold">{selectedJobs.length}</span>
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
+            <div
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-2"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              {selectedJobs.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-5 text-sm"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Select rows to export.
+                </div>
+              ) : (
+                selectedJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-[var(--title)]">
+                        {job.documentName}
+                      </p>
+                      <p className="truncate text-sm text-[var(--muted)]">
+                        {job.jobId} - {job.userName} - {job.printerName} -{" "}
+                        {job.pages} page{job.pages === 1 ? "" : "s"} -{" "}
+                        {formatMoney(job.cost)}
+                      </p>
+                    </div>
+
+                    <ExpandedButton
+                      id={`remove-export-print-jobs-${job.id}`}
+                      label="Remove"
+                      icon={Trash2}
+                      variant="danger"
+                      onClick={() => removeSelectedJobFromExport(job.id)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Export Method
+              </p>
+
+              <ListBox
+                options={exportFormatOptions}
+                value={exportMethod}
+                onValueChange={(value) =>
+                  setExportMethod(value as TableExportFormat)
+                }
+                triggerClassName="h-12 w-full"
+                contentClassName="w-full"
+                ariaLabel="Export method"
+              />
+
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Selected format:{" "}
+                <span className="font-semibold text-[var(--title)]">
+                  {exportMethod}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportConfirmed}
+              className="px-8"
+              disabled={selectedJobs.length === 0}
+            >
+              Export
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
