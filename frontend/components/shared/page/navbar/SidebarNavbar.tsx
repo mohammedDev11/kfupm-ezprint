@@ -55,6 +55,10 @@ const sidebarShortcutLabels = [
 const getSidebarShortcutLabel = (index: number) =>
   sidebarShortcutLabels[index] ?? "";
 
+const SIDEBAR_PREVIEW_WIDTH = 240;
+const SIDEBAR_PREVIEW_GAP = 18;
+const SIDEBAR_PREVIEW_VIEWPORT_PADDING = 12;
+
 function SidebarVideoPreview({
   item,
   anchorRef,
@@ -71,9 +75,17 @@ function SidebarVideoPreview({
       const rect = anchorRef.current?.getBoundingClientRect();
       if (!rect) return;
 
+      const previewLeft =
+        side === "right"
+          ? Math.max(
+              SIDEBAR_PREVIEW_VIEWPORT_PADDING,
+              rect.left - SIDEBAR_PREVIEW_GAP - SIDEBAR_PREVIEW_WIDTH,
+            )
+          : rect.right + SIDEBAR_PREVIEW_GAP;
+
       setCoords({
         top: rect.top + rect.height / 2,
-        left: side === "right" ? rect.left - 18 : rect.right + 18,
+        left: previewLeft,
       });
     };
 
@@ -99,8 +111,7 @@ function SidebarVideoPreview({
       style={{
         top: coords.top,
         left: coords.left,
-        transform:
-          side === "right" ? "translate(-100%, -50%)" : "translateY(-50%)",
+        transform: "translateY(-50%)",
       }}
     >
       <div className="relative">
