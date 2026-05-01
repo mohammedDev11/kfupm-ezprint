@@ -38,9 +38,9 @@ import { exportTableData } from "@/lib/export";
 import { apiGet } from "@/services/api";
 import {
   BriefcaseBusiness,
+  ChevronDown,
   FileOutput,
   FileSpreadsheet,
-  Filter,
   Lock,
   LockOpen,
   Mail,
@@ -219,7 +219,7 @@ const UserAccountsTable = () => {
   const [editingQuota, setEditingQuota] = useState("");
   const [editingNotes, setEditingNotes] = useState("");
 
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [actionModal, setActionModal] = useState<ActionValue | null>(null);
 
@@ -260,6 +260,34 @@ const UserAccountsTable = () => {
   useEffect(() => {
     void Promise.resolve().then(loadUsers);
   }, [loadUsers]);
+
+  useEffect(() => {
+    if (!isFilterPanelOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+
+      if (target?.closest("[data-admin-users-filter-panel]")) {
+        return;
+      }
+
+      setIsFilterPanelOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFilterPanelOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFilterPanelOpen]);
 
   const restrictedOptions: UserRestrictedStatus[] = [
     "Restricted",
@@ -653,6 +681,238 @@ const UserAccountsTable = () => {
     setActionModal(null);
   };
 
+  const renderFilterPanelContent = () => (
+    <div className="space-y-4 p-2">
+      <div
+        className="rounded-2xl border p-3"
+        style={{
+          borderColor: "var(--border)",
+          background: "color-mix(in srgb, var(--surface-2) 82%, transparent)",
+        }}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {activeFilterLabels.length > 0 ? (
+              activeFilterLabels.slice(0, 8).map((label, index) => (
+                <span
+                  key={`${label}-${index}`}
+                  className="rounded-full px-3 py-1 text-xs font-semibold"
+                  style={{
+                    background: "rgba(var(--brand-rgb), 0.1)",
+                    color: "var(--color-brand-600)",
+                  }}
+                >
+                  {label}
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-[var(--muted)]">
+                No filters applied
+              </span>
+            )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            iconLeft={<RotateCcw className="h-4 w-4" />}
+            onClick={resetFilters}
+          >
+            Clear all
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div
+          className="rounded-2xl border p-4"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Status
+          </h4>
+
+          <div className="flex flex-wrap gap-2">
+            {restrictedOptions.map((status) => (
+              <FilterChip
+                key={status}
+                label={status}
+                checked={filterRestricted.includes(status)}
+                onChange={() =>
+                  toggleFromList(
+                    status,
+                    filterRestricted,
+                    setFilterRestricted,
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl border p-4"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Role
+          </h4>
+
+          <div className="flex flex-wrap gap-2">
+            {roleOptions.map((role) => (
+              <FilterChip
+                key={role}
+                label={role}
+                checked={filterRoles.includes(role)}
+                onChange={() => toggleFromList(role, filterRoles, setFilterRoles)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl border p-4"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Department
+          </h4>
+
+          <Input
+            value={departmentSearch}
+            onChange={(e) => setDepartmentSearch(e.target.value)}
+            placeholder="Search departments"
+            className="mb-3"
+          />
+
+          <div className="max-h-32 overflow-y-auto pr-1">
+            <div className="flex flex-wrap gap-2">
+              {visibleDepartmentOptions.map((department) => (
+                <FilterChip
+                  key={department}
+                  label={department}
+                  checked={filterDepartments.includes(department)}
+                  onChange={() =>
+                    toggleFromList(
+                      department,
+                      filterDepartments,
+                      setFilterDepartments,
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl border p-4"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            Standing
+          </h4>
+
+          <div className="flex flex-wrap gap-2">
+            {standingOptions.map((standing) => (
+              <FilterChip
+                key={standing}
+                label={standing}
+                checked={filterStandings.includes(standing)}
+                onChange={() =>
+                  toggleFromList(
+                    standing,
+                    filterStandings,
+                    setFilterStandings,
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="rounded-2xl border p-4"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--surface-2)",
+        }}
+      >
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+          Quota Range
+        </h4>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <p className="mb-2 text-sm font-medium text-[var(--title)]">
+              Minimum quota
+            </p>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={minimumQuota}
+              onChange={(e) => setMinimumQuota(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium text-[var(--title)]">
+              Maximum quota
+            </p>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={maximumQuota}
+              onChange={(e) => setMaximumQuota(e.target.value)}
+              placeholder="500.00"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div className="text-sm text-[var(--muted)]">
+          {hasActiveFilters
+            ? `${filteredUsers.length} users match current filters`
+            : "Showing all users"}
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button
+            variant="outline"
+            iconLeft={<RotateCcw className="h-4 w-4" />}
+            onClick={resetFilters}
+          >
+            Clear all
+          </Button>
+
+          <Button onClick={() => setIsFilterPanelOpen(false)}>
+            Apply Filters
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderUsersTable = (expanded = false) => (
       <Table
         className={`flex min-h-[520px] flex-col ${
@@ -686,14 +946,56 @@ const UserAccountsTable = () => {
               className="h-14"
             />
 
-            <Button
-              variant="outline"
-              iconLeft={<SlidersHorizontal className="h-4 w-4" />}
-              className="h-14 px-6 text-base"
-              onClick={() => setIsFilterModalOpen(true)}
+            <div
+              className="relative w-auto shrink-0 self-start md:self-auto"
+              data-admin-users-filter-panel
             >
-              Filter
-            </Button>
+              <Button
+                variant="outline"
+                iconLeft={<SlidersHorizontal className="h-4 w-4" />}
+                iconRight={
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      isFilterPanelOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                }
+                className="h-14 min-w-[150px] px-6 text-base"
+                aria-haspopup="dialog"
+                aria-expanded={isFilterPanelOpen}
+                onClick={() => setIsFilterPanelOpen((current) => !current)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  Filter
+                  {activeFilterLabels.length > 0 ? (
+                    <span
+                      className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
+                      style={{
+                        background: "rgba(var(--brand-rgb), 0.12)",
+                        color: "var(--color-brand-600)",
+                      }}
+                    >
+                      {activeFilterLabels.length}
+                    </span>
+                  ) : null}
+                </span>
+              </Button>
+
+              {isFilterPanelOpen ? (
+                <div
+                  className="absolute left-0 top-[calc(100%+10px)] z-50 max-h-[420px] w-[min(92vw,560px)] overflow-y-auto rounded-md border p-2 shadow-xl md:left-auto md:right-0"
+                  role="dialog"
+                  aria-label="Filter users"
+                  style={{
+                    background: "var(--surface)",
+                    borderColor: "var(--border)",
+                    boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
+                  }}
+                >
+                  {renderFilterPanelContent()}
+                </div>
+              ) : null}
+            </div>
 
             <ListBox
               options={toolbarExportOptions}
@@ -1043,252 +1345,6 @@ const UserAccountsTable = () => {
             </div>
           </div>
         ) : null}
-      </Modal>
-
-      <Modal
-        open={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-      >
-        <div className="w-[min(92vw,860px)] space-y-4 pr-4">
-          <div className="flex items-start justify-between gap-4 border-b pb-4">
-            <div>
-              <h3 className="title-md flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filter Users
-              </h3>
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl border p-3"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in srgb, var(--surface-2) 82%, transparent)",
-            }}
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 flex-wrap gap-2">
-                {activeFilterLabels.length > 0 ? (
-                  activeFilterLabels.slice(0, 8).map((label, index) => (
-                    <span
-                      key={`${label}-${index}`}
-                      className="rounded-full px-3 py-1 text-xs font-semibold"
-                      style={{
-                        background: "rgba(var(--brand-rgb), 0.1)",
-                        color: "var(--color-brand-600)",
-                      }}
-                    >
-                      {label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-[var(--muted)]">
-                    No filters applied
-                  </span>
-                )}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                iconLeft={<RotateCcw className="h-4 w-4" />}
-                onClick={resetFilters}
-              >
-                Clear all
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Status
-              </h4>
-
-              <div className="flex flex-wrap gap-2">
-                {restrictedOptions.map((status) => (
-                  <FilterChip
-                    key={status}
-                    label={status}
-                    checked={filterRestricted.includes(status)}
-                    onChange={() =>
-                      toggleFromList(
-                        status,
-                        filterRestricted,
-                        setFilterRestricted,
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Role
-              </h4>
-
-              <div className="flex flex-wrap gap-2">
-                {roleOptions.map((role) => (
-                  <FilterChip
-                    key={role}
-                    label={role}
-                    checked={filterRoles.includes(role)}
-                    onChange={() =>
-                      toggleFromList(role, filterRoles, setFilterRoles)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Department
-              </h4>
-
-              <Input
-                value={departmentSearch}
-                onChange={(e) => setDepartmentSearch(e.target.value)}
-                placeholder="Search departments"
-                className="mb-3"
-              />
-
-              <div className="max-h-32 overflow-y-auto pr-1">
-                <div className="flex flex-wrap gap-2">
-                {visibleDepartmentOptions.map((department) => (
-                  <FilterChip
-                    key={department}
-                    label={department}
-                    checked={filterDepartments.includes(department)}
-                    onChange={() =>
-                      toggleFromList(
-                        department,
-                        filterDepartments,
-                        setFilterDepartments,
-                      )
-                    }
-                  />
-                ))}
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Standing
-              </h4>
-
-              <div className="flex flex-wrap gap-2">
-                {standingOptions.map((standing) => (
-                  <FilterChip
-                    key={standing}
-                    label={standing}
-                    checked={filterStandings.includes(standing)}
-                    onChange={() =>
-                      toggleFromList(
-                        standing,
-                        filterStandings,
-                        setFilterStandings,
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl border p-4"
-            style={{
-              borderColor: "var(--border)",
-              background: "var(--surface-2)",
-            }}
-          >
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-              Quota Range
-            </h4>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="mb-2 text-sm font-medium text-[var(--title)]">
-                  Minimum quota
-                </p>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={minimumQuota}
-                  onChange={(e) => setMinimumQuota(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-medium text-[var(--title)]">
-                  Maximum quota
-                </p>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={maximumQuota}
-                  onChange={(e) => setMaximumQuota(e.target.value)}
-                  placeholder="500.00"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div className="text-sm text-[var(--muted)]">
-              {hasActiveFilters
-                ? `${filteredUsers.length} users match current filters`
-                : "Showing all users"}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button
-                variant="outline"
-                iconLeft={<RotateCcw className="h-4 w-4" />}
-                onClick={resetFilters}
-              >
-                Clear all
-              </Button>
-
-              <Button onClick={() => setIsFilterModalOpen(false)}>
-                Apply Filters
-              </Button>
-            </div>
-          </div>
-        </div>
       </Modal>
 
       <Modal open={Boolean(actionModal)} onClose={() => setActionModal(null)}>

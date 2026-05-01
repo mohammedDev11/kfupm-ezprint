@@ -103,12 +103,33 @@ type GenerateCodesResponse = {
 const columnsClassName =
   "[grid-template-columns:72px_minmax(190px,1fr)_minmax(110px,0.55fr)_minmax(130px,0.7fr)_minmax(190px,1fr)_minmax(190px,1fr)_minmax(170px,0.9fr)_minmax(170px,0.9fr)_minmax(240px,1.2fr)]";
 
-const statusOptions: ListBoxOption[] = [
+const statusOptions = [
   { value: "all", label: "All statuses" },
   { value: "unused", label: "Unused" },
   { value: "redeemed", label: "Redeemed" },
   { value: "expired", label: "Expired" },
   { value: "disabled", label: "Disabled" },
+];
+
+const expiryOptions = [
+  { value: "all", label: "All expiry states" },
+  { value: "no-expiry", label: "No expiry" },
+  { value: "expired", label: "Expired" },
+  { value: "expires-soon", label: "Expires soon" },
+  { value: "active", label: "Active / not expired" },
+];
+
+const redemptionOptions = [
+  { value: "all", label: "All codes" },
+  { value: "redeemed", label: "Redeemed codes" },
+  { value: "not-redeemed", label: "Not redeemed codes" },
+];
+
+const createdDateOptions = [
+  { value: "all", label: "All dates" },
+  { value: "last-7", label: "Last 7 days" },
+  { value: "last-30", label: "Last 30 days" },
+  { value: "this-year", label: "This year" },
 ];
 
 const actionOptions: ListBoxOption[] = [
@@ -140,6 +161,9 @@ const formatCode = (code: string) =>
   code.length <= 6 ? code : code.replace(/(.{4})/g, "$1 ").trim();
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+const dayMs = 24 * 60 * 60 * 1000;
+const expiresSoonWindowMs = 7 * dayMs;
+const filterReferenceNow = Date.now();
 
 const compareValues = (a: string | number, b: string | number, direction: SortDir) => {
   if (typeof a === "number" && typeof b === "number") {
@@ -151,12 +175,23 @@ const compareValues = (a: string | number, b: string | number, direction: SortDi
     : String(b).localeCompare(String(a));
 };
 
-const dateValue = (value: string | null) => {
+const timestampValue = (value: string | null) => {
   if (!value) return 0;
 
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
 };
+
+const dateValue = (value: string | null) => timestampValue(value);
+
+const hasExpired = (code: RedeemCodeItem, now: number) => {
+  const expiryTimestamp = timestampValue(code.expiresAt);
+
+  return code.status === "expired" || Boolean(expiryTimestamp && expiryTimestamp < now);
+};
+
+const isRedeemed = (code: RedeemCodeItem) =>
+  code.status === "redeemed" || Boolean(code.redeemedAt || code.redeemedBy);
 
 const getPersonLabel = (person: UserSummary | null) => {
   if (!person) return "System";
@@ -222,12 +257,63 @@ function TextInput({
   );
 }
 
+function FilterOptionGroup({
+  title,
+  value,
+  options,
+  onChange,
+}: {
+  title: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+        {title}
+      </p>
+
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((option) => {
+          const isSelected = value === option.value;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className="rounded-md border px-3 py-2 text-left text-sm font-semibold transition"
+              style={{
+                background: isSelected
+                  ? "rgba(var(--brand-rgb), 0.1)"
+                  : "var(--surface-2)",
+                borderColor: isSelected
+                  ? "color-mix(in srgb, var(--color-brand-500) 36%, var(--border))"
+                  : "var(--border)",
+                color: isSelected ? "var(--color-brand-600)" : "var(--paragraph)",
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function RedeemCodesTable() {
   const [codes, setCodes] = useState<RedeemCodeItem[]>([]);
   const [summary, setSummary] =
     useState<RedeemCodesResponse["summary"]>(emptySummary);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [expiryFilter, setExpiryFilter] = useState("all");
+  const [redemptionFilter, setRedemptionFilter] = useState("all");
+  const [createdDateFilter, setCreatedDateFilter] = useState("all");
+  const [minimumQuotaFilter, setMinimumQuotaFilter] = useState("");
+  const [maximumQuotaFilter, setMaximumQuotaFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("code");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -301,6 +387,11 @@ export default function RedeemCodesTable() {
 
   const filteredCodes = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
+    const now = filterReferenceNow;
+    const minQuota =
+      minimumQuotaFilter.trim() === "" ? null : Number(minimumQuotaFilter);
+    const maxQuota =
+      maximumQuotaFilter.trim() === "" ? null : Number(maximumQuotaFilter);
 
     return [...codes]
       .filter((code) => {
@@ -320,7 +411,53 @@ export default function RedeemCodesTable() {
         const matchesStatus =
           statusFilter === "all" || code.status === statusFilter;
 
-        return matchesSearch && matchesStatus;
+        const expiryTimestamp = timestampValue(code.expiresAt);
+        const codeHasExpired = hasExpired(code, now);
+        const matchesExpiry =
+          expiryFilter === "all" ||
+          (expiryFilter === "no-expiry" && !code.expiresAt) ||
+          (expiryFilter === "expired" && codeHasExpired) ||
+          (expiryFilter === "expires-soon" &&
+            Boolean(
+              expiryTimestamp &&
+                expiryTimestamp >= now &&
+                expiryTimestamp <= now + expiresSoonWindowMs,
+            )) ||
+          (expiryFilter === "active" && !codeHasExpired);
+
+        const codeIsRedeemed = isRedeemed(code);
+        const matchesRedemption =
+          redemptionFilter === "all" ||
+          (redemptionFilter === "redeemed" && codeIsRedeemed) ||
+          (redemptionFilter === "not-redeemed" && !codeIsRedeemed);
+
+        const matchesMinQuota =
+          minQuota === null || Number.isNaN(minQuota) || code.quotaAmount >= minQuota;
+        const matchesMaxQuota =
+          maxQuota === null || Number.isNaN(maxQuota) || code.quotaAmount <= maxQuota;
+
+        const createdTimestamp = timestampValue(code.createdAt);
+        const matchesCreatedDate =
+          createdDateFilter === "all" ||
+          (createdDateFilter === "last-7" &&
+            Boolean(createdTimestamp && createdTimestamp >= now - 7 * dayMs)) ||
+          (createdDateFilter === "last-30" &&
+            Boolean(createdTimestamp && createdTimestamp >= now - 30 * dayMs)) ||
+          (createdDateFilter === "this-year" &&
+            Boolean(
+              createdTimestamp &&
+                new Date(createdTimestamp).getFullYear() === new Date(now).getFullYear(),
+            ));
+
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesExpiry &&
+          matchesRedemption &&
+          matchesMinQuota &&
+          matchesMaxQuota &&
+          matchesCreatedDate
+        );
       })
       .sort((a, b) => {
         switch (sortKey) {
@@ -351,7 +488,18 @@ export default function RedeemCodesTable() {
             return compareValues(a.code, b.code, sortDir);
         }
       });
-  }, [codes, search, sortDir, sortKey, statusFilter]);
+  }, [
+    codes,
+    createdDateFilter,
+    expiryFilter,
+    maximumQuotaFilter,
+    minimumQuotaFilter,
+    redemptionFilter,
+    search,
+    sortDir,
+    sortKey,
+    statusFilter,
+  ]);
 
   const visibleIds = filteredCodes.map((code) => code.id);
   const allVisibleSelected =
@@ -360,7 +508,23 @@ export default function RedeemCodesTable() {
     () => codes.filter((code) => selectedIds.includes(code.id)),
     [codes, selectedIds],
   );
-  const activeFilterCount = statusFilter !== "all" ? 1 : 0;
+  const activeFilterCount = [
+    statusFilter !== "all",
+    expiryFilter !== "all",
+    redemptionFilter !== "all",
+    createdDateFilter !== "all",
+    minimumQuotaFilter.trim() !== "",
+    maximumQuotaFilter.trim() !== "",
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setExpiryFilter("all");
+    setRedemptionFilter("all");
+    setCreatedDateFilter("all");
+    setMinimumQuotaFilter("");
+    setMaximumQuotaFilter("");
+  };
 
   const kpiCards = [
     {
@@ -609,38 +773,94 @@ export default function RedeemCodesTable() {
             }
             className="w-auto"
             triggerClassName="h-14 min-w-[150px] px-6 text-base [&>span]:text-base"
-            contentClassName="w-[240px]"
-            maxHeightClassName=""
+            contentClassName="w-[min(92vw,520px)]"
+            maxHeightClassName="max-h-[calc(100vh-8rem)]"
             align="right"
             ariaLabel="Filter redeem codes"
           >
-              <div className="space-y-4 p-2">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Status
-                  </p>
-                  <ListBox
-                    value={statusFilter}
-                    onValueChange={setStatusFilter}
-                    options={statusOptions}
-                    triggerClassName="h-11 px-3"
-                    maxHeightClassName="max-h-52"
-                    ariaLabel="Filter by redeem code status"
-                  />
-                </div>
+            <div className="space-y-4 p-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FilterOptionGroup
+                  title="Status"
+                  value={statusFilter}
+                  options={statusOptions}
+                  onChange={setStatusFilter}
+                />
 
-                {activeFilterCount > 0 ? (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full text-sm"
-                    onClick={() => {
-                      setStatusFilter("all");
-                    }}
-                  >
-                    Reset Filters
-                  </Button>
-                ) : null}
+                <FilterOptionGroup
+                  title="Expiry"
+                  value={expiryFilter}
+                  options={expiryOptions}
+                  onChange={setExpiryFilter}
+                />
+
+                <FilterOptionGroup
+                  title="Redemption"
+                  value={redemptionFilter}
+                  options={redemptionOptions}
+                  onChange={setRedemptionFilter}
+                />
+
+                <FilterOptionGroup
+                  title="Date Range"
+                  value={createdDateFilter}
+                  options={createdDateOptions}
+                  onChange={setCreatedDateFilter}
+                />
               </div>
+
+              <div
+                className="rounded-2xl border p-4"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface-2)",
+                }}
+              >
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Quota range
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-[var(--title)]">
+                      Minimum quota
+                    </p>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={minimumQuotaFilter}
+                      onChange={setMinimumQuotaFilter}
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-[var(--title)]">
+                      Maximum quota
+                    </p>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={maximumQuotaFilter}
+                      onChange={setMaximumQuotaFilter}
+                      placeholder="100.00"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {activeFilterCount > 0 ? (
+                <Button
+                  variant="outline"
+                  className="h-11 w-full text-sm"
+                  onClick={clearFilters}
+                >
+                  Clear all filters
+                </Button>
+              ) : null}
+            </div>
           </ListBox>
 
           <ListBox
