@@ -3,6 +3,8 @@
 import {
   AlertTriangle,
   BriefcaseBusiness,
+  Columns2,
+  Columns3,
   FileStack,
   Maximize2,
   Minimize2,
@@ -24,6 +26,7 @@ import {
   TableTop,
 } from "@/components/shared/table/Table";
 import Button from "@/components/ui/button/Button";
+import ConfirmDialog from "@/components/ui/modal/ConfirmDialog";
 import ListBox from "@/components/ui/listbox/ListBox";
 import RefreshButton from "@/components/ui/button/RefreshButton";
 import {
@@ -31,8 +34,8 @@ import {
   type PrinterItem,
   type PrinterStatus,
 } from "@/lib/mock-data/Admin/printers";
-import { apiGet } from "@/services/api";
-import PrinterDetailsModal from "./AddPrinterModal";
+import { apiDelete, apiGet, apiPatch } from "@/services/api";
+import PrinterDetailsModal, { type PrinterUpdatePayload } from "./AddPrinterModal";
 import PrinterCard from "./PrinterCard";
 import AddPrinterModal from "./PrinterDetailsModal";
 
@@ -73,11 +76,16 @@ const PrintersGrid = () => {
     [],
   );
   const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
+  const [printerActionBusy, setPrinterActionBusy] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterItem | null>(
     null,
   );
+  const [printerPendingDelete, setPrinterPendingDelete] =
+    useState<PrinterItem | null>(null);
 
   const loadPrinters = useCallback(() => {
     apiGet<{ printers: PrinterItem[] }>("/admin/printers", "admin")
@@ -213,6 +221,74 @@ const PrintersGrid = () => {
     );
   };
 
+  const savePrinter = async (
+    printerId: string,
+    payload: PrinterUpdatePayload,
+  ) => {
+    setPrinterActionBusy("save");
+    setActionError("");
+    setActionSuccess("");
+
+    try {
+      const data = await apiPatch<{ printer: PrinterItem }>(
+        `/admin/printers/${printerId}`,
+        payload,
+        "admin",
+      );
+      const updatedPrinter = data.printer;
+
+      setPrinters((current) =>
+        current.map((printer) =>
+          printer.id === printerId ? updatedPrinter : printer,
+        ),
+      );
+      setSelectedPrinter(updatedPrinter);
+      setActionSuccess("Printer updated successfully.");
+    } catch (requestError) {
+      setActionError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to update printer.",
+      );
+      throw requestError;
+    } finally {
+      setPrinterActionBusy("");
+    }
+  };
+
+  const requestDeletePrinter = (printer: PrinterItem) => {
+    setActionError("");
+    setActionSuccess("");
+    setPrinterPendingDelete(printer);
+  };
+
+  const confirmDeletePrinter = async () => {
+    if (!printerPendingDelete) return;
+
+    const printer = printerPendingDelete;
+    setPrinterActionBusy("delete");
+    setActionError("");
+    setActionSuccess("");
+
+    try {
+      await apiDelete(`/admin/printers/${printer.id}`, "admin");
+      setPrinters((current) => current.filter((item) => item.id !== printer.id));
+      setSelectedPrinter((current) =>
+        current?.id === printer.id ? null : current,
+      );
+      setPrinterPendingDelete(null);
+      setActionSuccess("Printer deleted successfully.");
+    } catch (requestError) {
+      setActionError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to delete printer.",
+      );
+    } finally {
+      setPrinterActionBusy("");
+    }
+  };
+
   const renderPrintersSection = (expanded = false) => (
     <Table
       className={`flex flex-col ${
@@ -229,9 +305,23 @@ const PrintersGrid = () => {
           <SegmentToggle
             value={columns}
             onChange={(value) => setColumns(value as "2" | "3")}
+            showLabels={false}
+            buttonClassName="h-11 w-11 px-0 py-0"
             options={[
-              { value: "2", label: "2" },
-              { value: "3", label: "3" },
+              {
+                value: "2",
+                label: "Two-column view",
+                ariaLabel: "Two-column view",
+                title: "Two-column view",
+                icon: <Columns2 className="h-5 w-5" />,
+              },
+              {
+                value: "3",
+                label: "Three-column view",
+                ariaLabel: "Three-column view",
+                title: "Three-column view",
+                icon: <Columns3 className="h-5 w-5" />,
+              },
             ]}
           />
 
@@ -403,6 +493,39 @@ const PrintersGrid = () => {
           </div>
         ) : null}
 
+        {actionError ? (
+          <div className="pb-4">
+            <p
+              className="rounded-2xl border px-4 py-3 text-sm"
+              style={{
+                borderColor: "rgba(239, 68, 68, 0.2)",
+                background: "rgba(254, 242, 242, 1)",
+                color: "rgb(185, 28, 28)",
+              }}
+            >
+              {actionError}
+            </p>
+          </div>
+        ) : null}
+
+        {actionSuccess ? (
+          <div className="pb-4">
+            <p
+              className="rounded-2xl border px-4 py-3 text-sm"
+              style={{
+                borderColor:
+                  "color-mix(in srgb, var(--color-support-500) 24%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--color-support-500) 12%, var(--surface))",
+                color:
+                  "color-mix(in srgb, var(--color-support-700) 76%, var(--title))",
+              }}
+            >
+              {actionSuccess}
+            </p>
+          </div>
+        ) : null}
+
         {filteredPrinters.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm"
@@ -418,9 +541,8 @@ const PrintersGrid = () => {
                 printer={printer}
                 columns={columns === "2" ? 2 : 3}
                 onClick={() => setSelectedPrinter(printer)}
-                onConfigure={(item) => {
-                  console.log("Configure printer:", item);
-                }}
+                onConfigure={(item) => setSelectedPrinter(item)}
+                onDelete={requestDeletePrinter}
               />
             ))}
           </div>
@@ -458,6 +580,31 @@ const PrintersGrid = () => {
         open={Boolean(selectedPrinter)}
         onClose={() => setSelectedPrinter(null)}
         printer={selectedPrinter}
+        onSave={savePrinter}
+        onDelete={requestDeletePrinter}
+        busy={Boolean(printerActionBusy)}
+        error={actionError}
+      />
+
+      <ConfirmDialog
+        open={Boolean(printerPendingDelete)}
+        title="Delete printer"
+        description={
+          <>
+            Are you sure you want to delete printer{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              “{printerPendingDelete?.name ?? "this printer"}”
+            </span>
+            ? This action cannot be undone.
+          </>
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        loadingText="Deleting..."
+        variant="danger"
+        loading={printerActionBusy === "delete"}
+        onClose={() => setPrinterPendingDelete(null)}
+        onConfirm={confirmDeletePrinter}
       />
     </>
   );

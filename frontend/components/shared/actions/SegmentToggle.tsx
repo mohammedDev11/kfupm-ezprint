@@ -6,6 +6,8 @@ import { cn } from "@/lib/cn";
 export type SegmentOption = {
   value: string;
   label: string;
+  ariaLabel?: string;
+  title?: string;
   icon?: React.ReactNode;
 };
 
@@ -15,6 +17,7 @@ type SegmentToggleProps = {
   onChange: (value: string) => void;
   className?: string;
   buttonClassName?: string;
+  showLabels?: boolean;
 };
 
 const SegmentToggle = ({
@@ -23,6 +26,7 @@ const SegmentToggle = ({
   onChange,
   className = "",
   buttonClassName = "",
+  showLabels = true,
 }: SegmentToggleProps) => {
   return (
     <div
@@ -51,6 +55,8 @@ const SegmentToggle = ({
               buttonClassName,
             )}
             aria-pressed={active}
+            aria-label={option.ariaLabel ?? option.label}
+            title={option.title ?? option.ariaLabel ?? option.label}
           >
             {option.icon ? (
               <span className="flex items-center justify-center">
@@ -58,7 +64,9 @@ const SegmentToggle = ({
               </span>
             ) : null}
 
-            <span>{option.label}</span>
+            <span className={cn(!showLabels && "sr-only")}>
+              {option.label}
+            </span>
           </button>
         );
       })}

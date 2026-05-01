@@ -1,7 +1,8 @@
 "use client";
 
 import { Check, ChevronDown, Search } from "lucide-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 
 export type ListBoxOption = {
@@ -34,6 +35,20 @@ type ListBoxProps = {
   clearSearchOnSelect?: boolean;
 };
 
+type FloatingPosition = {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+  minWidth: number;
+  maxHeight: number;
+};
+
+const floatingGap = 10;
+const viewportPadding = 12;
+const comfortablePanelHeight = 320;
+const minimumPanelHeight = 96;
+
 export default function ListBox({
   children,
   options,
@@ -59,7 +74,10 @@ export default function ListBox({
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [floatingPosition, setFloatingPosition] =
+    useState<FloatingPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const normalizedOptions = useMemo(
     () =>
@@ -122,19 +140,105 @@ export default function ListBox({
     };
   }, [clearSearchOnSelect, combobox, selectedOption, selectedValue]);
 
+  const getFloatingPosition = useCallback((): FloatingPosition | null => {
+    if (typeof window === "undefined" || !containerRef.current) {
+      return null;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const availableBelow = Math.max(
+      0,
+      window.innerHeight - rect.bottom - floatingGap - viewportPadding,
+    );
+    const availableAbove = Math.max(0, rect.top - floatingGap - viewportPadding);
+    const viewportMaxHeight = Math.max(0, window.innerHeight - viewportPadding * 2);
+    const shouldUseViewportFallback =
+      availableBelow < minimumPanelHeight && availableAbove < minimumPanelHeight;
+    const shouldOpenAbove =
+      !shouldUseViewportFallback &&
+      availableBelow < comfortablePanelHeight &&
+      availableAbove > availableBelow;
+    const basePosition = {
+      minWidth: rect.width,
+      maxHeight: shouldUseViewportFallback
+        ? viewportMaxHeight
+        : shouldOpenAbove
+        ? availableAbove
+        : availableBelow,
+    };
+
+    if (align === "right") {
+      return {
+        ...basePosition,
+        ...(shouldUseViewportFallback
+          ? { top: viewportPadding }
+          : shouldOpenAbove
+          ? { bottom: window.innerHeight - rect.top + floatingGap }
+          : { top: rect.bottom + floatingGap }),
+        right: window.innerWidth - rect.right,
+      };
+    }
+
+    return {
+      ...basePosition,
+      ...(shouldUseViewportFallback
+        ? { top: viewportPadding }
+        : shouldOpenAbove
+        ? { bottom: window.innerHeight - rect.top + floatingGap }
+        : { top: rect.bottom + floatingGap }),
+      left: rect.left,
+    };
+  }, [align]);
+
+  const updateFloatingPosition = useCallback(() => {
+    const nextPosition = getFloatingPosition();
+
+    if (nextPosition) {
+      setFloatingPosition(nextPosition);
+    }
+  }, [getFloatingPosition]);
+
+  const openListBox = useCallback(() => {
+    const nextPosition = getFloatingPosition();
+
+    if (nextPosition) {
+      setFloatingPosition(nextPosition);
+    }
+
+    setOpen(true);
+  }, [getFloatingPosition]);
+
+  const closeListBox = useCallback(() => {
+    setOpen(false);
+    setFloatingPosition(null);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    window.addEventListener("resize", updateFloatingPosition);
+    window.addEventListener("scroll", updateFloatingPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateFloatingPosition);
+      window.removeEventListener("scroll", updateFloatingPosition, true);
+    };
+  }, [open, updateFloatingPosition]);
+
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
+      const target = event.target as Node;
+      const isInsideTrigger = containerRef.current?.contains(target);
+      const isInsidePanel = panelRef.current?.contains(target);
+
+      if (!isInsideTrigger && !isInsidePanel) {
+        closeListBox();
       }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setOpen(false);
+        closeListBox();
       }
     };
 
@@ -145,7 +249,7 @@ export default function ListBox({
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, []);
+  }, [closeListBox]);
 
   const handleSelect = (option: ListBoxOption) => {
     if (option.disabled) return;
@@ -155,13 +259,13 @@ export default function ListBox({
     }
 
     onValueChange?.(option.value);
-    setOpen(false);
+    closeListBox();
     setSearchTerm(clearSearchOnSelect ? "" : getOptionText(option));
   };
 
   const handleComboboxKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open && (event.key === "ArrowDown" || event.key === "Enter")) {
-      setOpen(true);
+      openListBox();
       return;
     }
 
@@ -191,9 +295,118 @@ export default function ListBox({
     }
 
     if (event.key === "Escape") {
-      setOpen(false);
+      closeListBox();
     }
   };
+
+  const panelStyle: React.CSSProperties = {
+    position: "fixed",
+    top: floatingPosition?.top,
+    bottom: floatingPosition?.bottom,
+    left: floatingPosition?.left,
+    right: floatingPosition?.right,
+    minWidth: floatingPosition?.minWidth,
+    maxHeight: floatingPosition?.maxHeight,
+    overflowX: "hidden",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    visibility: floatingPosition ? "visible" : "hidden",
+  };
+
+  const panelSurfaceStyle: React.CSSProperties = {
+    background: "var(--surface)",
+    borderColor: "var(--border)",
+    boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
+  };
+
+  const panel =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={panelRef}
+            role="listbox"
+            id={`${ariaLabel || "listbox"}-options`}
+            onMouseDown={(event) => event.stopPropagation()}
+            className="z-[1000020]"
+            style={panelStyle}
+          >
+            <div
+              className={cn(
+                "overflow-hidden rounded-md border p-2 shadow-xl",
+                contentClassName,
+              )}
+              style={panelSurfaceStyle}
+            >
+              {searchable && !combobox ? (
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="h-11 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm font-medium outline-none transition focus:border-brand-500/50"
+                    style={{
+                      borderColor: "var(--border)",
+                      color: "var(--title)",
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              <div className={cn("overflow-y-auto", maxHeightClassName)}>
+                {children ? (
+                  children
+                ) : filteredOptions.length === 0 ? (
+                  <div className="px-3 py-3 text-sm font-medium text-[var(--muted)]">
+                    {emptyText}
+                  </div>
+                ) : (
+                  filteredOptions.map((option, index) => {
+                    const isSelected = option.value === selectedValue;
+                    const isActive = combobox && index === activeIndex;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        disabled={option.disabled}
+                        onClick={() => handleSelect(option)}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50",
+                          isSelected || isActive
+                            ? "bg-[var(--surface-2)]"
+                            : "bg-transparent",
+                          optionClassName,
+                        )}
+                        style={{
+                          color: "var(--paragraph)",
+                        }}
+                      >
+                        <div className="min-w-0 flex-1 truncate">
+                          {option.label}
+                        </div>
+
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          {isSelected ? (
+                            <Check
+                              className="h-4 w-4"
+                              style={{ color: "var(--color-brand-500)" }}
+                            />
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
@@ -225,12 +438,12 @@ export default function ListBox({
               typeof placeholder === "string" ? placeholder : searchPlaceholder
             }
             onFocus={() => {
-              setOpen(true);
+              openListBox();
               setActiveIndex(0);
             }}
             onChange={(event) => {
               setSearchTerm(event.target.value);
-              setOpen(true);
+              openListBox();
               setActiveIndex(0);
             }}
             onKeyDown={handleComboboxKeyDown}
@@ -250,7 +463,14 @@ export default function ListBox({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={ariaLabel}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => {
+            if (open) {
+              closeListBox();
+              return;
+            }
+
+            openListBox();
+          }}
           className={cn(
             "flex w-full items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(var(--brand-rgb),0.16)] disabled:pointer-events-none disabled:opacity-50",
             triggerClassName,
@@ -278,88 +498,7 @@ export default function ListBox({
         </button>
       )}
 
-      {open ? (
-        <div
-          role="listbox"
-          id={`${ariaLabel || "listbox"}-options`}
-          className={cn(
-            "absolute top-[calc(100%+10px)] z-50 w-full overflow-hidden rounded-md border p-2 shadow-xl",
-            align === "right" ? "right-0" : "left-0",
-            contentClassName,
-          )}
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border)",
-            boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
-          }}
-        >
-          {searchable && !combobox ? (
-            <div className="relative mb-2">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder={searchPlaceholder}
-                className="h-11 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm font-medium outline-none transition focus:border-brand-500/50"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--title)",
-                }}
-              />
-            </div>
-          ) : null}
-
-          <div className={cn("overflow-y-auto", maxHeightClassName)}>
-            {children ? (
-              children
-            ) : filteredOptions.length === 0 ? (
-              <div className="px-3 py-3 text-sm font-medium text-[var(--muted)]">
-                {emptyText}
-              </div>
-            ) : (
-              filteredOptions.map((option, index) => {
-                const isSelected = option.value === selectedValue;
-                const isActive = combobox && index === activeIndex;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    disabled={option.disabled}
-                    onClick={() => handleSelect(option)}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-2)] disabled:pointer-events-none disabled:opacity-50",
-                      isSelected || isActive
-                        ? "bg-[var(--surface-2)]"
-                        : "bg-transparent",
-                      optionClassName,
-                    )}
-                    style={{
-                      color: "var(--paragraph)",
-                    }}
-                  >
-                    <div className="min-w-0 flex-1 truncate">
-                      {option.label}
-                    </div>
-
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                      {isSelected ? (
-                        <Check
-                          className="h-4 w-4"
-                          style={{ color: "var(--color-brand-500)" }}
-                        />
-                      ) : null}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : null}
+      {panel}
     </div>
   );
 }

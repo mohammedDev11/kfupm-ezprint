@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Printer, SlidersHorizontal } from "lucide-react";
+import { Printer, SlidersHorizontal, Trash2 } from "lucide-react";
 //import MainButton from "@/app/Mohammed/components/MainButton";
 import Button from "@/components/ui/button/Button";
 import { cn } from "@/lib/cn";
@@ -12,6 +12,7 @@ type PrinterCardProps = {
   columns?: 2 | 3;
   onClick?: () => void;
   onConfigure?: (printer: PrinterItem) => void;
+  onDelete?: (printer: PrinterItem) => void;
 };
 
 const statusStyles: Record<PrinterStatus, React.CSSProperties> = {
@@ -72,6 +73,7 @@ const PrinterCard = ({
   columns = 2,
   onClick,
   onConfigure,
+  onDelete,
 }: PrinterCardProps) => {
   const compactCapabilities = columns === 3 ? 3 : 4;
 
@@ -81,6 +83,7 @@ const PrinterCard = ({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onClick?.();
@@ -91,23 +94,36 @@ const PrinterCard = ({
       )}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
+        <div className="flex min-w-0 items-start gap-4">
           <div
-            className="flex h-14 w-14 items-center justify-center rounded-2xl"
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl"
             style={{ background: "var(--surface-2)" }}
           >
             <Printer className="h-7 w-7 text-brand-500" />
           </div>
 
-          <div>
-            <h3 className="text-2xl font-bold text-[var(--foreground)]">
+          <div className="min-w-0">
+            <h3 className="break-words text-2xl font-bold text-[var(--foreground)]">
               {printer.name}
             </h3>
-            <p className="mt-1 text-lg text-[var(--muted)]">
+            <p className="mt-1 break-words text-lg text-[var(--muted)]">
               {printer.location}
             </p>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)] transition hover:border-[rgba(239,68,68,0.28)] hover:bg-[rgba(239,68,68,0.08)] hover:text-[color-mix(in_srgb,rgb(185,28,28)_72%,var(--foreground))] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(239,68,68,0.14)]"
+          aria-label={`Delete ${printer.name}`}
+          title="Delete printer"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete?.(printer);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -156,7 +172,10 @@ const PrinterCard = ({
           variant="primary"
           iconLeft={<SlidersHorizontal className="h-5 w-5" />}
           className="w-full"
-          onClick={() => onConfigure?.(printer)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onConfigure?.(printer);
+          }}
         >
           Configure
         </Button>

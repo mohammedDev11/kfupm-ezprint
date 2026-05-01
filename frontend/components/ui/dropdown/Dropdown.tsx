@@ -3,13 +3,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import React, {
+  RefObject,
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 type DropdownContextType = {
   open: boolean;
@@ -18,6 +21,8 @@ type DropdownContextType = {
   selectedLabel?: React.ReactNode;
   onSelect: (value: string, label?: React.ReactNode) => void;
   fullWidth: boolean;
+  containerRef: RefObject<HTMLDivElement | null>;
+  panelRef: RefObject<HTMLDivElement | null>;
 };
 
 const DropdownContext = createContext<DropdownContextType | null>(null);
@@ -39,6 +44,20 @@ type DropdownProps = {
   fullWidth?: boolean;
 };
 
+type FloatingPosition = {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+  minWidth: number;
+  maxHeight: number;
+};
+
+const floatingGap = 10;
+const viewportPadding = 12;
+const comfortablePanelHeight = 320;
+const minimumPanelHeight = 96;
+
 export function Dropdown({
   children,
   value,
@@ -51,15 +70,17 @@ export function Dropdown({
   const [internalValue, setInternalValue] = useState(defaultValue || "");
   const [selectedLabel, setSelectedLabel] = useState<React.ReactNode>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const selectedValue = value !== undefined ? value : internalValue;
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const isInsideTrigger = containerRef.current?.contains(target);
+      const isInsidePanel = panelRef.current?.contains(target);
+
+      if (!isInsideTrigger && !isInsidePanel) {
         setOpen(false);
       }
     };
@@ -79,14 +100,14 @@ export function Dropdown({
     };
   }, []);
 
-  const onSelect = (nextValue: string, label?: React.ReactNode) => {
+  const onSelect = useCallback((nextValue: string, label?: React.ReactNode) => {
     if (value === undefined) {
       setInternalValue(nextValue);
     }
     setSelectedLabel(label ?? null);
     onValueChange?.(nextValue);
     setOpen(false);
-  };
+  }, [onValueChange, value]);
 
   const contextValue = useMemo(
     () => ({
@@ -96,8 +117,10 @@ export function Dropdown({
       selectedLabel,
       onSelect,
       fullWidth,
+      containerRef,
+      panelRef,
     }),
-    [open, selectedValue, selectedLabel, fullWidth]
+    [containerRef, fullWidth, onSelect, open, panelRef, selectedLabel, selectedValue]
   );
 
   return (
@@ -177,46 +200,144 @@ export function DropdownContent({
   align = "left",
   widthClassName,
 }: DropdownContentProps) {
-  const { open, fullWidth } = useDropdown();
+  const { open, fullWidth, containerRef, panelRef } = useDropdown();
+  const [floatingPosition, setFloatingPosition] =
+    useState<FloatingPosition | null>(null);
 
   const resolvedWidthClassName =
     widthClassName ?? (fullWidth ? "w-full" : "w-56");
 
+  const getFloatingPosition = useCallback((): FloatingPosition | null => {
+    if (typeof window === "undefined" || !containerRef.current) {
+      return null;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const availableBelow = Math.max(
+      0,
+      window.innerHeight - rect.bottom - floatingGap - viewportPadding,
+    );
+    const availableAbove = Math.max(0, rect.top - floatingGap - viewportPadding);
+    const viewportMaxHeight = Math.max(0, window.innerHeight - viewportPadding * 2);
+    const shouldUseViewportFallback =
+      availableBelow < minimumPanelHeight && availableAbove < minimumPanelHeight;
+    const shouldOpenAbove =
+      !shouldUseViewportFallback &&
+      availableBelow < comfortablePanelHeight &&
+      availableAbove > availableBelow;
+    const basePosition = {
+      minWidth: rect.width,
+      maxHeight: shouldUseViewportFallback
+        ? viewportMaxHeight
+        : shouldOpenAbove
+        ? availableAbove
+        : availableBelow,
+    };
+
+    if (align === "right") {
+      return {
+        ...basePosition,
+        ...(shouldUseViewportFallback
+          ? { top: viewportPadding }
+          : shouldOpenAbove
+          ? { bottom: window.innerHeight - rect.top + floatingGap }
+          : { top: rect.bottom + floatingGap }),
+        right: window.innerWidth - rect.right,
+      };
+    }
+
+    return {
+      ...basePosition,
+      ...(shouldUseViewportFallback
+        ? { top: viewportPadding }
+        : shouldOpenAbove
+        ? { bottom: window.innerHeight - rect.top + floatingGap }
+        : { top: rect.bottom + floatingGap }),
+      left: rect.left,
+    };
+  }, [align, containerRef]);
+
+  const updateFloatingPosition = useCallback(() => {
+    const nextPosition = getFloatingPosition();
+
+    if (nextPosition) {
+      setFloatingPosition(nextPosition);
+    }
+  }, [getFloatingPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const positionFrame = window.requestAnimationFrame(updateFloatingPosition);
+    window.addEventListener("resize", updateFloatingPosition);
+    window.addEventListener("scroll", updateFloatingPosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(positionFrame);
+      window.removeEventListener("resize", updateFloatingPosition);
+      window.removeEventListener("scroll", updateFloatingPosition, true);
+    };
+  }, [open, updateFloatingPosition]);
+
+  const panelStyle: React.CSSProperties = {
+    position: "fixed",
+    top: floatingPosition?.top,
+    bottom: floatingPosition?.bottom,
+    left: floatingPosition?.left,
+    right: floatingPosition?.right,
+    minWidth: floatingPosition?.minWidth,
+    maxHeight: floatingPosition?.maxHeight,
+    overflowX: "hidden",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    visibility: floatingPosition ? "visible" : "hidden",
+  };
+
+  const panelSurfaceStyle: React.CSSProperties = {
+    background: "var(--surface)",
+    borderColor: "var(--border)",
+    boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
+  };
+
   return (
     <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0, y: 10, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.98 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-          className={`absolute top-[calc(100%+10px)] z-50 rounded-md border p-2 shadow-xl ${
-            align === "right" ? "right-0" : "left-0"
-          } ${resolvedWidthClassName} ${className}`}
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border)",
-            boxShadow: "0 14px 40px rgba(var(--shadow-color), 0.16)",
-          }}
-        >
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            exit="hidden"
-            variants={{
-              hidden: {},
-              visible: {
-                transition: {
-                  staggerChildren: 0.05,
-                },
-              },
-            }}
-            className="flex flex-col gap-1"
-          >
-            {children}
-          </motion.div>
-        </motion.div>
-      )}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <motion.div
+              ref={panelRef}
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              onMouseDown={(event) => event.stopPropagation()}
+              className="z-[1000020]"
+              style={panelStyle}
+            >
+              <div
+                className={`rounded-md border p-2 shadow-xl ${resolvedWidthClassName} ${className}`}
+                style={panelSurfaceStyle}
+              >
+                <motion.div
+                  initial="hidden"
+                  animate="visible"
+                  exit="hidden"
+                  variants={{
+                    hidden: {},
+                    visible: {
+                      transition: {
+                        staggerChildren: 0.05,
+                      },
+                    },
+                  }}
+                  className="flex flex-col gap-1"
+                >
+                  {children}
+                </motion.div>
+              </div>
+            </motion.div>,
+            document.body,
+          )
+        : null}
     </AnimatePresence>
   );
 }

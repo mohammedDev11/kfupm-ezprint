@@ -207,7 +207,7 @@ type TableCellProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 export function TableCell({ children, className = "" }: TableCellProps) {
-  return <div className={`flex items-center ${className}`}>{children}</div>;
+  return <div className={`flex min-w-0 items-center ${className}`}>{children}</div>;
 }
 
 type TableEmptyStateProps = {

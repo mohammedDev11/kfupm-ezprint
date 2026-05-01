@@ -101,7 +101,7 @@ type GenerateCodesResponse = {
 };
 
 const columnsClassName =
-  "[grid-template-columns:72px_minmax(190px,1fr)_minmax(110px,0.55fr)_minmax(130px,0.7fr)_minmax(190px,1fr)_minmax(190px,1fr)_minmax(170px,0.9fr)_minmax(170px,0.9fr)_minmax(240px,1.2fr)]";
+  "gap-x-5 [grid-template-columns:72px_minmax(190px,0.9fr)_minmax(120px,0.55fr)_minmax(140px,0.7fr)_minmax(220px,1.05fr)_minmax(210px,1fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_minmax(300px,1.25fr)]";
 
 const statusOptions = [
   { value: "all", label: "All statuses" },
@@ -314,8 +314,8 @@ export default function RedeemCodesTable() {
   const [createdDateFilter, setCreatedDateFilter] = useState("all");
   const [minimumQuotaFilter, setMinimumQuotaFilter] = useState("");
   const [maximumQuotaFilter, setMaximumQuotaFilter] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("code");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortKey, setSortKey] = useState<SortKey>("createdBy");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -947,7 +947,7 @@ export default function RedeemCodesTable() {
       ) : null}
 
       <TableMain className="min-h-0 flex-1">
-        <TableGrid minWidthClassName="flex h-full min-w-[1500px] flex-col">
+        <TableGrid minWidthClassName="flex h-full min-w-[1800px] flex-col">
           <TableHeader columnsClassName={columnsClassName}>
             <TableCell className="justify-center">
               <TableCheckbox
@@ -1065,24 +1065,32 @@ export default function RedeemCodesTable() {
                       </TableCell>
 
                       <TableCell className="flex-col items-start">
-                        <p className="font-semibold text-[var(--title)]">
+                        <p className="w-full truncate font-semibold text-[var(--title)]">
                           {getPersonLabel(code.createdBy)}
                         </p>
-                        <p className="mt-1 text-sm text-[var(--muted)]">
+                        <p className="mt-1 w-full truncate text-sm text-[var(--muted)]">
                           {code.createdAtLabel}
                         </p>
                       </TableCell>
 
                       <TableCell className="text-[var(--title)]">
-                        {code.redeemedBy ? getPersonLabel(code.redeemedBy) : "-"}
+                        <span className="w-full truncate">
+                          {code.redeemedBy
+                            ? getPersonLabel(code.redeemedBy)
+                            : "-"}
+                        </span>
                       </TableCell>
 
                       <TableCell className="text-[var(--title)]">
-                        {code.redeemedAtLabel || "-"}
+                        <span className="w-full truncate">
+                          {code.redeemedAtLabel || "-"}
+                        </span>
                       </TableCell>
 
                       <TableCell className="text-[var(--title)]">
-                        {code.expiresAtLabel || "No expiry"}
+                        <span className="w-full truncate">
+                          {code.expiresAtLabel || "No expiry"}
+                        </span>
                       </TableCell>
 
                       <TableCell className="justify-between gap-3 text-[var(--title)]">
