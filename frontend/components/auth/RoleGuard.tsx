@@ -1,7 +1,11 @@
 "use client";
 
+import {
+  canAccessAdminPath,
+  getRoutingRole,
+} from "@/lib/role-access";
 import { getSession, type Scope } from "@/services/api";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const scopeAllowsRole = (scope: Scope, role: string) => {
@@ -12,9 +16,6 @@ const scopeAllowsRole = (scope: Scope, role: string) => {
   return role === "User" || role === "Admin" || role === "SubAdmin";
 };
 
-const getRoutingRole = (user: { role?: string; systemRole?: string }) =>
-  user.systemRole || user.role || "User";
-
 export default function RoleGuard({
   scope,
   children,
@@ -23,19 +24,38 @@ export default function RoleGuard({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [authorizedPathname, setAuthorizedPathname] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
+    let isActive = true;
     const session = getSession(scope);
+    const routingRole = getRoutingRole(session?.user);
+    const redirectTo = (href: string) => {
+      queueMicrotask(() => {
+        if (!isActive) return;
+        setReady(false);
+        setAuthorizedPathname(null);
+        router.replace(href);
+      });
+    };
 
-    if (!session || !scopeAllowsRole(scope, getRoutingRole(session.user))) {
-      router.replace("/");
+    if (!session || !scopeAllowsRole(scope, routingRole)) {
+      redirectTo("/");
       return;
     }
 
-    let isActive = true;
+    if (scope === "admin" && !canAccessAdminPath(routingRole, pathname)) {
+      redirectTo("/sections/admin/dashboard");
+      return;
+    }
+
     queueMicrotask(() => {
       if (isActive) {
+        setAuthorizedPathname(pathname);
         setReady(true);
       }
     });
@@ -43,9 +63,9 @@ export default function RoleGuard({
     return () => {
       isActive = false;
     };
-  }, [router, scope]);
+  }, [pathname, router, scope]);
 
-  if (!ready) {
+  if (!ready || authorizedPathname !== pathname) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">
         Checking session...

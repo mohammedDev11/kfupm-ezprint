@@ -954,7 +954,7 @@ export default function Page() {
     try {
       const query = encodeURIComponent(period);
       const reportsData = await apiGet<ReportsSummary>(
-        `/admin/reports/summary?period=${query}`,
+        `/admin/dashboard/summary?period=${query}`,
         "admin",
       );
 

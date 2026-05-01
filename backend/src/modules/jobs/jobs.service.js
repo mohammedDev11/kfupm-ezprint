@@ -1,7 +1,10 @@
 const mongoose = require("mongoose");
+const fs = require("fs/promises");
+const path = require("path");
 const env = require("../../config/env");
 const User = require("../../models/User");
 const PrintJob = require("../../models/PrintJob");
+const PrintDraft = require("../../models/PrintDraft");
 const Queue = require("../../models/Queue");
 const Printer = require("../../models/Printer");
 const Group = require("../../models/Group");
@@ -29,6 +32,8 @@ const getReadinessPercent = (job) => job.status?.readinessPercent || 0;
 const roundAmount = (value) => Number(Number(value || 0).toFixed(2));
 
 const toIdString = (value) => value?.toString?.() || "";
+
+const MAX_PRINT_FILES_PER_JOB = 10;
 
 const isPrintingRestricted = (user) =>
   user.printing?.enabled === false || user.printing?.restricted === true;
@@ -403,6 +408,7 @@ const mapDispatchSummary = (dispatchResult) => {
     method: dispatchResult.method || env.printTransport,
     destinationName: dispatchResult.destinationName || "",
     destinationCount: dispatchResult.destinationCount || 1,
+    documentsDispatched: dispatchResult.documentsDispatched || 1,
     destinations: (dispatchResult.destinations || []).map((destination) => ({
       printerId: destination.printerId || "",
       printerName: destination.printerName || destination.destinationName || "",
@@ -493,6 +499,29 @@ const createJobRecord = async ({ user, queue, printer, payload, actor, statusOve
   const totalPages = payload.pages * payload.copies;
   const totalCost = roundAmount(totalPages * costPerPage);
   const now = new Date();
+  const paperSize = payload.paperSize || "A4";
+  const storedDocuments =
+    payload.files?.length > 0
+      ? payload.files
+      : [
+          {
+            fileName: payload.fileName || payload.documentName,
+            fileType: payload.fileType || "pdf",
+            fileSize: payload.fileSize || 0,
+            pages: payload.pages || 1,
+            originalFileName: payload.originalFileName || payload.documentName,
+            storagePath: payload.storagePath || "",
+            storedFileName: payload.storedFileName || "",
+            storedAt: payload.storedAt || null,
+            checksumSha256: payload.checksumSha256 || "",
+          },
+        ].filter((document) => document.storagePath || document.fileName);
+  const primaryDocument = storedDocuments[0] || {};
+  const fileCount = Math.max(1, storedDocuments.length || payload.fileCount || 1);
+  const aggregateFileSize = storedDocuments.reduce(
+    (sum, document) => sum + (document.fileSize || 0),
+    0,
+  );
 
   const job = await PrintJob.create({
     jobId: payload.jobId || generateJobId(),
@@ -509,34 +538,46 @@ const createJobRecord = async ({ user, queue, printer, payload, actor, statusOve
       queueName: queue?.name || printer?.queue?.queueName || "",
     },
     document: {
-      fileName: payload.fileName || payload.documentName,
-      fileType: payload.fileType || "pdf",
-      fileSize: payload.fileSize || 0,
+      fileName:
+        fileCount > 1
+          ? `${fileCount} PDF files`
+          : primaryDocument.fileName || payload.fileName || payload.documentName,
+      fileType: payload.fileType || primaryDocument.fileType || "pdf",
+      fileSize: aggregateFileSize || payload.fileSize || 0,
       pages: totalPages,
-      originalFileName: payload.originalFileName || payload.documentName,
-      storagePath: payload.storagePath || "",
-      storedFileName: payload.storedFileName || "",
-      storedAt: payload.storedAt || null,
-      checksumSha256: payload.checksumSha256 || "",
+      fileCount,
+      originalFileName:
+        fileCount > 1
+          ? `${fileCount} PDF files`
+          : primaryDocument.originalFileName || payload.originalFileName || payload.documentName,
+      storagePath: primaryDocument.storagePath || payload.storagePath || "",
+      storedFileName: primaryDocument.storedFileName || payload.storedFileName || "",
+      storedAt: primaryDocument.storedAt || payload.storedAt || null,
+      checksumSha256: primaryDocument.checksumSha256 || payload.checksumSha256 || "",
     },
+    documents: storedDocuments,
     printSettings: {
       colorMode: /color/i.test(payload.colorMode) ? "Color" : "B&W",
       mode: payload.mode,
-      paperSize: payload.paperSize,
+      paperSize,
       quality: payload.quality,
       copies: payload.copies,
       attributes:
         payload.attributes?.length > 0
           ? payload.attributes
           : [
-              payload.fileType?.toUpperCase?.() || "PDF",
+              fileCount > 1 ? `${fileCount} PDFs` : payload.fileType?.toUpperCase?.() || "PDF",
               /color/i.test(payload.colorMode) ? "Color" : "Black & White",
               payload.mode,
             ].filter(Boolean),
       options:
         payload.options?.length > 0
           ? payload.options
-          : [payload.copies > 1 ? `x${payload.copies}` : "", payload.paperSize].filter(Boolean),
+          : [
+              payload.copies > 1 ? `x${payload.copies}` : "",
+              fileCount > 1 ? `${fileCount} files` : "",
+              paperSize,
+            ].filter(Boolean),
     },
     source: {
       clientType: payload.clientType || "Web Upload",
@@ -775,7 +816,205 @@ const mapCreatedJob = (job) => {
     releaseCode: job.release?.releaseCode || "",
     releaseCodeExpiry: job.release?.releaseCodeExpiry || null,
     fileStorage: job.document?.storagePath || "",
+    fileCount: job.documents?.length || job.document?.fileCount || 1,
     errorMessage: job.errorMessage || "",
+  };
+};
+
+const mapPrintDraft = (draft) => ({
+  id: draft._id.toString(),
+  name: draft.name || draft.settings?.documentName || "Untitled draft",
+  documentName: draft.settings?.documentName || draft.name || "",
+  fileCount: draft.files?.length || 0,
+  createdFrom: draft.source?.createdFrom || "print-page",
+  createdAt: draft.createdAt,
+  lastSavedAt: draft.updatedAt,
+  settings: {
+    queueId: toIdString(draft.settings?.queueId),
+    queueName: draft.settings?.queueName || "",
+    documentName: draft.settings?.documentName || "",
+    copies: draft.settings?.copies || 1,
+    colorMode: draft.settings?.colorMode || "Black & White",
+    mode: draft.settings?.mode || "Simplex",
+    paperSize: draft.settings?.paperSize || "A4",
+    quality: draft.settings?.quality || "Normal",
+  },
+  files: (draft.files || []).map((file) => ({
+    id: file._id.toString(),
+    name: file.originalFileName || file.fileName || "document.pdf",
+    type: file.fileType || "application/pdf",
+    size: file.fileSize || 0,
+    pages: file.pages || 1,
+  })),
+});
+
+const getRequiredDraftForUser = async (userId, draftId) => {
+  if (!mongoose.isValidObjectId(draftId)) {
+    throw createHttpError(404, "Print draft not found.");
+  }
+
+  const draft = await PrintDraft.findOne({
+    _id: draftId,
+    "user.userId": userId,
+  });
+
+  if (!draft) {
+    throw createHttpError(404, "Print draft not found.");
+  }
+
+  return draft;
+};
+
+const resolveStoredDraftPath = (relativePath = "") => {
+  const storageRoot = path.resolve(process.cwd(), env.printStorageDir);
+  const absolutePath = path.resolve(process.cwd(), relativePath);
+  const relativeToStorage = path.relative(storageRoot, absolutePath);
+
+  if (relativeToStorage.startsWith("..") || path.isAbsolute(relativeToStorage)) {
+    throw createHttpError(400, "Draft file path is invalid.");
+  }
+
+  return absolutePath;
+};
+
+const removeStoredDraftFile = async (relativePath = "") => {
+  if (!relativePath) {
+    return;
+  }
+
+  try {
+    await fs.unlink(resolveStoredDraftPath(relativePath));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+};
+
+const decodeBatchUploadFile = (file) => {
+  if (!file.contentBase64) {
+    throw createHttpError(400, `File "${file.fileName}" is missing upload content.`);
+  }
+
+  return Buffer.from(file.contentBase64, "base64");
+};
+
+const mapStoredFileDocument = ({ storedFile, sourceFile, storedAt }) => ({
+  originalFileName:
+    sourceFile.originalFileName || sourceFile.fileName || storedFile.storedFileName,
+  fileName: sourceFile.fileName || storedFile.storedFileName,
+  fileType: storedFile.contentType,
+  fileSize: storedFile.fileSize,
+  pages: Math.max(1, storedFile.pageCount || 1),
+  storagePath: storedFile.relativePath,
+  storedFileName: storedFile.storedFileName,
+  storedAt,
+  checksumSha256: storedFile.checksumSha256,
+});
+
+const storeBatchPrintFiles = async ({ files, idPrefix }) => {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw createHttpError(400, "At least one PDF file is required.");
+  }
+
+  if (files.length > MAX_PRINT_FILES_PER_JOB) {
+    throw createHttpError(400, `Upload up to ${MAX_PRINT_FILES_PER_JOB} PDF files at a time.`);
+  }
+
+  const storedAt = new Date();
+  const storedDocuments = [];
+
+  try {
+    for (const [index, file] of files.entries()) {
+      const buffer = decodeBatchUploadFile(file);
+      const storedFile = await storePrintFile({
+        jobId: `${idPrefix}-${index + 1}`,
+        originalFileName: file.originalFileName || file.fileName || `document-${index + 1}.pdf`,
+        contentType: file.fileType,
+        buffer,
+      });
+
+      storedDocuments.push(
+        mapStoredFileDocument({
+          storedFile,
+          sourceFile: file,
+          storedAt,
+        }),
+      );
+    }
+  } catch (error) {
+    await Promise.all(
+      storedDocuments.map((document) =>
+        removeStoredDraftFile(document.storagePath).catch(() => {}),
+      ),
+    );
+    throw error;
+  }
+
+  return storedDocuments;
+};
+
+const getJobStoredDocuments = (job) => {
+  if (job.documents?.length) {
+    return job.documents;
+  }
+
+  if (job.document?.storagePath) {
+    return [job.document];
+  }
+
+  return [];
+};
+
+const dispatchStoredDocumentsToQueuePrinters = async ({
+  queue,
+  primaryPrinter,
+  documents,
+  holdOnPrinter = false,
+  holdKey = "",
+  jobName = "",
+  username = "",
+  logContext = null,
+}) => {
+  if (!documents.length) {
+    throw createHttpError(409, "No stored printable files are available for this job.");
+  }
+
+  const results = [];
+
+  for (const [index, document] of documents.entries()) {
+    const suffix = documents.length > 1 ? ` (${index + 1}/${documents.length})` : "";
+    const result = await dispatchPrintFileToQueuePrinters({
+      queue,
+      primaryPrinter,
+      filePath: document.storagePath,
+      holdOnPrinter,
+      holdKey,
+      jobName: `${jobName || document.originalFileName || "Print Job"}${suffix}`,
+      username,
+      logContext: logContext
+        ? {
+            ...logContext,
+            fileName: document.originalFileName || document.fileName || "",
+            fileIndex: index + 1,
+          }
+        : null,
+    });
+
+    results.push(result);
+  }
+
+  const firstResult = results[0] || {};
+  const destinations = results.flatMap((result) => result.destinations || []);
+  const failures = results.flatMap((result) => result.failures || []);
+
+  return {
+    ...firstResult,
+    bytesSent: results.reduce((sum, result) => sum + (result.bytesSent || 0), 0),
+    documentsDispatched: documents.length,
+    destinationCount: firstResult.destinationCount || firstResult.destinations?.length || 1,
+    destinations,
+    failures,
   };
 };
 
@@ -1024,6 +1263,7 @@ const getPendingReleaseJobsData = async (userId) => {
         id: job.jobId || job._id.toString(),
         documentName: job.documentName,
         printerName: getPrinterName(job),
+        fileCount: job.documents?.length || job.document?.fileCount || 1,
         pages: job.document?.pages || 0,
         cost: job.cost?.totalCost || 0,
         submittedAt: toAgoLabel(minutesAgo),
@@ -1083,8 +1323,288 @@ const getPrintJobOptionsData = async (userId) => {
     queues: mappedQueues,
     defaultQueueId: defaultQueue?._id?.toString?.() || "",
     acceptedMimeTypes: ["application/pdf"],
-    maxFiles: 1,
+    maxFiles: MAX_PRINT_FILES_PER_JOB,
   };
+};
+
+const listPrintDraftsData = async (userId) => {
+  const drafts = await PrintDraft.find({ "user.userId": userId }).sort({
+    updatedAt: -1,
+  });
+
+  return {
+    drafts: drafts.map(mapPrintDraft),
+  };
+};
+
+const savePrintDraftData = async (userId, payload) => {
+  if (!payload.buffer || !Buffer.isBuffer(payload.buffer) || payload.buffer.length === 0) {
+    throw createHttpError(400, "A non-empty file upload is required to save a draft.");
+  }
+
+  const user = await getRequiredUser(userId);
+  let queue = null;
+
+  if (payload.queueId) {
+    if (!mongoose.isValidObjectId(payload.queueId)) {
+      throw createHttpError(400, "Selected queue is invalid.");
+    }
+
+    queue = await Queue.findById(payload.queueId);
+
+    if (!queue) {
+      throw createHttpError(404, "Selected queue was not found.");
+    }
+
+    ensureQueueAccessForUser(user, queue);
+  }
+
+  const draftStorageId = generateJobId().replace(/^job-/, "draft-");
+  const storedFile = await storePrintFile({
+    jobId: draftStorageId,
+    originalFileName: payload.originalFileName || payload.fileName || "document.pdf",
+    contentType: payload.fileType,
+    buffer: payload.buffer,
+  });
+  const documentName =
+    payload.documentName ||
+    payload.originalFileName ||
+    payload.fileName ||
+    "Untitled draft";
+
+  const draft = await PrintDraft.create({
+    user: {
+      userId: user._id,
+      username: user.username,
+      department: user.department || "",
+    },
+    name: documentName,
+    source: {
+      createdFrom: "print-page",
+      clientType: payload.clientType || "Web Print Draft",
+    },
+    settings: {
+      queueId: queue?._id || null,
+      queueName: queue?.name || "",
+      documentName,
+      copies: payload.copies || 1,
+      colorMode: payload.colorMode || "Black & White",
+      mode: payload.mode || "Simplex",
+      paperSize: payload.paperSize || "A4",
+      quality: payload.quality || "Normal",
+    },
+    files: [
+      {
+        originalFileName:
+          payload.originalFileName || payload.fileName || storedFile.storedFileName,
+        fileName: payload.fileName || storedFile.storedFileName,
+        fileType: storedFile.contentType,
+        fileSize: storedFile.fileSize,
+        pages: Math.max(1, storedFile.pageCount || 1),
+        storagePath: storedFile.relativePath,
+        storedFileName: storedFile.storedFileName,
+        storedAt: new Date(),
+        checksumSha256: storedFile.checksumSha256,
+      },
+    ],
+  });
+
+  return {
+    draft: mapPrintDraft(draft),
+  };
+};
+
+const savePrintDraftBatchData = async (userId, payload) => {
+  const user = await getRequiredUser(userId);
+  let queue = null;
+
+  if (payload.queueId) {
+    if (!mongoose.isValidObjectId(payload.queueId)) {
+      throw createHttpError(400, "Selected queue is invalid.");
+    }
+
+    queue = await Queue.findById(payload.queueId);
+
+    if (!queue) {
+      throw createHttpError(404, "Selected queue was not found.");
+    }
+
+    ensureQueueAccessForUser(user, queue);
+  }
+
+  const draftStorageId = generateJobId().replace(/^job-/, "draft-");
+  const storedDocuments = await storeBatchPrintFiles({
+    files: payload.files,
+    idPrefix: draftStorageId,
+  });
+  const documentName = payload.documentName || "Multiple documents";
+
+  const draft = await PrintDraft.create({
+    user: {
+      userId: user._id,
+      username: user.username,
+      department: user.department || "",
+    },
+    name: documentName,
+    source: {
+      createdFrom: "print-page",
+      clientType: payload.clientType || "Web Print Draft",
+    },
+    settings: {
+      queueId: queue?._id || null,
+      queueName: queue?.name || "",
+      documentName,
+      copies: payload.copies || 1,
+      colorMode: payload.colorMode || "Black & White",
+      mode: payload.mode || "Simplex",
+      paperSize: payload.paperSize || "A4",
+      quality: payload.quality || "Normal",
+    },
+    files: storedDocuments.map((document) => ({
+      originalFileName: document.originalFileName,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      pages: document.pages,
+      storagePath: document.storagePath,
+      storedFileName: document.storedFileName,
+      storedAt: document.storedAt,
+      checksumSha256: document.checksumSha256,
+    })),
+  });
+
+  return {
+    draft: mapPrintDraft(draft),
+  };
+};
+
+const getPrintDraftFileData = async (userId, draftId, fileId) => {
+  const draft = await getRequiredDraftForUser(userId, draftId);
+  const file = draft.files.id(fileId);
+
+  if (!file) {
+    throw createHttpError(404, "Draft file not found.");
+  }
+
+  return {
+    absolutePath: resolveStoredDraftPath(file.storagePath),
+    fileName: file.originalFileName || file.fileName || "document.pdf",
+    contentType: file.fileType || "application/pdf",
+  };
+};
+
+const deletePrintDraftData = async (userId, draftId) => {
+  const draft = await getRequiredDraftForUser(userId, draftId);
+
+  for (const file of draft.files || []) {
+    await removeStoredDraftFile(file.storagePath);
+  }
+
+  await draft.deleteOne();
+
+  return {
+    draft: mapPrintDraft(draft),
+  };
+};
+
+const deleteDraftDocument = async (draft) => {
+  for (const file of draft.files || []) {
+    await removeStoredDraftFile(file.storagePath);
+  }
+
+  await draft.deleteOne();
+};
+
+const createPrintDraftFromJob = async (job) => {
+  const jobDocuments = getJobStoredDocuments(job);
+
+  if (jobDocuments.length === 0) {
+    throw createHttpError(409, "This pending job does not have a stored file to save as a draft.");
+  }
+  const colorMode = /color/i.test(job.printSettings?.colorMode || "")
+    ? "Color"
+    : "Black & White";
+  const draftStorageId = generateJobId().replace(/^job-/, "draft-");
+  const copiedDocuments = [];
+
+  try {
+    for (const [index, document] of jobDocuments.entries()) {
+      let buffer;
+
+      try {
+        buffer = await fs.readFile(resolveStoredDraftPath(document.storagePath));
+      } catch (error) {
+        if (error.code === "ENOENT") {
+          throw createHttpError(404, "The stored print file for this job was not found.");
+        }
+
+        throw error;
+      }
+
+      const originalFileName =
+        document.originalFileName ||
+        document.fileName ||
+        `${job.documentName || job.jobId}-${index + 1}.pdf`;
+      const storedFile = await storePrintFile({
+        jobId: `${draftStorageId}-${index + 1}`,
+        originalFileName,
+        contentType: document.fileType || "application/pdf",
+        buffer,
+      });
+
+      copiedDocuments.push(
+        mapStoredFileDocument({
+          storedFile,
+          sourceFile: {
+            originalFileName,
+            fileName: document.fileName || originalFileName,
+          },
+          storedAt: new Date(),
+        }),
+      );
+    }
+  } catch (error) {
+    await Promise.all(
+      copiedDocuments.map((document) =>
+        removeStoredDraftFile(document.storagePath).catch(() => {}),
+      ),
+    );
+    throw error;
+  }
+
+  return PrintDraft.create({
+    user: {
+      userId: job.user?.userId,
+      username: job.user?.username || "",
+      department: job.user?.department || "",
+    },
+    name: job.documentName || copiedDocuments[0]?.originalFileName || "Print draft",
+    source: {
+      createdFrom: "pending-job",
+      clientType: "Pending Job Draft",
+    },
+    settings: {
+      queueId: job.printer?.queueId || null,
+      queueName: job.printer?.queueName || "",
+      documentName: job.documentName || copiedDocuments[0]?.originalFileName || "Print draft",
+      copies: job.printSettings?.copies || 1,
+      colorMode,
+      mode: job.printSettings?.mode || "Simplex",
+      paperSize: job.printSettings?.paperSize || "A4",
+      quality: job.printSettings?.quality || "Normal",
+    },
+    files: copiedDocuments.map((document) => ({
+      originalFileName: document.originalFileName,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      pages: document.pages,
+      storagePath: document.storagePath,
+      storedFileName: document.storedFileName,
+      storedAt: document.storedAt,
+      checksumSha256: document.checksumSha256,
+    })),
+  });
 };
 
 const createPrintJobData = async (userId, payload, actor) => {
@@ -1179,7 +1699,7 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
         /color/i.test(payload.colorMode) ? "Color" : "Black & White",
         payload.mode,
       ].filter(Boolean),
-      options: [payload.copies > 1 ? `x${payload.copies}` : "", payload.paperSize].filter(
+      options: [payload.copies > 1 ? `x${payload.copies}` : "", payload.paperSize || "A4"].filter(
         Boolean,
       ),
     },
@@ -1313,6 +1833,193 @@ const uploadAndPrintJobData = async (userId, payload, actor) => {
   };
 };
 
+const uploadAndPrintBatchData = async (userId, payload, actor) => {
+  if (!payload.queueId) {
+    throw createHttpError(400, "Select a secure-release queue before uploading.");
+  }
+
+  const user = await getRequiredUser(userId);
+  const { queue, printer } = await resolveQueueAndPrinterForSubmission(user, payload);
+
+  if (!isConfiguredSecureReleaseQueue(queue)) {
+    throw createHttpError(400, "Select the configured Secure Release queue for this demo.");
+  }
+
+  const jobId = generateJobId();
+  const storedDocuments = await storeBatchPrintFiles({
+    files: payload.files,
+    idPrefix: jobId,
+  });
+  const originalPages = storedDocuments.reduce(
+    (sum, document) => sum + Math.max(1, document.pages || 1),
+    0,
+  );
+  const fileCount = storedDocuments.length;
+  const now = new Date();
+  const documentName =
+    payload.documentName ||
+    (fileCount > 1 ? "Multiple documents" : storedDocuments[0]?.originalFileName) ||
+    "Print job";
+
+  const { job, totalPages } = await createJobRecord({
+    user,
+    queue,
+    printer,
+    actor,
+    payload: {
+      jobId,
+      ...payload,
+      documentName,
+      pages: originalPages,
+      fileType: "application/pdf",
+      fileSize: storedDocuments.reduce(
+        (sum, document) => sum + (document.fileSize || 0),
+        0,
+      ),
+      files: storedDocuments,
+      clientType: payload.clientType || "Web Print",
+      attributes: [
+        fileCount > 1 ? `${fileCount} PDFs` : "PDF",
+        /color/i.test(payload.colorMode) ? "Color" : "Black & White",
+        payload.mode,
+      ].filter(Boolean),
+      options: [
+        payload.copies > 1 ? `x${payload.copies}` : "",
+        fileCount > 1 ? `${fileCount} files` : "",
+        payload.paperSize || "A4",
+      ].filter(Boolean),
+    },
+    statusOverrides: {
+      current: "Pending Release",
+      readinessPercent: 100,
+    },
+  });
+
+  let dispatchResult = null;
+
+  try {
+    dispatchResult = await dispatchStoredDocumentsToQueuePrinters({
+      queue,
+      primaryPrinter: printer,
+      documents: storedDocuments,
+      holdOnPrinter: true,
+      holdKey: job.release?.releaseCode,
+      jobName: job.documentName,
+      username: user.username,
+      logContext: {
+        phase: "upload",
+        jobId: job.jobId,
+      },
+    });
+  } catch (error) {
+    job.status.current = "Pending Release";
+    job.status.readinessPercent = 100;
+    job.dispatch = {
+      ...job.dispatch,
+      method: env.printTransport,
+      targetHost: printer?.network?.ipAddress || env.printDefaultPrinterIp,
+      targetPort: env.printTransport === "socket" ? env.printSocketPort : 0,
+      destinationName: printer?.name || env.printDestination || env.printDefaultPrinterName,
+      attempts: (job.dispatch?.attempts || 0) + 1,
+      lastAttemptAt: now,
+      lastSuccessfulAt: job.dispatch?.lastSuccessfulAt || null,
+      bytesSent: 0,
+      jobReference: "",
+    };
+    job.errorMessage = error.message;
+    await job.save();
+    throw error;
+  }
+
+  if (job.cost?.totalCost > 0) {
+    await applyQuotaChange({
+      user,
+      amount: roundAmount(-job.cost.totalCost),
+      transactionType: "Print Deduction",
+      reason: "Held printer job deduction",
+      comment: `Quota deducted for held printer job ${job.documentName}`,
+      method: "Printer Hold",
+      reference: {
+        jobId: job._id,
+        jobIdString: job.jobId,
+      },
+      actor,
+    });
+  }
+
+  job.status.current = "Held";
+  job.status.dispatchedAt = now;
+  job.status.readinessPercent = 100;
+  job.cost.quotaDeducted = job.cost?.totalCost > 0;
+  job.dispatch = {
+    ...job.dispatch,
+    method: dispatchResult?.method || env.printTransport,
+    targetHost: dispatchResult?.targetHost || printer?.network?.ipAddress || "",
+    targetPort: dispatchResult?.targetPort || (env.printTransport === "socket" ? env.printSocketPort : 0),
+    destinationName: dispatchResult?.destinationName || printer?.name || "",
+    attempts: (job.dispatch?.attempts || 0) + fileCount,
+    lastAttemptAt: now,
+    lastSuccessfulAt: now,
+    bytesSent: dispatchResult?.bytesSent || 0,
+    jobReference: dispatchResult?.jobReference || "",
+  };
+  job.errorMessage = "";
+  await job.save();
+  await recordAdditionalDispatchFailures({
+    actor,
+    job,
+    dispatchResult,
+  });
+
+  await recordJobSubmittedStats({ user, queue, now });
+  await recordSuccessfulPrintStats({
+    user,
+    queueId: queue?._id,
+    printerId: printer?._id,
+    groupId: user.groupId,
+    pages: totalPages,
+    totalCost: job.cost?.totalCost || 0,
+    now,
+  });
+  await recordAdditionalPrinterDispatchStats({
+    dispatchResult,
+    primaryPrinterId: printer?._id,
+    pages: totalPages,
+    totalCost: job.cost?.totalCost || 0,
+    now,
+  });
+  await refreshQueuePendingCount(queue._id);
+  await markJobQueuedNotification(user, job);
+  await recordAuditLog({
+    actor: buildActorPayload(actor),
+    action: {
+      name: "Job Uploaded To Queue",
+      category: "Job",
+      details: `Uploaded job "${job.jobId}" with ${fileCount} file${fileCount === 1 ? "" : "s"} to queue "${queue.name}" for later release.`,
+    },
+    resource: {
+      type: "PrintJob",
+      id: job._id,
+      name: job.jobId,
+      changes: {
+        documentName: job.documentName,
+        pages: totalPages,
+        fileCount,
+        queueName: queue?.name || "",
+        printerName: printer?.name || "",
+        storagePath: job.document.storagePath,
+        printerHold: true,
+        releaseCode: job.release?.releaseCode || "",
+      },
+    },
+  });
+
+  return {
+    job: mapCreatedJob(job),
+    dispatch: mapDispatchSummary(dispatchResult),
+  };
+};
+
 const releaseJobData = async (jobId, actor, { scope }) => {
   const job = await getRequiredJob(jobId);
   assertJobOwnership(job, actor, scope);
@@ -1332,7 +2039,7 @@ const releaseJobData = async (jobId, actor, { scope }) => {
   const totalCost = roundAmount(job.cost?.totalCost || 0);
   const now = new Date();
   const nextAttemptCount = (job.dispatch?.attempts || 0) + 1;
-  const storedFilePath = job.document?.storagePath || "";
+  const storedDocuments = getJobStoredDocuments(job);
 
   if (!job.cost?.quotaDeducted && (user.printing?.quota?.remaining || 0) < totalCost) {
     await markInsufficientBalanceNotification(user, job);
@@ -1348,12 +2055,14 @@ const releaseJobData = async (jobId, actor, { scope }) => {
 
   // TODO: Keep this manual-complete fallback until every pending job in the system
   // is guaranteed to have a stored printable file from the upload flow.
-  if (storedFilePath) {
+  if (storedDocuments.length > 0) {
     try {
-      dispatchResult = await dispatchPrintFileToQueuePrinters({
+      dispatchResult = await dispatchStoredDocumentsToQueuePrinters({
         queue,
         primaryPrinter: printer,
-        filePath: storedFilePath,
+        documents: storedDocuments,
+        jobName: job.documentName,
+        username: user.username,
       });
     } catch (error) {
       job.status.current = "Pending Release";
@@ -1659,6 +2368,29 @@ const cancelPendingJobData = async (jobId, actor, { scope }) => {
   };
 };
 
+const cancelPendingJobAndSaveDraftData = async (jobId, actor, { scope }) => {
+  const job = await getRequiredJob(jobId);
+  assertJobOwnership(job, actor, scope);
+
+  if (!isPendingReleaseStatus(job)) {
+    throw createHttpError(409, "Only pending release jobs can be saved as drafts.");
+  }
+
+  const draft = await createPrintDraftFromJob(job);
+
+  try {
+    const cancellation = await cancelPendingJobData(jobId, actor, { scope });
+
+    return {
+      ...cancellation,
+      draft: mapPrintDraft(draft),
+    };
+  } catch (error) {
+    await deleteDraftDocument(draft).catch(() => {});
+    throw error;
+  }
+};
+
 const getAdminPendingReleaseJobsData = async () => {
   const jobs = await PrintJob.find({
     "status.current": { $in: ["Pending Release", "Held"] },
@@ -1686,11 +2418,18 @@ module.exports = {
   getRecentJobsData,
   getPendingReleaseJobsData,
   getPrintJobOptionsData,
+  listPrintDraftsData,
+  savePrintDraftData,
+  savePrintDraftBatchData,
+  getPrintDraftFileData,
+  deletePrintDraftData,
   createPrintJobData,
   uploadAndPrintJobData,
+  uploadAndPrintBatchData,
   releaseJobData,
   releaseJobsByIdsData,
   releaseAllEligibleJobsData,
   cancelPendingJobData,
+  cancelPendingJobAndSaveDraftData,
   getAdminPendingReleaseJobsData,
 };

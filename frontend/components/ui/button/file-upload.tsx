@@ -768,6 +768,7 @@ const deleteFileAction = {
 type FileUploadProps = {
   value?: File[];
   onChange?: (files: File[]) => void;
+  onReject?: (message: string) => void;
   multiple?: boolean;
   accept?: Accept;
   maxFiles?: number;
@@ -779,6 +780,8 @@ type FileUploadProps = {
   showRemove?: boolean;
   showClearAll?: boolean;
   draftKey?: string;
+  showDraftActions?: boolean;
+  emptyHelperText?: string;
 };
 
 type DraftFileMeta = {
@@ -801,6 +804,7 @@ const getFileId = (file: File) =>
 export const FileUpload = ({
   value,
   onChange,
+  onReject,
   multiple = true,
   accept,
   maxFiles,
@@ -812,6 +816,8 @@ export const FileUpload = ({
   showRemove = true,
   showClearAll = true,
   draftKey = "ezprint-upload-draft",
+  showDraftActions = true,
+  emptyHelperText = "PDF, DOCX, PPTX, or images. Clean, fast, and easy for users.",
 }: FileUploadProps) => {
   const [internalFiles, setInternalFiles] = useState<File[]>([]);
   const [draftMeta, setDraftMeta] = useState<DraftPayload | null>(null);
@@ -915,18 +921,6 @@ export const FileUpload = ({
     }, 1800);
   };
 
-  const loadDraftMeta = () => {
-    const raw = localStorage.getItem(draftKey);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw) as DraftPayload;
-      setDraftMeta(parsed);
-    } catch {
-      setDraftMeta(null);
-    }
-  };
-
   const clearDraftMeta = () => {
     localStorage.removeItem(draftKey);
     setDraftMeta(null);
@@ -940,17 +934,32 @@ export const FileUpload = ({
     onDrop: handleFileChange,
     onDropRejected: (error) => {
       console.log(error);
+      onReject?.("Only PDF files can be uploaded. Unsupported files were removed.");
     },
   });
 
   useEffect(() => {
-    loadDraftMeta();
-  }, [draftKey]);
+    if (!showDraftActions) return;
 
-  useEffect(() => {
-    if (!isControlled) return;
-    setInternalFiles(value ?? []);
-  }, [isControlled, value]);
+    const timer = window.setTimeout(() => {
+      const raw = localStorage.getItem(draftKey);
+
+      if (!raw) {
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as DraftPayload;
+        setDraftMeta(parsed);
+      } catch {
+        setDraftMeta(null);
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [draftKey, showDraftActions]);
 
   return (
     <div
@@ -1003,7 +1012,7 @@ export const FileUpload = ({
                 {description}
               </p>
 
-              {draftMeta && !files.length && (
+              {showDraftActions && draftMeta && !files.length && (
                 <div
                   className="mt-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm"
                   style={{
@@ -1031,22 +1040,24 @@ export const FileUpload = ({
                   Add files
                 </Button>
 
-                <Button
-                  type="button"
-                  onClick={saveDraft}
-                  disabled={!files.length}
-                  variant="secondary"
-                  size="sm"
-                  iconLeft={
-                    draftSaved ? (
-                      <IconChecks size={16} />
-                    ) : (
-                      <IconDeviceFloppy size={16} />
-                    )
-                  }
-                >
-                  {draftSaved ? "Saved" : "Save draft"}
-                </Button>
+                {showDraftActions && (
+                  <Button
+                    type="button"
+                    onClick={saveDraft}
+                    disabled={!files.length}
+                    variant="secondary"
+                    size="sm"
+                    iconLeft={
+                      draftSaved ? (
+                        <IconChecks size={16} />
+                      ) : (
+                        <IconDeviceFloppy size={16} />
+                      )
+                    }
+                  >
+                    {draftSaved ? "Saved" : "Save draft"}
+                  </Button>
+                )}
 
                 {showClearAll && files.length > 0 && (
                   <Button
@@ -1064,7 +1075,7 @@ export const FileUpload = ({
           </div>
 
           {/* Draft Info */}
-          {draftMeta && (
+          {showDraftActions && draftMeta && (
             <div
               className="mb-5 flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between"
               style={{
@@ -1166,7 +1177,7 @@ export const FileUpload = ({
 
                 <div className="mt-8 text-center">
                   <p className="text-sm" style={{ color: "var(--paragraph)" }}>
-                    PDF, DOCX, PPTX, or images. Clean, fast, and easy for users.
+                    {emptyHelperText}
                   </p>
                 </div>
               </>

@@ -1,6 +1,7 @@
 "use client";
 
 import Card from "@/components/ui/card/Card";
+import ListBox from "@/components/ui/listbox/ListBox";
 import { Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -44,7 +45,6 @@ type OutcomeSlice = {
 
 type UserDashboardChartsProps = {
   recentJobs: RecentPrintJob[];
-  period: string;
   loading?: boolean;
 };
 
@@ -59,6 +59,8 @@ type TrendTooltipProps = {
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MONTHLY_ACTIVITY_PERIOD = "Last 30 days";
+const outcomePeriods = ["Last 7 days", "Last 30 days", "Last 90 days", "This year"];
 const trendMetrics: TrendMetric[] = [
   { key: "pages", label: "Pages Printed", color: "var(--color-brand-500)" },
   { key: "jobs", label: "Print Jobs", color: "var(--color-support-500)" },
@@ -450,19 +452,40 @@ function WeeklyTrendChart({
   );
 }
 
-function OutcomeDonut({ data }: { data: OutcomeSlice[] }) {
+function OutcomeDonut({
+  data,
+  period,
+  onPeriodChange,
+}: {
+  data: OutcomeSlice[];
+  period: string;
+  onPeriodChange: (period: string) => void;
+}) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
     <Card className="relative overflow-visible rounded-[1.35rem] p-5 sm:p-6">
-      <div className="mb-5">
-        <h3 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--title)]">
-          Print Outcomes
-        </h3>
-        <div className="mt-5 flex items-center gap-2">
-          <span className="h-[3px] w-12 rounded-full bg-[var(--color-brand-500)]" />
-          <span className="h-[3px] w-8 rounded-full bg-[var(--border)]" />
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--title)]">
+            Print Outcomes
+          </h3>
+          <div className="mt-5 flex items-center gap-2">
+            <span className="h-[3px] w-12 rounded-full bg-[var(--color-brand-500)]" />
+            <span className="h-[3px] w-8 rounded-full bg-[var(--border)]" />
+          </div>
         </div>
+
+        <ListBox
+          value={period}
+          options={outcomePeriods}
+          onValueChange={onPeriodChange}
+          className="w-[170px] sm:w-[180px]"
+          triggerClassName="h-11 font-semibold"
+          contentClassName="w-[180px]"
+          align="right"
+          ariaLabel="Print outcomes period"
+        />
       </div>
 
       <div className="grid min-h-[370px] items-center gap-5 lg:grid-cols-[minmax(210px,1fr)_220px]">
@@ -537,22 +560,26 @@ function OutcomeDonut({ data }: { data: OutcomeSlice[] }) {
 
 const UserDashboardCharts = ({
   recentJobs,
-  period,
 }: UserDashboardChartsProps) => {
+  const [outcomesRange, setOutcomesRange] = useState("Last 30 days");
   const trendData = useMemo(
-    () => buildWeeklyTrendData(recentJobs, period),
-    [period, recentJobs],
+    () => buildWeeklyTrendData(recentJobs, MONTHLY_ACTIVITY_PERIOD),
+    [recentJobs],
   );
   const outcomeData = useMemo(
-    () => buildOutcomeSlices(recentJobs, period),
-    [period, recentJobs],
+    () => buildOutcomeSlices(recentJobs, outcomesRange),
+    [outcomesRange, recentJobs],
   );
   const hasJobs = trendData.some((item) => item.jobs > 0);
 
   return (
     <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.25fr_0.75fr]">
       <WeeklyTrendChart data={trendData} hasJobs={hasJobs} />
-      <OutcomeDonut data={outcomeData} />
+      <OutcomeDonut
+        data={outcomeData}
+        period={outcomesRange}
+        onPeriodChange={setOutcomesRange}
+      />
     </section>
   );
 };

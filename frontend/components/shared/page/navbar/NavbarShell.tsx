@@ -2,7 +2,11 @@
 
 import Logo from "@/components/shared/page/Logo";
 import { cn } from "@/lib/cn";
-import { sidebarSectionsByRole, type NavbarRole } from "@/lib/mock-data/Navbar";
+import {
+  getSidebarSectionsForRole,
+  type NavbarRole,
+} from "@/lib/mock-data/Navbar";
+import { getRoutingRole } from "@/lib/role-access";
 import useIsClient from "@/lib/useIsClient";
 import { getSession, logoutAllSessions } from "@/services/api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -291,8 +295,17 @@ export default function NavbarShell({
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isClient = useIsClient();
+  const session = isClient ? getSession(role) : null;
+  const routingRole = session
+    ? getRoutingRole(session.user)
+    : role === "admin"
+      ? "SubAdmin"
+      : "User";
 
-  const sections = useMemo(() => sidebarSectionsByRole[role], [role]);
+  const sections = useMemo(
+    () => getSidebarSectionsForRole(role, routingRole),
+    [role, routingRole],
+  );
   const resolvedMode = manualMode ?? (isClient ? readStoredMode() : "left");
 
   const handleSidebarMouseEnter = () => {

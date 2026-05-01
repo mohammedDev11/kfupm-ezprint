@@ -28,9 +28,10 @@ import {
   DropdownTrigger,
 } from "@/components/ui/dropdown/Dropdown";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
+import ConfirmDialog from "@/components/ui/modal/ConfirmDialog";
 import Modal from "@/components/ui/modal/Modal";
 import { cn } from "@/lib/cn";
-import { apiDelete, apiGet } from "@/services/api";
+import { apiDelete, apiGet, apiPost } from "@/services/api";
 import {
   Check,
   Clock3,
@@ -69,6 +70,7 @@ type PendingReleaseJob = {
   id: string;
   documentName: string;
   printerName: string;
+  fileCount?: number;
   pages: number;
   cost: number;
   submittedAt: string;
@@ -90,6 +92,12 @@ type PendingReleaseResponse = {
 
 type SortDir = "asc" | "desc";
 type ReadinessFilter = "all" | "ready" | "stored" | "syncing";
+type CancelAction = "delete" | "draft" | null;
+type CancelDialogTarget = {
+  ids: string[];
+  label: string;
+  count: number;
+} | null;
 
 const columnsClassName =
   "[grid-template-columns:72px_minmax(320px,1.6fr)_minmax(240px,1fr)_120px_140px_180px_minmax(180px,0.8fr)_170px]";
@@ -199,7 +207,11 @@ const JobsPendingReleaseTable = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelAction, setCancelAction] = useState<CancelAction>(null);
+  const [cancelDialogTarget, setCancelDialogTarget] =
+    useState<CancelDialogTarget>(null);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const loadJobs = useCallback(
     async (mode: "initial" | "refresh" = "refresh") => {
@@ -448,15 +460,57 @@ const JobsPendingReleaseTable = () => {
     setSelectedIds((prev) => Array.from(new Set([...prev, ...allVisibleIds])));
   };
 
-  const runAction = async (action: () => Promise<void>) => {
-    setSubmitting(true);
+  const openCancelDialog = (targetJobs: PendingReleaseJob[]) => {
+    if (targetJobs.length === 0) {
+      return;
+    }
+
     setError("");
+    setSuccess("");
+    setCancelDialogTarget({
+      ids: targetJobs.map((job) => job.id),
+      label:
+        targetJobs.length === 1
+          ? targetJobs[0].documentName
+          : `${targetJobs.length} selected jobs`,
+      count: targetJobs.length,
+    });
+  };
+
+  const runCancelAction = async (action: Exclude<CancelAction, null>) => {
+    if (!cancelDialogTarget) {
+      return;
+    }
+
+    setSubmitting(true);
+    setCancelAction(action);
+    setError("");
+    setSuccess("");
 
     try {
-      await action();
+      if (action === "draft") {
+        await Promise.all(
+          cancelDialogTarget.ids.map((jobId) =>
+            apiPost(`/user/jobs/${jobId}/cancel-save-draft`, {}, "user"),
+          ),
+        );
+      } else {
+        await Promise.all(
+          cancelDialogTarget.ids.map((jobId) =>
+            apiDelete(`/user/jobs/${jobId}`, "user"),
+          ),
+        );
+      }
+
       await loadJobs("refresh");
       setSelectedIds([]);
       setOpenJobModal(null);
+      setCancelDialogTarget(null);
+      setSuccess(
+        action === "draft"
+          ? `${cancelDialogTarget.count} print job${cancelDialogTarget.count === 1 ? "" : "s"} saved to draft and cancelled.`
+          : `${cancelDialogTarget.count} print job${cancelDialogTarget.count === 1 ? "" : "s"} cancelled.`,
+      );
     } catch (actionError) {
       setError(
         actionError instanceof Error
@@ -465,6 +519,7 @@ const JobsPendingReleaseTable = () => {
       );
     } finally {
       setSubmitting(false);
+      setCancelAction(null);
     }
   };
 
@@ -616,6 +671,14 @@ const JobsPendingReleaseTable = () => {
         </div>
       ) : null}
 
+      {success ? (
+        <div className="shrink-0 px-6 pb-2 pt-4">
+          <p className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {success}
+          </p>
+        </div>
+      ) : null}
+
       <TableMain className="min-h-0 flex-1">
         <TableGrid minWidthClassName="flex h-full min-w-[1420px] flex-col">
           <TableHeader columnsClassName={columnsClassName}>
@@ -672,8 +735,15 @@ const JobsPendingReleaseTable = () => {
 
                       <TableCell className="min-w-0 gap-3">
                         <FileText className="h-4 w-4 shrink-0 text-[var(--muted)]" />
-                        <span className="block truncate text-base font-medium text-[var(--title)]">
-                          {job.documentName}
+                        <span className="min-w-0">
+                          <span className="block truncate text-base font-medium text-[var(--title)]">
+                            {job.documentName}
+                          </span>
+                          {(job.fileCount || 1) > 1 ? (
+                            <span className="mt-1 block text-xs text-[var(--muted)]">
+                              {job.fileCount} PDF files
+                            </span>
+                          ) : null}
                         </span>
                       </TableCell>
 
@@ -745,15 +815,7 @@ const JobsPendingReleaseTable = () => {
               iconLeft={<Trash2 className="h-5 w-5" />}
               className="h-14 px-6 text-base"
               disabled={selectedIds.length === 0 || submitting}
-              onClick={() =>
-                runAction(async () => {
-                  await Promise.all(
-                    selectedIds.map((jobId) =>
-                      apiDelete(`/user/jobs/${jobId}`, "user"),
-                    ),
-                  );
-                })
-              }
+              onClick={() => openCancelDialog(selectedJobs)}
             >
               {submitting ? "Cancelling..." : "Cancel Selected"}
             </Button>
@@ -812,6 +874,14 @@ const JobsPendingReleaseTable = () => {
             <div>
               <p className="text-sm font-medium text-[var(--muted)]">Pages</p>
               <p className="paragraph mt-1">{openJobModal?.pages}</p>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium text-[var(--muted)]">Files</p>
+              <p className="paragraph mt-1">
+                {openJobModal?.fileCount || 1} PDF
+                {(openJobModal?.fileCount || 1) === 1 ? "" : "s"}
+              </p>
             </div>
 
             <div>
@@ -874,11 +944,7 @@ const JobsPendingReleaseTable = () => {
               iconLeft={<Trash2 className="h-4 w-4" />}
               disabled={submitting || !openJobModal}
               onClick={() =>
-                openJobModal
-                  ? runAction(async () => {
-                      await apiDelete(`/user/jobs/${openJobModal.id}`, "user");
-                    })
-                  : undefined
+                openJobModal ? openCancelDialog([openJobModal]) : undefined
               }
             >
               {submitting ? "Cancelling..." : "Cancel Job"}
@@ -895,6 +961,43 @@ const JobsPendingReleaseTable = () => {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(cancelDialogTarget)}
+        title="Cancel print job"
+        description={
+          <div className="space-y-2">
+            <p>What would you like to do with this queued print job?</p>
+            {cancelDialogTarget ? (
+              <p className="font-medium text-[var(--title)]">
+                {cancelDialogTarget.label}
+              </p>
+            ) : null}
+          </div>
+        }
+        cancelText="Cancel"
+        secondaryConfirmText="Delete completely"
+        secondaryLoadingText="Deleting..."
+        confirmText="Delete and save to draft"
+        loadingText="Saving draft..."
+        variant="default"
+        secondaryVariant="danger"
+        loading={submitting}
+        loadingAction={
+          cancelAction === "draft"
+            ? "confirm"
+            : cancelAction === "delete"
+              ? "secondary"
+              : null
+        }
+        onSecondaryConfirm={() => void runCancelAction("delete")}
+        onConfirm={() => void runCancelAction("draft")}
+        onClose={() => {
+          if (!submitting) {
+            setCancelDialogTarget(null);
+          }
+        }}
+      />
     </>
   );
 };

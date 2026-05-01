@@ -12,7 +12,7 @@ const {
 const router = express.Router();
 
 router.use(requireAuth);
-router.use(requireRole("Admin", "SubAdmin"));
+router.use(requireRole("Admin"));
 
 router.get("/pending-release", getAdminPendingReleaseJobs);
 router.post("/release-selected", adminReleaseSelectedJobs);

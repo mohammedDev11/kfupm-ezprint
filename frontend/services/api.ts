@@ -36,6 +36,13 @@ type UploadOptions = {
   metadata?: Record<string, string | number | undefined | null>;
 };
 
+type UploadBatchOptions = {
+  path: string;
+  scope: Scope;
+  files: File[];
+  metadata?: Record<string, string | number | undefined | null>;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001/api/v1";
 
@@ -258,6 +265,34 @@ export const apiPatch = async <T>(
 export const apiDelete = async <T>(path: string, scope: Scope): Promise<T> =>
   request<T>(path, { method: "DELETE", scope });
 
+export const apiDownload = async (path: string, scope: Scope): Promise<Blob> => {
+  const session = getSession(scope);
+
+  if (!session?.token) {
+    throw new Error("You are not logged in.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${session.token}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+
+    if (response.status === 401) {
+      clearScopeSession(scope);
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
 const publicRequest = async <T>(
   path: string,
   { method = "GET", body }: Omit<ApiRequestOptions, "scope"> = {},
@@ -341,4 +376,66 @@ export const apiUpload = async <T>({
 
   const payload = await response.json();
   return (payload?.data ?? payload) as T;
+};
+
+const fileToBase64 = async (file: File) => {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+
+  return window.btoa(binary);
+};
+
+export const apiUploadBatch = async <T>({
+  path,
+  scope,
+  files,
+  metadata = {},
+}: UploadBatchOptions): Promise<T> => {
+  const session = getSession(scope);
+
+  if (!session?.token) {
+    throw new Error("You are not logged in.");
+  }
+
+  const payload = {
+    metadata,
+    files: await Promise.all(
+      files.map(async (file) => ({
+        fileName: file.name,
+        originalFileName: file.name,
+        fileType: file.type || "application/pdf",
+        fileSize: file.size,
+        contentBase64: await fileToBase64(file),
+      })),
+    ),
+  };
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.token}`,
+      "Content-Type": "application/vnd.alpha.print-batch+json",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+
+    if (response.status === 401) {
+      clearScopeSession(scope);
+    }
+
+    throw new Error(message);
+  }
+
+  const responsePayload = await response.json();
+  return (responsePayload?.data ?? responsePayload) as T;
 };

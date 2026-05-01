@@ -61,7 +61,7 @@ const assertSupportedPrintFile = ({ fileName, contentType }) => {
 
   throw createHttpError(
     415,
-    "Only PDF files are supported for the real print demo right now.",
+    "Only PDF files can be printed right now. Convert DOCX, PPTX, XLSX, or images to PDF before upload.",
   );
 };
 

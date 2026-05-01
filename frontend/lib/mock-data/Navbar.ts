@@ -439,6 +439,7 @@
 //   sections.flatMap((section) => section.items);
 
 // =============NEW==================
+import { isAdminOnlyAdminPath, isSubAdminRole } from "@/lib/role-access";
 import type { IconType } from "react-icons";
 import {
   RiDashboardFill,
@@ -667,6 +668,26 @@ export const userSidebarSections: SidebarSection[] = [
 export const sidebarSectionsByRole: Record<NavbarRole, SidebarSection[]> = {
   admin: adminSidebarSections,
   user: userSidebarSections,
+};
+
+export const getSidebarSectionsForRole = (
+  role: NavbarRole,
+  systemRole?: string,
+): SidebarSection[] => {
+  const sections = sidebarSectionsByRole[role];
+
+  if (role !== "admin" || !isSubAdminRole(systemRole)) {
+    return sections;
+  }
+
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => !isAdminOnlyAdminPath(item.href),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
 };
 
 export const getDockItems = (sections: SidebarSection[]) =>

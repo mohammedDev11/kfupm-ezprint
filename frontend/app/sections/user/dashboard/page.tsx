@@ -18,26 +18,26 @@ const getPeriodSummaryText = (periodLabel: string) => {
   const normalizedPeriod = periodLabel.toLowerCase();
 
   if (normalizedPeriod === "last 7 days") {
-    return `Showing this week's personal print activity (${periodLabel})`;
+    return `Showing this week's KPI summary (${periodLabel})`;
   }
 
   if (normalizedPeriod === "last 30 days") {
-    return `Showing monthly personal print activity (${periodLabel})`;
+    return `Showing monthly KPI summary (${periodLabel})`;
   }
 
   if (normalizedPeriod === "last 90 days") {
-    return `Showing quarterly personal print activity (${periodLabel})`;
+    return `Showing quarterly KPI summary (${periodLabel})`;
   }
 
   if (normalizedPeriod === "this year") {
-    return `Showing annual personal print activity (${periodLabel})`;
+    return `Showing annual KPI summary (${periodLabel})`;
   }
 
-  return `Showing selected personal dashboard window (${periodLabel})`;
+  return `Showing selected KPI summary window (${periodLabel})`;
 };
 
 const Page = () => {
-  const [period, setPeriod] = useState("Last 30 days");
+  const [kpiRange, setKpiRange] = useState("Last 30 days");
   const [dashboard, setDashboard] = useState<UserDashboardData | null>(null);
   const [recentJobs, setRecentJobs] = useState<RecentPrintJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,7 @@ const Page = () => {
       }
 
       try {
-        const query = encodeURIComponent(period);
+        const query = encodeURIComponent(kpiRange);
         const [dashboardData, recentJobsData] = await Promise.all([
           apiGet<UserDashboardData>(`/user/dashboard?period=${query}`, "user"),
           apiGet<{ jobs: RecentPrintJob[] }>("/user/jobs/recent", "user"),
@@ -77,7 +77,7 @@ const Page = () => {
         setRefreshing(false);
       }
     },
-    [period],
+    [kpiRange],
   );
 
   useEffect(() => {
@@ -100,7 +100,7 @@ const Page = () => {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-full text-left text-sm font-medium text-[var(--muted)]">
-            {getPeriodSummaryText(period)}
+            {getPeriodSummaryText(kpiRange)}
           </p>
 
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -116,9 +116,9 @@ const Page = () => {
             />
 
             <ListBox
-              value={period}
+              value={kpiRange}
               options={dashboardPeriods}
-              onValueChange={setPeriod}
+              onValueChange={setKpiRange}
               disabled={loading || refreshing}
               className="w-[180px]"
               triggerClassName="h-11 font-semibold"
@@ -138,11 +138,7 @@ const Page = () => {
         </div>
       ) : null}
 
-      <UserDashboardCharts
-        recentJobs={recentJobs}
-        period={period}
-        loading={loading}
-      />
+      <UserDashboardCharts recentJobs={recentJobs} loading={loading} />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2">

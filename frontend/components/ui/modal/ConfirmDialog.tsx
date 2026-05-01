@@ -12,9 +12,14 @@ type ConfirmDialogProps = {
   confirmText?: string;
   cancelText?: string;
   loadingText?: string;
+  secondaryConfirmText?: string;
+  secondaryLoadingText?: string;
   variant?: "default" | "danger";
+  secondaryVariant?: "default" | "danger";
   loading?: boolean;
+  loadingAction?: "confirm" | "secondary" | null;
   onConfirm: () => void | Promise<void>;
+  onSecondaryConfirm?: () => void | Promise<void>;
   onClose: () => void;
   onCancel?: () => void;
 };
@@ -32,9 +37,14 @@ const ConfirmDialog = ({
   confirmText = "Confirm",
   cancelText = "Cancel",
   loadingText = "Working...",
+  secondaryConfirmText,
+  secondaryLoadingText = "Working...",
   variant = "default",
+  secondaryVariant = "default",
   loading = false,
+  loadingAction = null,
   onConfirm,
+  onSecondaryConfirm,
   onClose,
   onCancel,
 }: ConfirmDialogProps) => {
@@ -77,24 +87,58 @@ const ConfirmDialog = ({
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div
+          className={
+            secondaryConfirmText && onSecondaryConfirm
+              ? "flex flex-col gap-3"
+              : "flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"
+          }
+        >
+          {secondaryConfirmText && onSecondaryConfirm ? (
+            <Button
+              variant={variant === "danger" ? "outline" : "primary"}
+              className="h-11 w-full px-5 text-sm"
+              disabled={loading}
+              style={variant === "danger" ? dangerButtonStyle : undefined}
+              onClick={() => void onConfirm()}
+            >
+              {loading && loadingAction !== "secondary" ? loadingText : confirmText}
+            </Button>
+          ) : null}
+          {secondaryConfirmText && onSecondaryConfirm ? (
+            <Button
+              variant={secondaryVariant === "danger" ? "outline" : "primary"}
+              className="h-11 w-full px-5 text-sm"
+              disabled={loading}
+              style={secondaryVariant === "danger" ? dangerButtonStyle : undefined}
+              onClick={() => void onSecondaryConfirm()}
+            >
+              {loading && loadingAction === "secondary"
+                ? secondaryLoadingText
+                : secondaryConfirmText}
+            </Button>
+          ) : null}
           <Button
             variant="outline"
-            className="h-11 px-5 text-sm"
+            className={`h-11 px-5 text-sm ${
+              secondaryConfirmText && onSecondaryConfirm ? "w-full" : ""
+            }`}
             disabled={loading}
             onClick={handleClose}
           >
             {cancelText}
           </Button>
-          <Button
-            variant={variant === "danger" ? "outline" : "primary"}
-            className="h-11 px-5 text-sm"
-            disabled={loading}
-            style={variant === "danger" ? dangerButtonStyle : undefined}
-            onClick={() => void onConfirm()}
-          >
-            {loading ? loadingText : confirmText}
-          </Button>
+          {!secondaryConfirmText || !onSecondaryConfirm ? (
+            <Button
+              variant={variant === "danger" ? "outline" : "primary"}
+              className="h-11 px-5 text-sm"
+              disabled={loading}
+              style={variant === "danger" ? dangerButtonStyle : undefined}
+              onClick={() => void onConfirm()}
+            >
+              {loading && loadingAction !== "secondary" ? loadingText : confirmText}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Modal>

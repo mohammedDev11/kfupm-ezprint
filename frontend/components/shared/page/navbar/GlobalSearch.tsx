@@ -172,8 +172,16 @@ export default function GlobalSearch({
         keywords: `${item.label} ${sectionTitle} ${item.href}`,
         shortcut: navigationShortcutKeys[index],
       }));
+    const allowedHrefs = new Set(
+      routeSuggestions
+        .map((suggestion) => suggestion.href)
+        .filter((href): href is string => Boolean(href)),
+    );
+    const extraSuggestions = extraSuggestionsByRole[role].filter(
+      (suggestion) => !suggestion.href || allowedHrefs.has(suggestion.href),
+    );
 
-    return [...routeSuggestions, ...extraSuggestionsByRole[role]];
+    return [...routeSuggestions, ...extraSuggestions];
   }, [role, sections]);
 
   const shortcutSuggestions = useMemo(

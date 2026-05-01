@@ -2,6 +2,21 @@ const mongoose = require("mongoose");
 
 const { Schema } = mongoose;
 
+const printJobDocumentSchema = new Schema(
+  {
+    fileName: { type: String, default: "" },
+    fileType: { type: String, default: "pdf" },
+    fileSize: { type: Number, default: 0 },
+    pages: { type: Number, default: 1, min: 1 },
+    originalFileName: { type: String, default: "" },
+    storagePath: { type: String, default: "" },
+    storedFileName: { type: String, default: "" },
+    storedAt: { type: Date, default: null },
+    checksumSha256: { type: String, default: "" },
+  },
+  { _id: true },
+);
+
 const printJobSchema = new Schema(
   {
     jobId: { type: String, required: true, unique: true, trim: true },
@@ -22,16 +37,18 @@ const printJobSchema = new Schema(
       fileType: { type: String, default: "pdf" },
       fileSize: { type: Number, default: 0 },
       pages: { type: Number, required: true, min: 1 },
+      fileCount: { type: Number, default: 1 },
       originalFileName: { type: String, default: "" },
       storagePath: { type: String, default: "" },
       storedFileName: { type: String, default: "" },
       storedAt: { type: Date, default: null },
       checksumSha256: { type: String, default: "" },
     },
+    documents: { type: [printJobDocumentSchema], default: [] },
     printSettings: {
       colorMode: { type: String, default: "B&W" },
       mode: { type: String, enum: ["Simplex", "Duplex"], default: "Simplex" },
-      paperSize: { type: String, default: "" },
+      paperSize: { type: String, default: "A4" },
       quality: { type: String, default: "" },
       copies: { type: Number, default: 1 },
       attributes: { type: [String], default: [] },

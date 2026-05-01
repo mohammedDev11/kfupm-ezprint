@@ -10,7 +10,7 @@ const {
 const router = express.Router();
 
 router.use(requireAuth);
-router.use(requireRole("Admin", "SubAdmin"));
+router.use(requireRole("Admin"));
 
 router.get("/", getAdminPrinters);
 router.patch("/:printerId", updatePrinter);

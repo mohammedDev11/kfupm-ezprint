@@ -6,7 +6,7 @@ const { getAdminQueues } = require("./queues.controller");
 const router = express.Router();
 
 router.use(requireAuth);
-router.use(requireRole("Admin", "SubAdmin"));
+router.use(requireRole("Admin"));
 
 router.get("/", getAdminQueues);
 

@@ -107,8 +107,49 @@ const normalizeUploadPrintHeaders = (headers = {}) => {
   };
 };
 
+const normalizeUploadPrintBatchPayload = (payload = {}) => {
+  const metadata = payload.metadata && typeof payload.metadata === "object"
+    ? payload.metadata
+    : payload;
+  const files = Array.isArray(payload.files) ? payload.files : [];
+
+  if (files.length === 0) {
+    throw createHttpError(400, "At least one PDF file is required.");
+  }
+
+  return {
+    queueId: toStringValue(metadata.queueId),
+    documentName: toStringValue(metadata.documentName) || "Multiple documents",
+    copies: Math.max(1, toNumberValue(metadata.copies, 1)),
+    colorMode: toStringValue(metadata.colorMode || metadata.color || "B&W"),
+    mode: /duplex/i.test(toStringValue(metadata.mode || metadata.duplex))
+      ? "Duplex"
+      : "Simplex",
+    paperSize: toStringValue(metadata.paperSize || "A4"),
+    quality: toStringValue(metadata.quality || "Normal"),
+    notes: toStringValue(metadata.notes),
+    clientType: toStringValue(metadata.clientType || "Web Print"),
+    files: files.map((file, index) => {
+      const fileName =
+        toStringValue(file.fileName) ||
+        toStringValue(file.name) ||
+        `document-${index + 1}.pdf`;
+
+      return {
+        fileName,
+        originalFileName:
+          toStringValue(file.originalFileName) || fileName,
+        fileType: toStringValue(file.fileType || file.type || "application/pdf"),
+        fileSize: Math.max(0, toNumberValue(file.fileSize || file.size, 0)),
+        contentBase64: toStringValue(file.contentBase64 || file.base64),
+      };
+    }),
+  };
+};
+
 module.exports = {
   normalizeCreateJobPayload,
   normalizeJobIdsPayload,
   normalizeUploadPrintHeaders,
+  normalizeUploadPrintBatchPayload,
 };
