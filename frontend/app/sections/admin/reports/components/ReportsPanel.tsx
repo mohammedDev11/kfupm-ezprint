@@ -245,7 +245,8 @@ function ReportRow<T>({
   );
 }
 
-const toMoney = (value: number) => `${value.toFixed(2)} SAR`;
+const stripCurrencyLabel = (value: string) => value.replace(/\s*SAR\b/gi, "").trim();
+const toMoney = (value: number) => value.toFixed(2);
 
 const toReportRows = <T extends object>(rows: T[] = []): ReportRowData[] =>
   rows.map((row) => ({ ...row }) as ReportRowData);
@@ -323,7 +324,7 @@ export default function ReportsPanel() {
     const overviewRows: ReportRowData[] =
       summary?.overviewCards.map((card) => ({
         metric: card.title,
-        value: card.value,
+        value: stripCurrencyLabel(card.value),
         helper: card.helperText,
       })) || [];
 
@@ -488,7 +489,7 @@ export default function ReportsPanel() {
           <KpiMetricCard
             key={card.id}
             title={card.title}
-            value={card.value}
+            value={stripCurrencyLabel(card.value)}
             helper={card.helperText}
             icon={getOverviewIcon(card.title, index)}
             index={index}

@@ -28,15 +28,19 @@ import { apiGet } from "@/services/api";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileText,
   FileOutput,
+  Info,
   Maximize2,
   Minimize2,
+  Printer,
   ScrollText,
   SlidersHorizontal,
   Trash2,
+  UserRound,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type ActivityLog = {
   id: string;
@@ -120,6 +124,106 @@ const getStatusTone = (status: ActivityLog["status"]) => {
   if (status === "Failed") return "danger";
   if (status === "Warning") return "warning";
   return "inactive";
+};
+
+const emptyValue = "—";
+
+const stripDisplayCurrencyLabel = (value: string) =>
+  value.replace(/(\d+(?:\.\d+)?)\s+SAR\b(?=\s*(?:[.,;:!?)]|$))/gi, "$1");
+
+const renderLogTypeIcon = (type: string, className: string) => {
+  const normalizedType = type.toLowerCase();
+
+  if (normalizedType.includes("print")) {
+    return <FileText className={className} />;
+  }
+  if (normalizedType.includes("printer") || normalizedType.includes("device")) {
+    return <Printer className={className} />;
+  }
+  if (normalizedType.includes("user") || normalizedType.includes("security")) {
+    return <UserRound className={className} />;
+  }
+  if (normalizedType.includes("system")) {
+    return <ScrollText className={className} />;
+  }
+
+  return <Info className={className} />;
+};
+
+const getLogTypeStyle = (type: string) => {
+  const normalizedType = type.toLowerCase();
+
+  if (normalizedType.includes("print")) {
+    return {
+      borderColor: "color-mix(in srgb, var(--color-brand-500) 28%, var(--border))",
+      background: "color-mix(in srgb, var(--color-brand-500) 10%, var(--surface))",
+      color: "color-mix(in srgb, var(--color-brand-700) 80%, var(--title))",
+    };
+  }
+
+  if (normalizedType.includes("printer") || normalizedType.includes("device")) {
+    return {
+      borderColor: "color-mix(in srgb, var(--color-warning-500) 30%, var(--border))",
+      background: "color-mix(in srgb, var(--color-warning-500) 12%, var(--surface))",
+      color: "color-mix(in srgb, var(--color-warning-600) 82%, var(--title))",
+    };
+  }
+
+  if (normalizedType.includes("user") || normalizedType.includes("security")) {
+    return {
+      borderColor: "color-mix(in srgb, var(--color-support-500) 28%, var(--border))",
+      background: "color-mix(in srgb, var(--color-support-500) 11%, var(--surface))",
+      color: "color-mix(in srgb, var(--color-support-700) 78%, var(--title))",
+    };
+  }
+
+  return {
+    borderColor: "var(--border)",
+    background: "var(--surface-2)",
+    color: "var(--paragraph)",
+  };
+};
+
+const LogTypeBadge = ({ type }: { type: string }) => {
+  if (!type) return <span>{emptyValue}</span>;
+
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
+      style={getLogTypeStyle(type)}
+      title={type}
+    >
+      {renderLogTypeIcon(type, "h-3.5 w-3.5 shrink-0")}
+      <span className="truncate">{type}</span>
+    </span>
+  );
+};
+
+const DetailField = ({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) => {
+  const isEmpty = value === null || value === undefined || value === "";
+
+  return (
+    <div
+      className="min-w-0 rounded-xl border px-4 py-3.5"
+      style={{
+        borderColor: "var(--border)",
+        background: "var(--surface)",
+      }}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {label}
+      </p>
+      <div className="mt-2 min-w-0 break-words text-sm font-semibold text-[var(--title)]">
+        {isEmpty ? emptyValue : value}
+      </div>
+    </div>
+  );
 };
 
 const parseSortableDate = (value: string) => {
@@ -769,63 +873,130 @@ const ActivityLogTable = () => {
       </Modal>
 
       <Modal open={Boolean(selectedLog)} onClose={() => setSelectedLog(null)}>
-        <div className="space-y-4 pr-8">
-          <div>
-            <h3 className="title-md">{selectedLog?.title}</h3>
-            <p className="paragraph mt-1">{selectedLog?.time}</p>
-          </div>
+        {selectedLog ? (
+          <div className="w-[min(92vw,940px)] max-h-[calc(90vh-5rem)] space-y-6 overflow-y-auto pr-2">
+            <div
+              className="rounded-[1.35rem] border p-5"
+              style={{
+                borderColor: "var(--border)",
+                background:
+                  "linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 88%, transparent), var(--surface))",
+              }}
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-4">
+                  <div
+                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border"
+                    style={getLogTypeStyle(selectedLog.type)}
+                  >
+                    {renderLogTypeIcon(selectedLog.type, "h-6 w-6")}
+                  </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            {[
-              ["Type", selectedLog?.type || "—"],
-              ["Status", selectedLog?.status || "—"],
-              ["User", selectedLog?.user || "—"],
-              ["Printer", selectedLog?.printer || "—"],
-              ["Pages", selectedLog?.pages ?? "—"],
-              ["Document", selectedLog?.documentName || "—"],
-              ["Queue", selectedLog?.queueName || "—"],
-              ["Device IP", selectedLog?.deviceIp || "—"],
-              ["Serial Number", selectedLog?.serialNumber || "—"],
-              ["Location", selectedLog?.location || "—"],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl border p-4"
+                  <div className="min-w-0">
+                    <h3 className="break-words text-2xl font-bold text-[var(--title)]">
+                      {selectedLog.title || "Log event"}
+                    </h3>
+                    <p className="mt-2 text-sm font-medium text-[var(--muted)]">
+                      {selectedLog.time || emptyValue}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <LogTypeBadge type={selectedLog.type} />
+                  <StatusBadge
+                    label={selectedLog.status}
+                    tone={getStatusTone(selectedLog.status)}
+                    className="px-3 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <section
+              className="rounded-[1.35rem] border p-5"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <div className="mb-4 flex items-center gap-2">
+                <ScrollText className="h-4 w-4 text-[var(--color-brand-500)]" />
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Event details
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <DetailField
+                  label="Type"
+                  value={<LogTypeBadge type={selectedLog.type} />}
+                />
+                <DetailField
+                  label="Status"
+                  value={
+                    <StatusBadge
+                      label={selectedLog.status}
+                      tone={getStatusTone(selectedLog.status)}
+                      className="px-3 py-1.5 text-sm"
+                    />
+                  }
+                />
+                <DetailField label="User" value={selectedLog.user} />
+                <DetailField label="Printer" value={selectedLog.printer} />
+                <DetailField label="Pages" value={selectedLog.pages} />
+                <DetailField label="Document" value={selectedLog.documentName} />
+                <DetailField label="Queue" value={selectedLog.queueName} />
+                <DetailField label="Device IP" value={selectedLog.deviceIp} />
+                <DetailField
+                  label="Serial Number"
+                  value={selectedLog.serialNumber}
+                />
+                <DetailField label="Location" value={selectedLog.location} />
+              </div>
+            </section>
+
+            <section
+              className="rounded-[1.35rem] border p-5"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface-2)",
+              }}
+            >
+              <div className="mb-4 flex items-center gap-2">
+                <Info className="h-4 w-4 text-[var(--color-brand-500)]" />
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Description
+                </p>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-[var(--paragraph)]">
+                {stripDisplayCurrencyLabel(
+                  selectedLog.description || "No description.",
+                )}
+              </p>
+            </section>
+
+            {selectedLog.resolutionNote ? (
+              <section
+                className="rounded-[1.35rem] border p-5"
                 style={{
                   borderColor: "var(--border)",
                   background: "var(--surface-2)",
                 }}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                  {label}
+                <div className="mb-4 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-[var(--color-support-500)]" />
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Resolution note
+                  </p>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-sm leading-7 text-[var(--paragraph)]">
+                  {stripDisplayCurrencyLabel(selectedLog.resolutionNote)}
                 </p>
-                <p className="mt-2 text-sm font-semibold text-[var(--title)]">
-                  {value}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className="rounded-2xl border p-4"
-            style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-          >
-            <p className="text-sm font-semibold text-[var(--title)]">Description</p>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              {selectedLog?.description || "No description."}
-            </p>
-            {selectedLog?.resolutionNote ? (
-              <>
-                <p className="mt-4 text-sm font-semibold text-[var(--title)]">
-                  Resolution Note
-                </p>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  {selectedLog.resolutionNote}
-                </p>
-              </>
+              </section>
             ) : null}
           </div>
-        </div>
+        ) : null}
       </Modal>
     </div>
   );

@@ -105,7 +105,7 @@ const toolbarExportOptions: ListBoxOption[] = exportFormatOptions.map((format) =
   ),
 }));
 
-const formatMoney = (value: number) => `${value.toFixed(2)} SAR`;
+const formatMoney = (value: number) => value.toFixed(2);
 const getExportTimestamp = () =>
   new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
 
