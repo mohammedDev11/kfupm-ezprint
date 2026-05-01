@@ -34,7 +34,26 @@ type SidebarNavItemProps = {
   isExpanded: boolean;
   pathname: string;
   side: "left" | "right";
+  shortcutLabel?: string;
 };
+
+const sidebarShortcutLabels = [
+  "⌥⇧1",
+  "⌥⇧2",
+  "⌥⇧3",
+  "⌥⇧4",
+  "⌥⇧5",
+  "⌥⇧6",
+  "⌥⇧7",
+  "⌥⇧8",
+  "⌥⇧9",
+  "⌥⇧0",
+  "⌥⇧-",
+  "⌥⇧=",
+];
+
+const getSidebarShortcutLabel = (index: number) =>
+  sidebarShortcutLabels[index] ?? "";
 
 function SidebarVideoPreview({
   item,
@@ -142,6 +161,7 @@ function SidebarNavItem({
   isExpanded,
   pathname,
   side,
+  shortcutLabel,
 }: SidebarNavItemProps) {
   const Icon = item.icon;
   const linkRef = useRef<HTMLAnchorElement | null>(null);
@@ -198,15 +218,32 @@ function SidebarNavItem({
 
         <span
           className={cn(
-            "relative z-10 ml-3 overflow-hidden whitespace-nowrap text-[0.98rem] font-medium tracking-[-0.01em] transition-all duration-300",
-            isExpanded ? "max-w-[190px] opacity-100" : "max-w-0 opacity-0",
+            "relative z-10 ml-3 min-w-0 overflow-hidden whitespace-nowrap text-[0.96rem] font-medium tracking-[-0.01em] transition-all duration-300",
+            isExpanded
+              ? "max-w-none flex-1 opacity-100"
+              : "max-w-0 flex-none opacity-0",
             active ? "translate-x-0" : "group-hover:translate-x-0.5",
           )}
         >
-          {item.label}
+          <span className="block truncate">{item.label}</span>
         </span>
 
-        {active && isExpanded ? (
+        {isExpanded && shortcutLabel ? (
+          <kbd
+            className="relative z-10 ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[0.64rem] font-semibold leading-4 transition-colors duration-300"
+            style={{
+              borderColor: "var(--border)",
+              background:
+                "linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface-2) 94%, transparent))",
+              color: active ? "var(--color-brand-600)" : "var(--muted)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+          >
+            {shortcutLabel}
+          </kbd>
+        ) : null}
+
+        {active && isExpanded && !shortcutLabel ? (
           <span
             className="absolute right-4 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
             style={{
@@ -258,6 +295,9 @@ export default function SidebarNavbar({
         inFrame ? "w-full" : isExpanded ? "w-[320px]" : "w-[112px]",
         className,
       )}
+      style={{
+        width: isExpanded ? "296px" : "112px",
+      }}
     >
       <div
         className={cn(
@@ -333,15 +373,27 @@ export default function SidebarNavbar({
                 </p>
 
                 <div className="space-y-2">
-                  {section.items.map((item) => (
-                    <SidebarNavItem
-                      key={item.href}
-                      item={item}
-                      isExpanded={isExpanded}
-                      pathname={pathname}
-                      side={side}
-                    />
-                  ))}
+                  {section.items.map((item, itemIndex) => {
+                    const shortcutIndex =
+                      sections
+                        .slice(0, sectionIndex)
+                        .reduce(
+                          (count, currentSection) =>
+                            count + currentSection.items.length,
+                          0,
+                        ) + itemIndex;
+
+                    return (
+                      <SidebarNavItem
+                        key={item.href}
+                        item={item}
+                        isExpanded={isExpanded}
+                        pathname={pathname}
+                        side={side}
+                        shortcutLabel={getSidebarShortcutLabel(shortcutIndex)}
+                      />
+                    );
+                  })}
                 </div>
 
                 {sectionIndex === 0 ? (
