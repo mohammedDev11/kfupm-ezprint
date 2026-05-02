@@ -7,8 +7,16 @@ import {
   type NavbarRole,
 } from "@/lib/mock-data/Navbar";
 import { getRoutingRole } from "@/lib/role-access";
+import {
+  dispatchThemeModeChange,
+  getNextManualThemeMode,
+  getThemePreferencesPath,
+  isThemeMode,
+  readStoredThemeMode,
+  type ThemeMode,
+} from "@/lib/theme-mode";
 import useIsClient from "@/lib/useIsClient";
-import { apiGet, getSession, logoutAllSessions } from "@/services/api";
+import { apiGet, apiPatch, getSession, logoutAllSessions } from "@/services/api";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
@@ -48,9 +56,6 @@ const readStoredMode = (): NavbarMode => {
 const isNavbarMode = (value: unknown): value is NavbarMode =>
   value === "left" || value === "right" || value === "bottom" || value === "top";
 
-const isThemePreference = (value: unknown): value is "system" | "light" | "dark" =>
-  value === "system" || value === "light" || value === "dark";
-
 type ShellSettingsResponse = {
   preferences?: {
     ui?: {
@@ -58,6 +63,24 @@ type ShellSettingsResponse = {
       navbarMode?: string;
     };
   };
+};
+
+const persistThemeMode = async (scope: NavbarRole, themeMode: ThemeMode) => {
+  try {
+    await apiPatch(
+      getThemePreferencesPath(scope),
+      {
+        preferences: {
+          ui: {
+            theme: themeMode,
+          },
+        },
+      },
+      scope,
+    );
+  } catch {
+    // Local theme choice still persists through next-themes if the API is unavailable.
+  }
 };
 
 function FrameUserBadge({
@@ -273,7 +296,7 @@ function FrameUserBadge({
   );
 }
 
-function ShellThemeButton() {
+function ShellThemeButton({ role }: { role: NavbarRole }) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const mounted = useIsClient();
 
@@ -281,11 +304,18 @@ function ShellThemeButton() {
 
   const currentTheme = theme === "system" ? resolvedTheme : theme;
   const isDark = currentTheme === "dark";
+  const handleToggleTheme = () => {
+    const nextThemeMode = getNextManualThemeMode(theme, resolvedTheme);
+
+    setTheme(nextThemeMode);
+    dispatchThemeModeChange(nextThemeMode);
+    void persistThemeMode(role, nextThemeMode);
+  };
 
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={handleToggleTheme}
       className="inline-flex h-11 w-11 items-center justify-center rounded-[1rem] transition-all duration-300 text-[var(--muted)] hover:text-[var(--color-brand-500)]"
       style={{
         background:
@@ -371,8 +401,20 @@ export default function NavbarShell({
         const themePreference = data.preferences?.ui?.theme;
         const navbarPreference = data.preferences?.ui?.navbarMode;
 
-        if (isThemePreference(themePreference)) {
-          setTheme(themePreference);
+        const storedThemeMode = readStoredThemeMode();
+        const nextThemeMode = storedThemeMode || themePreference;
+
+        if (isThemeMode(nextThemeMode)) {
+          setTheme(nextThemeMode);
+          dispatchThemeModeChange(nextThemeMode);
+        }
+
+        if (
+          storedThemeMode &&
+          isThemeMode(themePreference) &&
+          storedThemeMode !== themePreference
+        ) {
+          void persistThemeMode(role, storedThemeMode);
         }
 
         if (isNavbarMode(navbarPreference)) {
@@ -502,7 +544,7 @@ export default function NavbarShell({
             onChange={handleModeChange}
             placement={placement === "bottom" ? "up" : "down"}
           />
-          <ShellThemeButton />
+          <ShellThemeButton role={role} />
           <FrameUserBadge
             role={role}
             isClient={isClient}

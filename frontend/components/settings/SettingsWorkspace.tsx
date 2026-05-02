@@ -5,6 +5,13 @@ import Button from "@/components/ui/button/Button";
 import ListBox, { type ListBoxOption } from "@/components/ui/listbox/ListBox";
 import ConfirmDialog from "@/components/ui/modal/ConfirmDialog";
 import { cn } from "@/lib/cn";
+import {
+  dispatchThemeModeChange,
+  isThemeMode,
+  readStoredThemeMode,
+  THEME_MODE_CHANGE_EVENT,
+  type ThemeMode,
+} from "@/lib/theme-mode";
 import { apiDelete, apiGet, apiPatch, type Scope } from "@/services/api";
 import {
   Bell,
@@ -31,7 +38,7 @@ import { useTheme } from "next-themes";
 import type { ComponentType, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type ThemePreference = "system" | "light" | "dark";
+type ThemePreference = ThemeMode;
 type NavbarModePreference = "left" | "right" | "bottom" | "top";
 type PrintSidePreference = "Simplex" | "Duplex";
 
@@ -513,6 +520,7 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
   const applyLocalPreferences = useCallback(
     (preferences: UserPreferences) => {
       setTheme(preferences.ui.theme);
+      dispatchThemeModeChange(preferences.ui.theme);
 
       if (typeof window === "undefined") {
         return;
@@ -534,10 +542,26 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
 
     try {
       const data = await apiGet<SettingsResponse>(getSettingsPath(scope), scope);
-      setSettings(data);
-      setProfileDraft(clone(data.profile));
-      setPreferencesDraft(clone(data.preferences));
-      setSystemDraft(clone(data.system));
+      const storedThemeMode = readStoredThemeMode();
+      const currentThemeMode = storedThemeMode;
+      const normalizedData =
+        currentThemeMode && currentThemeMode !== data.preferences.ui.theme
+          ? {
+              ...data,
+              preferences: {
+                ...data.preferences,
+                ui: {
+                  ...data.preferences.ui,
+                  theme: currentThemeMode,
+                },
+              },
+            }
+          : data;
+
+      setSettings(normalizedData);
+      setProfileDraft(clone(normalizedData.profile));
+      setPreferencesDraft(clone(normalizedData.preferences));
+      setSystemDraft(clone(normalizedData.system));
       setDirtySections([]);
     } catch (requestError) {
       setError(
@@ -559,6 +583,48 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
       window.clearTimeout(timer);
     };
   }, [loadSettings]);
+
+  useEffect(() => {
+    const handleThemeModeChange = (event: Event) => {
+      const nextThemeMode = (event as CustomEvent).detail;
+
+      if (!isThemeMode(nextThemeMode)) {
+        return;
+      }
+
+      setPreferencesDraft((current) =>
+        current
+          ? {
+              ...current,
+              ui: {
+                ...current.ui,
+                theme: nextThemeMode,
+              },
+            }
+          : current,
+      );
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              preferences: {
+                ...current.preferences,
+                ui: {
+                  ...current.preferences.ui,
+                  theme: nextThemeMode,
+                },
+              },
+            }
+          : current,
+      );
+    };
+
+    window.addEventListener(THEME_MODE_CHANGE_EVENT, handleThemeModeChange);
+
+    return () => {
+      window.removeEventListener(THEME_MODE_CHANGE_EVENT, handleThemeModeChange);
+    };
+  }, []);
 
   const markDirty = (section: DirtySection) => {
     setDirtySections((current) =>
@@ -852,14 +918,20 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
             value={preferencesDraft.ui.theme}
             options={themeOptions}
             onValueChange={(value) => {
+              if (!isThemeMode(value)) {
+                return;
+              }
+
               setPreferencesDraft((current) =>
                 current
                   ? {
                       ...current,
-                      ui: { ...current.ui, theme: value as ThemePreference },
+                      ui: { ...current.ui, theme: value },
                     }
                   : current,
               );
+              setTheme(value);
+              dispatchThemeModeChange(value);
               markDirty("profile");
             }}
             triggerClassName="h-11"

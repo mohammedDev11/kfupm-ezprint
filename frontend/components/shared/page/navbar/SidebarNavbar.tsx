@@ -35,7 +35,20 @@ type SidebarNavItemProps = {
   pathname: string;
   side: "left" | "right";
   shortcutLabel?: string;
+  registerItemElement?: (
+    href: string,
+    element: HTMLAnchorElement | null,
+  ) => void;
 };
+
+type ActiveIndicatorState = {
+  top: number;
+  height: number;
+};
+
+const sidebarActiveIndicatorSnapshots: Partial<
+  Record<"admin" | "user", ActiveIndicatorState>
+> = {};
 
 const sidebarShortcutLabels = [
   "⌥⇧1",
@@ -173,6 +186,7 @@ function SidebarNavItem({
   pathname,
   side,
   shortcutLabel,
+  registerItemElement,
 }: SidebarNavItemProps) {
   const Icon = item.icon;
   const linkRef = useRef<HTMLAnchorElement | null>(null);
@@ -194,28 +208,25 @@ function SidebarNavItem({
   return (
     <>
       <Link
-        ref={linkRef}
+        ref={(element) => {
+          linkRef.current = element;
+          registerItemElement?.(item.href, element);
+        }}
         href={item.href}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={cn(
-          "ezprint-sidebar-link group relative flex h-[3.7rem] items-center rounded-full px-0 transition-all duration-300",
+          "ezprint-sidebar-link group relative z-10 flex h-[3.7rem] items-center rounded-full px-0 transition-all duration-300",
           active
             ? "ezprint-sidebar-link-active border-transparent text-[var(--color-brand-500)] outline-none ring-0"
             : "text-[var(--paragraph)] hover:text-[var(--color-brand-500)]",
         )}
       >
-        {active ? (
-          <motion.span
-            layoutId="ezprint-sidebar-active-pill"
-            transition={{ type: "spring", stiffness: 420, damping: 36 }}
-            className="ezprint-sidebar-link-pressed absolute inset-0 rounded-full border-0"
-          />
-        ) : (
+        {!active ? (
           <span
             className="ezprint-sidebar-link-hover pointer-events-none absolute inset-0 rounded-full opacity-0 transition-all duration-300 group-hover:opacity-100"
           />
-        )}
+        ) : null}
 
         <span
           className={cn(
@@ -309,9 +320,65 @@ export default function SidebarNavbar({
   showBrand = true,
 }: SidebarNavbarProps) {
   const pathname = usePathname();
+  const workspaceKey = pathname.startsWith("/sections/admin") ? "admin" : "user";
   const workspaceLabel = pathname.startsWith("/sections/admin")
     ? "Admin operations"
     : "User workspace";
+  const navItemsContainerRef = useRef<HTMLDivElement | null>(null);
+  const itemElementsRef = useRef(new Map<string, HTMLAnchorElement>());
+  const [activeIndicator, setActiveIndicator] =
+    useState<ActiveIndicatorState | null>(
+      () => sidebarActiveIndicatorSnapshots[workspaceKey] || null,
+    );
+  const activeHref =
+    sections
+      .flatMap((section) => section.items)
+      .find(
+        (item) =>
+          pathname === item.href ||
+          (item.href !== "/" && pathname.startsWith(`${item.href}/`)),
+      )?.href || "";
+
+  const registerItemElement = (
+    href: string,
+    element: HTMLAnchorElement | null,
+  ) => {
+    if (element) {
+      itemElementsRef.current.set(href, element);
+      return;
+    }
+
+    itemElementsRef.current.delete(href);
+  };
+
+  useLayoutEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      const container = navItemsContainerRef.current;
+      const activeElement = activeHref
+        ? itemElementsRef.current.get(activeHref)
+        : null;
+
+      if (!container || !activeElement) {
+        setActiveIndicator(null);
+        delete sidebarActiveIndicatorSnapshots[workspaceKey];
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = activeElement.getBoundingClientRect();
+      const nextIndicator = {
+        top: activeRect.top - containerRect.top,
+        height: activeRect.height,
+      };
+
+      sidebarActiveIndicatorSnapshots[workspaceKey] = nextIndicator;
+      setActiveIndicator(nextIndicator);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeHref, sections, workspaceKey]);
 
   return (
     <aside
@@ -389,7 +456,18 @@ export default function SidebarNavbar({
         ) : null}
 
         <div className="ezprint-sidebar-scroll flex min-h-0 flex-1 flex-col justify-between">
-          <div className="space-y-6">
+          <div ref={navItemsContainerRef} className="relative space-y-6">
+            {activeIndicator ? (
+              <motion.span
+                className="ezprint-sidebar-link-pressed absolute left-0 right-0 z-0 rounded-full border-0"
+                initial={false}
+                animate={{
+                  top: activeIndicator.top,
+                  height: activeIndicator.height,
+                }}
+                transition={{ type: "spring", stiffness: 420, damping: 36 }}
+              />
+            ) : null}
             {sections.map((section, sectionIndex) => (
               <div key={section.title}>
                 <p
@@ -423,6 +501,7 @@ export default function SidebarNavbar({
                         pathname={pathname}
                         side={side}
                         shortcutLabel={getSidebarShortcutLabel(shortcutIndex)}
+                        registerItemElement={registerItemElement}
                       />
                     );
                   })}
