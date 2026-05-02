@@ -108,14 +108,17 @@ export const CardStack = ({
   autoRotateMs = 5000,
 }: CardStackProps) => {
   const [cards, setCards] = useState<CardStackItem[]>(items);
-  const [isPaused, setIsPaused] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<number>(Date.now());
-  const remainingRef = useRef<number>(autoRotateMs);
 
   useEffect(() => {
-    setCards(items);
+    const timer = window.setTimeout(() => {
+      setCards(items);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [items]);
 
   const goNext = useCallback(() => {
@@ -127,43 +130,32 @@ export const CardStack = ({
     });
   }, []);
 
-  // 🔥 START TIMER
   const startTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
 
-    startTimeRef.current = Date.now();
-
-    timerRef.current = setTimeout(() => {
+    timerRef.current = setInterval(() => {
       goNext();
-      remainingRef.current = autoRotateMs; // reset for next cycle
-      startTimer();
-    }, remainingRef.current);
+    }, autoRotateMs);
   }, [goNext, autoRotateMs]);
 
-  // 🔥 PAUSE TIMER
   const pauseTimer = useCallback(() => {
     if (!timerRef.current) return;
 
-    clearTimeout(timerRef.current);
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  }, []);
 
-    const elapsed = Date.now() - startTimeRef.current;
-    remainingRef.current = Math.max(autoRotateMs - elapsed, 0);
-  }, [autoRotateMs]);
-
-  // 🔥 RESUME TIMER
   const resumeTimer = useCallback(() => {
     startTimer();
   }, [startTimer]);
 
-  // INIT
   useEffect(() => {
-    remainingRef.current = autoRotateMs;
     startTimer();
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [startTimer, autoRotateMs]);
+  }, [startTimer]);
 
   return (
     <div
@@ -172,19 +164,15 @@ export const CardStack = ({
         className
       )}
       onMouseEnter={() => {
-        setIsPaused(true);
         pauseTimer();
       }}
       onMouseLeave={() => {
-        setIsPaused(false);
         resumeTimer();
       }}
       onTouchStart={() => {
-        setIsPaused(true);
         pauseTimer();
       }}
       onTouchEnd={() => {
-        setIsPaused(false);
         resumeTimer();
       }}
     >

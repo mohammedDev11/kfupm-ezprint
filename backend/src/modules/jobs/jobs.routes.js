@@ -11,6 +11,7 @@ const {
   savePrintDraftBatch,
   downloadPrintDraftFile,
   deletePrintDraft,
+  clearPrintDrafts,
   uploadAndPrintJob,
   uploadAndPrintBatch,
   releaseJob,
@@ -43,6 +44,7 @@ router.post(
   savePrintDraftBatch,
 );
 router.get("/drafts/:draftId/files/:fileId", downloadPrintDraftFile);
+router.delete("/drafts", clearPrintDrafts);
 router.delete("/drafts/:draftId", deletePrintDraft);
 router.post("/", createPrintJob);
 router.post(

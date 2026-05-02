@@ -81,9 +81,14 @@ export function HoverFolderBadge({
 
   useEffect(() => {
     if (!enableTimerPreview) {
-      setIsPreviewing(false);
+      const timer = setTimeout(() => {
+        setIsPreviewing(false);
+      }, 0);
       clearAllTimers();
-      return;
+
+      return () => {
+        clearTimeout(timer);
+      };
     }
 
     const runPreview = () => {

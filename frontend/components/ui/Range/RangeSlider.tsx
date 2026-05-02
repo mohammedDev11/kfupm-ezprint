@@ -53,7 +53,14 @@ const RangeSlider = ({
 
   useEffect(() => {
     if (!value) return;
-    setInternalValue(value);
+
+    const timer = window.setTimeout(() => {
+      setInternalValue(value);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [value]);
 
   const range = max - min || 1;

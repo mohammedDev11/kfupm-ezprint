@@ -43,6 +43,36 @@ const userSchema = new Schema(
       totalJobsSubmitted: { type: Number, default: 0 },
       lastActivityAt: { type: Date, default: null },
     },
+    preferences: {
+      ui: {
+        theme: {
+          type: String,
+          enum: ["system", "light", "dark"],
+          default: "system",
+        },
+        navbarMode: {
+          type: String,
+          enum: ["left", "right", "bottom", "top"],
+          default: "left",
+        },
+      },
+      printing: {
+        defaultPaperSize: { type: String, default: "A4" },
+        defaultColorMode: { type: String, default: "Black & White" },
+        defaultSides: { type: String, enum: ["Simplex", "Duplex"], default: "Simplex" },
+        preferredQueueId: { type: Schema.Types.ObjectId, ref: "Queue", default: null },
+      },
+      drafts: {
+        showSavedDrafts: { type: Boolean, default: true },
+        autoSaveDrafts: { type: Boolean, default: false },
+      },
+      notifications: {
+        printSuccess: { type: Boolean, default: true },
+        printFailure: { type: Boolean, default: true },
+        lowQuota: { type: Boolean, default: true },
+        quotaUpdates: { type: Boolean, default: true },
+      },
+    },
     notes: { type: String, default: "" },
     isActive: { type: Boolean, default: true },
   },
@@ -150,6 +180,7 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     balance: quota,
     groupId: this.groupId,
     notes: this.notes,
+    preferences: this.preferences,
     isActive: this.isActive,
     lastActivity: this.lastActivity,
     createdAt: this.createdAt,

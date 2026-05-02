@@ -55,6 +55,20 @@ type PrintOptionsResponse = {
   maxFiles: number;
 };
 
+type UserSettingsForPrint = {
+  preferences?: {
+    printing?: {
+      defaultPaperSize?: string;
+      defaultColorMode?: string;
+      defaultSides?: string;
+      preferredQueueId?: string;
+    };
+    drafts?: {
+      showSavedDrafts?: boolean;
+    };
+  };
+};
+
 type UploadedJobResponse = {
   job: {
     id: string;
@@ -190,6 +204,7 @@ const Page = () => {
   const [paperSize, setPaperSize] = useState("A4");
   const [drafts, setDrafts] = useState<PrintDraftItem[]>([]);
   const [draftPanelOpen, setDraftPanelOpen] = useState(false);
+  const [showSavedDrafts, setShowSavedDrafts] = useState(true);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftActionId, setDraftActionId] = useState("");
@@ -202,6 +217,11 @@ const Page = () => {
     useState<UploadedJobResponse["dispatch"] | null>(null);
 
   const loadDrafts = useCallback(async () => {
+    if (!showSavedDrafts) {
+      setDrafts([]);
+      return;
+    }
+
     setDraftsLoading(true);
 
     try {
@@ -216,25 +236,39 @@ const Page = () => {
     } finally {
       setDraftsLoading(false);
     }
-  }, []);
+  }, [showSavedDrafts]);
 
   useEffect(() => {
     let mounted = true;
 
-    apiGet<PrintOptionsResponse>("/user/jobs/options", "user")
-      .then((data) => {
+    Promise.all([
+      apiGet<PrintOptionsResponse>("/user/jobs/options", "user"),
+      apiGet<UserSettingsForPrint>("/user/settings", "user").catch(() => null),
+    ])
+      .then(([data, userSettings]) => {
         if (!mounted) {
           return;
         }
 
         const secureReleaseQueues = (data.queues || []).filter(isSecureReleaseQueue);
+        const printPreferences = userSettings?.preferences?.printing;
+        const preferredQueue = printPreferences?.preferredQueueId
+          ? secureReleaseQueues.find(
+              (queue) => queue.id === printPreferences.preferredQueueId,
+            )
+          : null;
         const defaultSecureQueue =
+          preferredQueue ||
           secureReleaseQueues.find((queue) => queue.id === data.defaultQueueId) ||
           (secureReleaseQueues.length === 1 ? secureReleaseQueues[0] : null);
 
         setQueues(secureReleaseQueues);
         setSelectedQueueId(defaultSecureQueue?.id || "");
         setMaxFiles(Math.max(1, data.maxFiles || DEFAULT_MAX_FILES));
+        setPaperSize(printPreferences?.defaultPaperSize || "A4");
+        setColorMode(printPreferences?.defaultColorMode || "Black & White");
+        setPrintMode(printPreferences?.defaultSides || "Simplex");
+        setShowSavedDrafts(userSettings?.preferences?.drafts?.showSavedDrafts !== false);
 
         if (secureReleaseQueues.length === 0) {
           setError(
@@ -265,6 +299,17 @@ const Page = () => {
   }, []);
 
   useEffect(() => {
+    if (!showSavedDrafts) {
+      const timer = window.setTimeout(() => {
+        setDrafts([]);
+        setDraftPanelOpen(false);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+
     const timer = window.setTimeout(() => {
       loadDrafts();
     }, 0);
@@ -272,7 +317,7 @@ const Page = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [loadDrafts]);
+  }, [loadDrafts, showSavedDrafts]);
 
   const selectedQueue = useMemo(
     () => queues.find((queue) => queue.id === selectedQueueId) || null,
@@ -542,45 +587,47 @@ const Page = () => {
           showDraftActions={false}
         />
 
-        <section
-          className="rounded-2xl border px-5 py-4"
-          style={{
-            borderColor: "var(--border)",
-            background: "var(--surface)",
-          }}
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[var(--title)]">
-                <Archive className="h-5 w-5 text-[var(--color-brand-500)]" />
-                <h2 className="text-base font-semibold">Drafts</h2>
+        {showSavedDrafts ? (
+          <section
+            className="rounded-2xl border px-5 py-4"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--surface)",
+            }}
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[var(--title)]">
+                  <Archive className="h-5 w-5 text-[var(--color-brand-500)]" />
+                  <h2 className="text-base font-semibold">Drafts</h2>
+                </div>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Save the current file and settings, restore them later, or remove drafts you no longer need.
+                </p>
               </div>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                Save the current file and settings, restore them later, or remove drafts you no longer need.
-              </p>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={files.length === 0 || savingDraft}
-                onClick={handleSaveDraft}
-                iconLeft={<Archive className="h-4 w-4" />}
-              >
-                {savingDraft ? "Saving..." : "Save draft"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDraftPanelOpen(true)}
-                iconLeft={<PanelRightOpen className="h-4 w-4" />}
-              >
-                Drafts ({drafts.length})
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={files.length === 0 || savingDraft}
+                  onClick={handleSaveDraft}
+                  iconLeft={<Archive className="h-4 w-4" />}
+                >
+                  {savingDraft ? "Saving..." : "Save draft"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDraftPanelOpen(true)}
+                  iconLeft={<PanelRightOpen className="h-4 w-4" />}
+                >
+                  Drafts ({drafts.length})
+                </Button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         <div className="grid gap-5 lg:grid-cols-2">
           <section className="card rounded-2xl p-6">
@@ -810,7 +857,7 @@ const Page = () => {
         </div>
       </form>
 
-      {draftPanelOpen ? (
+      {showSavedDrafts && draftPanelOpen ? (
         <aside
           className="absolute right-0 top-0 z-30 flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] w-full max-w-md flex-col rounded-2xl border shadow-2xl"
           style={{

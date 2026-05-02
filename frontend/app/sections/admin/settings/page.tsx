@@ -1,11 +1,7 @@
-import PageIntro from "@/components/shared/page/Text/PageIntro";
+import SettingsWorkspace from "@/components/settings/SettingsWorkspace";
 
 const page = () => {
-  return (
-    <div>
-      <PageIntro title="settings" description="" />
-    </div>
-  );
+  return <SettingsWorkspace scope="admin" />;
 };
 
 export default page;

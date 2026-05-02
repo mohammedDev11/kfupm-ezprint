@@ -15,6 +15,7 @@ const {
   releaseAllEligibleJobsData,
   cancelPendingJobData,
   cancelPendingJobAndSaveDraftData,
+  clearPrintDraftsData,
   getAdminPendingReleaseJobsData,
 } = require("./jobs.service");
 const {
@@ -163,6 +164,19 @@ const downloadPrintDraftFile = async (req, res, next) => {
 const deletePrintDraft = async (req, res, next) => {
   try {
     const data = await deletePrintDraftData(req.userId, req.params.draftId);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const clearPrintDrafts = async (req, res, next) => {
+  try {
+    const data = await clearPrintDraftsData(req.userId);
 
     return res.status(200).json({
       success: true,
@@ -373,6 +387,7 @@ module.exports = {
   savePrintDraftBatch,
   downloadPrintDraftFile,
   deletePrintDraft,
+  clearPrintDrafts,
   uploadAndPrintJob,
   uploadAndPrintBatch,
   releaseJob,

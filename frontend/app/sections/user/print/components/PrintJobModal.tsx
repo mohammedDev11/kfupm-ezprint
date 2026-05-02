@@ -47,12 +47,18 @@ export default function PrintJobModal({
   const [duplex, setDuplex] = useState("Single-sided");
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    const timer = window.setTimeout(() => {
       setStep(1);
       setCopies(1);
       setColor("Color");
       setDuplex("Single-sided");
-    }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [open]);
 
   return (

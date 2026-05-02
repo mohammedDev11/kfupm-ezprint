@@ -8,7 +8,7 @@ import {
 } from "@/lib/mock-data/Navbar";
 import { getRoutingRole } from "@/lib/role-access";
 import useIsClient from "@/lib/useIsClient";
-import { getSession, logoutAllSessions } from "@/services/api";
+import { apiGet, getSession, logoutAllSessions } from "@/services/api";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
@@ -30,6 +30,7 @@ import NavbarModeSwitcher, { type NavbarMode } from "./NavbarModeSwitcher";
 import SidebarNavbar from "./SidebarNavbar";
 
 const STORAGE_KEY = "ezprint-navbar-mode";
+let sidebarPointerInsideSnapshot = false;
 
 const readStoredMode = (): NavbarMode => {
   if (typeof window === "undefined") return "left";
@@ -42,6 +43,21 @@ const readStoredMode = (): NavbarMode => {
     saved === "top"
     ? saved
     : "left";
+};
+
+const isNavbarMode = (value: unknown): value is NavbarMode =>
+  value === "left" || value === "right" || value === "bottom" || value === "top";
+
+const isThemePreference = (value: unknown): value is "system" | "light" | "dark" =>
+  value === "system" || value === "light" || value === "dark";
+
+type ShellSettingsResponse = {
+  preferences?: {
+    ui?: {
+      theme?: string;
+      navbarMode?: string;
+    };
+  };
 };
 
 function FrameUserBadge({
@@ -291,8 +307,11 @@ export default function NavbarShell({
   children: React.ReactNode;
   role: NavbarRole;
 }) {
+  const { setTheme } = useTheme();
   const [manualMode, setManualMode] = useState<NavbarMode | null>(null);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isPointerInsideSidebar, setIsPointerInsideSidebar] = useState(
+    () => sidebarPointerInsideSnapshot,
+  );
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isClient = useIsClient();
   const session = isClient ? getSession(role) : null;
@@ -307,15 +326,18 @@ export default function NavbarShell({
     [role, routingRole],
   );
   const resolvedMode = manualMode ?? (isClient ? readStoredMode() : "left");
+  const isSidebarExpanded = isPointerInsideSidebar;
 
   const handleSidebarMouseEnter = () => {
     if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-    setIsSidebarExpanded(true);
+    sidebarPointerInsideSnapshot = true;
+    setIsPointerInsideSidebar(true);
   };
 
   const handleSidebarMouseLeave = () => {
     closeTimeoutRef.current = setTimeout(() => {
-      setIsSidebarExpanded(false);
+      sidebarPointerInsideSnapshot = false;
+      setIsPointerInsideSidebar(false);
     }, 180);
   };
 
@@ -331,6 +353,62 @@ export default function NavbarShell({
       new CustomEvent("ezprint-navbar-mode-change", { detail: resolvedMode }),
     );
   }, [resolvedMode]);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const session = getSession(role);
+
+    if (!session?.token) return;
+
+    let isActive = true;
+    const settingsPath = role === "admin" ? "/admin/settings" : "/user/settings";
+
+    apiGet<ShellSettingsResponse>(settingsPath, role)
+      .then((data) => {
+        if (!isActive) return;
+
+        const themePreference = data.preferences?.ui?.theme;
+        const navbarPreference = data.preferences?.ui?.navbarMode;
+
+        if (isThemePreference(themePreference)) {
+          setTheme(themePreference);
+        }
+
+        if (isNavbarMode(navbarPreference)) {
+          setManualMode(navbarPreference);
+          window.localStorage.setItem(STORAGE_KEY, navbarPreference);
+        }
+      })
+      .catch(() => {
+        // Settings should not block navigation if the preference endpoint is unavailable.
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [isClient, role, setTheme]);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const handlePreferenceApply = (event: Event) => {
+      const mode = (event as CustomEvent).detail;
+
+      if (!isNavbarMode(mode)) {
+        return;
+      }
+
+      setManualMode(mode);
+      window.localStorage.setItem(STORAGE_KEY, mode);
+    };
+
+    window.addEventListener("ezprint-navbar-mode-apply", handlePreferenceApply);
+
+    return () => {
+      window.removeEventListener("ezprint-navbar-mode-apply", handlePreferenceApply);
+    };
+  }, [isClient]);
 
   const handleModeChange = (nextMode: NavbarMode) => {
     setManualMode(nextMode);

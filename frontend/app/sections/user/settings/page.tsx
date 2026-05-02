@@ -1,14 +1,7 @@
-import PageIntro from "@/components/shared/page/Text/PageIntro";
+import SettingsWorkspace from "@/components/settings/SettingsWorkspace";
 
 const page = () => {
-  return (
-    <div>
-      <PageIntro
-        title="Settings"
-        description="Manage your account preferences, printing options, and personal configurations."
-      />
-    </div>
-  );
+  return <SettingsWorkspace scope="user" />;
 };
 
 export default page;

@@ -1515,6 +1515,19 @@ const deleteDraftDocument = async (draft) => {
   await draft.deleteOne();
 };
 
+const clearPrintDraftsData = async (userId) => {
+  const drafts = await PrintDraft.find({ "user.userId": userId });
+
+  for (const draft of drafts) {
+    await deleteDraftDocument(draft);
+  }
+
+  return {
+    deletedCount: drafts.length,
+    drafts: [],
+  };
+};
+
 const createPrintDraftFromJob = async (job) => {
   const jobDocuments = getJobStoredDocuments(job);
 
@@ -2423,6 +2436,7 @@ module.exports = {
   savePrintDraftBatchData,
   getPrintDraftFileData,
   deletePrintDraftData,
+  clearPrintDraftsData,
   createPrintJobData,
   uploadAndPrintJobData,
   uploadAndPrintBatchData,

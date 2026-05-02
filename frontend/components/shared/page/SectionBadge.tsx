@@ -30,12 +30,10 @@ export default function SectionBadge({
   description,
   className,
 }: SectionBadgeProps) {
-  const [navbarMode, setNavbarMode] = useState<NavbarMode>("left");
+  const [navbarMode, setNavbarMode] = useState<NavbarMode>(() => readNavbarMode());
   const isRightMode = navbarMode === "right";
 
   useEffect(() => {
-    setNavbarMode(readNavbarMode());
-
     const handleNavbarModeChange = (event: Event) => {
       const nextMode = (event as CustomEvent<NavbarMode>).detail;
 

@@ -30,16 +30,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { FiMoon, FiSun } from "react-icons/fi";
 import IconLabelButton from "../../ui/button/IconLabelButton";
+import useIsClient from "@/lib/useIsClient";
 
 export default function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
 
-  useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   const currentTheme = theme === "system" ? resolvedTheme : theme;

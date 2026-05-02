@@ -129,9 +129,10 @@
 // ===========NEW======================
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/cn";
+import useIsClient from "@/lib/useIsClient";
 
 type PreviewVideoProps = {
   lightVideoSrc?: string;
@@ -149,11 +150,7 @@ const PreviewVideo: React.FC<PreviewVideoProps> = ({
   className,
 }) => {
   const { theme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   const currentTheme = theme === "system" ? resolvedTheme : theme;
   const isDark = currentTheme === "dark";

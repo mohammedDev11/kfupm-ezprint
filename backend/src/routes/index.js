@@ -18,6 +18,10 @@ const redeemCodeAdminRoutes = require("../modules/redeem-codes/redeem-codes.rout
 const reportRoutes = require("../modules/reports/reports.routes");
 const dashboardAdminRoutes = require("../modules/admin/dashboard.routes");
 const printerScreenRoutes = require("../modules/printer-screen/printer-screen.routes");
+const {
+  adminSettingsRouter,
+  userSettingsRouter,
+} = require("../modules/settings/settings.routes");
 
 const router = express.Router();
 
@@ -35,6 +39,7 @@ router.use("/user", userRoutes);
 router.use("/user/jobs", jobRoutes);
 router.use("/user/notifications", notificationRoutes);
 router.use("/user/quota", quotaRoutes);
+router.use("/user/settings", userSettingsRouter);
 router.use("/admin/users", userAdminRoutes);
 router.use("/admin/groups", groupRoutes);
 router.use("/admin/accounts", accountRoutes);
@@ -47,5 +52,6 @@ router.use("/admin/quota", quotaAdminRoutes);
 router.use("/admin/redeem-codes", redeemCodeAdminRoutes);
 router.use("/admin/dashboard", dashboardAdminRoutes);
 router.use("/admin/reports", reportRoutes);
+router.use("/admin/settings", adminSettingsRouter);
 
 module.exports = router;

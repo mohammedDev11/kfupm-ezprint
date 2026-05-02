@@ -261,6 +261,39 @@ const mapUserStatus = (notification) => {
   return notification.status?.current || "unread";
 };
 
+const isNotificationEnabledByUserPreference = (notification, user) => {
+  const preferences = user.preferences?.notifications || {};
+  const titleAndMessage = `${notification.title || ""} ${notification.message || ""}`;
+
+  if (notification.type === "job_printed" && preferences.printSuccess === false) {
+    return false;
+  }
+
+  if (notification.type === "job_failed" && preferences.printFailure === false) {
+    return false;
+  }
+
+  if (
+    notification.type === "job_refunded" &&
+    preferences.quotaUpdates === false
+  ) {
+    return false;
+  }
+
+  if (
+    /quota|redeem|voucher|credit/i.test(titleAndMessage) &&
+    preferences.quotaUpdates === false
+  ) {
+    return false;
+  }
+
+  if (/low quota|low balance/i.test(titleAndMessage) && preferences.lowQuota === false) {
+    return false;
+  }
+
+  return true;
+};
+
 const mapUserNotification = (notification) => {
   const userType = mapUserType(notification);
   const status = mapUserStatus(notification);
@@ -365,6 +398,7 @@ const getUserNotificationsData = async (userId, filters = {}) => {
 
   const visibleNotifications = notifications
     .filter((notification) => isNotificationVisibleToUser(notification, user))
+    .filter((notification) => isNotificationEnabledByUserPreference(notification, user))
     .filter((notification) => matchesNotificationFilters(notification, filters));
 
   const mappedNotifications = visibleNotifications.map(mapUserNotification);
