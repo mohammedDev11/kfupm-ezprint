@@ -40,8 +40,8 @@ import SidebarNavbar from "./SidebarNavbar";
 const STORAGE_KEY = "ezprint-navbar-mode";
 let sidebarPointerInsideSnapshot = false;
 
-const readStoredMode = (): NavbarMode => {
-  if (typeof window === "undefined") return "left";
+const readStoredMode = (): NavbarMode | null => {
+  if (typeof window === "undefined") return null;
 
   const saved = window.localStorage.getItem(STORAGE_KEY);
 
@@ -50,7 +50,7 @@ const readStoredMode = (): NavbarMode => {
     saved === "bottom" ||
     saved === "top"
     ? saved
-    : "left";
+    : null;
 };
 
 const isNavbarMode = (value: unknown): value is NavbarMode =>
@@ -80,6 +80,24 @@ const persistThemeMode = async (scope: NavbarRole, themeMode: ThemeMode) => {
     );
   } catch {
     // Local theme choice still persists through next-themes if the API is unavailable.
+  }
+};
+
+const persistNavbarMode = async (scope: NavbarRole, navbarMode: NavbarMode) => {
+  try {
+    await apiPatch(
+      getThemePreferencesPath(scope),
+      {
+        preferences: {
+          ui: {
+            navbarMode,
+          },
+        },
+      },
+      scope,
+    );
+  } catch {
+    // Local navbar choice still persists through localStorage if the API is unavailable.
   }
 };
 
@@ -355,7 +373,7 @@ export default function NavbarShell({
     () => getSidebarSectionsForRole(role, routingRole),
     [role, routingRole],
   );
-  const resolvedMode = manualMode ?? (isClient ? readStoredMode() : "left");
+  const resolvedMode = manualMode ?? (isClient ? readStoredMode() : null) ?? "left";
   const isSidebarExpanded = isPointerInsideSidebar;
 
   const handleSidebarMouseEnter = () => {
@@ -417,7 +435,18 @@ export default function NavbarShell({
           void persistThemeMode(role, storedThemeMode);
         }
 
-        if (isNavbarMode(navbarPreference)) {
+        const storedNavbarMode = readStoredMode();
+
+        if (storedNavbarMode) {
+          setManualMode(storedNavbarMode);
+
+          if (
+            isNavbarMode(navbarPreference) &&
+            navbarPreference !== storedNavbarMode
+          ) {
+            void persistNavbarMode(role, storedNavbarMode);
+          }
+        } else if (isNavbarMode(navbarPreference)) {
           setManualMode(navbarPreference);
           window.localStorage.setItem(STORAGE_KEY, navbarPreference);
         }
@@ -458,6 +487,8 @@ export default function NavbarShell({
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, nextMode);
     }
+
+    void persistNavbarMode(role, nextMode);
   };
 
   const renderContentPanel = () => (

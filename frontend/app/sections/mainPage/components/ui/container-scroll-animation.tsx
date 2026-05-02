@@ -139,10 +139,9 @@ const Card = ({
           style={{
             background: "var(--background)",
             borderColor: "var(--border)",
-            minHeight: "22rem",
           }}
         >
-          <div className="h-[22rem] w-full sm:h-[26rem] md:h-[32rem] lg:h-[38rem]">
+          <div className="w-full">
             {children}
           </div>
         </div>

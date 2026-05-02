@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "motion/react";
+import { useTheme } from "next-themes";
 import SectionHeader from "../../components/SectionHeader";
 import {
   IconLock,
@@ -47,6 +48,12 @@ const items = [
 ];
 
 const SecurePrivate = () => {
+  const { resolvedTheme, theme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark" || theme === "dark";
+  const dashboardPreview = isDarkMode
+    ? "/mainPage/hero/dashboad_dark.png"
+    : "/mainPage/hero/dashboaed_light.png";
+
   return (
     <section id="secure-private" className="relative overflow-hidden">
       {/* top scroll showcase */}
@@ -55,15 +62,15 @@ const SecurePrivate = () => {
         titleComponent={
           <SectionHeader
             title="Secure & Private"
-            description="Alpha protects every document from upload to release with secure queues, controlled access, and privacy-first handling."
+            description="EzPrint protects every document from upload to release with secure queues, controlled access, and privacy-first handling."
             align="center"
           />
         }
       >
         <img
-          src="/linear.png"
-          alt="Alpha secure dashboard preview"
-          className="h-full w-full object-cover object-top"
+          src={dashboardPreview}
+          alt="EzPrint secure dashboard preview"
+          className="block h-auto w-full object-contain"
           draggable={false}
         />
       </ContainerScroll>
@@ -137,7 +144,7 @@ const SecurePrivate = () => {
 
                           <div className="min-w-0">
                             <p className="truncate text-base font-semibold tracking-tight text-[var(--title)] sm:text-lg lg:text-xl">
-                              Alpha Security
+                              EzPrint Security
                             </p>
                             <p className="truncate text-sm text-[var(--muted)] sm:text-base">
                               {item.subtitle}

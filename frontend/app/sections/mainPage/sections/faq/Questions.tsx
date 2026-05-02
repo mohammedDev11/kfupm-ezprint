@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
+import {
+  IconHelpCircle,
+  IconMessageCircle,
+  IconPrinter,
+  IconShieldCheck,
+} from "@tabler/icons-react";
 import SectionHeader from "../../components/SectionHeader";
 import { Faq } from "./Faq";
 import Button from "@/components/ui/button/Button";
@@ -14,7 +19,7 @@ const Questions = () => {
   const faqItems = [
     {
       id: "q1",
-      title: "How do I print a file using Alpha?",
+      title: "How do I print a file using EzPrint?",
       content:
         "Sign in to your account, upload your document, and send it to a printer queue. Your job will remain securely stored until you authenticate at the printer and release it.",
     },
@@ -53,7 +58,7 @@ const Questions = () => {
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader
                 title="Frequently Asked Questions"
-                description="Everything you need to know about uploading, securing, and releasing your print jobs with Alpha."
+                description="Everything you need to know about uploading, securing, and releasing your print jobs with EzPrint."
               />
 
               <div className="shrink-0">
@@ -63,17 +68,92 @@ const Questions = () => {
 
             {/* bottom row */}
             <div className="grid items-center gap-10 lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-14">
-              {/* left image */}
+              {/* left help panel */}
               <div className="relative mx-auto w-full max-w-[320px] lg:mx-0">
-                <div className="relative overflow-hidden ">
-                  <Image
-                    src="/mainPage/faq/faq.png"
-                    alt="FAQ illustration"
-                    width={700}
-                    height={700}
-                    className="h-auto w-full object-contain"
-                    priority
+                <div
+                  className="relative overflow-hidden rounded-[2rem] border p-5 shadow-surface-lg"
+                  style={{
+                    borderColor: "var(--border)",
+                    background:
+                      "linear-gradient(155deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--surface-2) 96%, transparent))",
+                  }}
+                  aria-label="EzPrint help center preview"
+                >
+                  <div
+                    className="absolute right-5 top-5 h-20 w-20 rounded-full blur-2xl"
+                    style={{ background: "rgba(var(--brand-rgb), 0.18)" }}
                   />
+
+                  <div className="relative z-10 space-y-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-brand"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, var(--color-brand-400), var(--color-brand-600))",
+                        }}
+                      >
+                        <IconHelpCircle size={25} stroke={1.8} />
+                      </span>
+                      <span className="rounded-full border px-3 py-1 text-xs font-semibold text-[var(--muted)]" style={{ borderColor: "var(--border)" }}>
+                        Help center
+                      </span>
+                    </div>
+
+                    <div>
+                      <p className="text-xl font-semibold text-[var(--title)]">
+                        Need a quick answer?
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--paragraph)]">
+                        Common print, release, privacy, and quota questions are grouped for fast scanning.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {[
+                        {
+                          icon: IconPrinter,
+                          label: "Print release",
+                          text: "Upload, queue, authenticate",
+                        },
+                        {
+                          icon: IconShieldCheck,
+                          label: "Privacy",
+                          text: "Secure files and auto cleanup",
+                        },
+                        {
+                          icon: IconMessageCircle,
+                          label: "Support",
+                          text: "Ask for help anytime",
+                        },
+                      ].map((item) => {
+                        const Icon = item.icon;
+
+                        return (
+                          <div
+                            key={item.label}
+                            className="flex items-center gap-3 rounded-2xl border p-3"
+                            style={{
+                              borderColor: "var(--border)",
+                              background: "var(--surface)",
+                            }}
+                          >
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--color-brand-500)_12%,var(--surface-2))] text-[var(--color-brand-500)]">
+                              <Icon size={20} stroke={1.8} />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-[var(--title)]">
+                                {item.label}
+                              </span>
+                              <span className="block truncate text-xs text-[var(--muted)]">
+                                {item.text}
+                              </span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 

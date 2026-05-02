@@ -91,7 +91,7 @@ const FullSystemControlPreview = () => {
           {/* pie */}
           <div className="flex items-center justify-center">
             <motion.div
-              className="aspect-square w-[88%] rounded-full bg-[conic-gradient(var(--color-brand-500)_0_42%,#93c5fd_42%_68%,#60a5fa_68%_86%,#f6c76a_86%_100%)] shadow-[0_10px_25px_rgba(55,125,255,0.16)]"
+              className="aspect-square w-[88%] rounded-full bg-[conic-gradient(var(--color-brand-500)_0_42%,var(--color-brand-300)_42%_68%,var(--color-warning-500)_68%_86%,var(--color-danger-500)_86%_100%)] shadow-[0_10px_25px_rgba(var(--brand-rgb),0.14)]"
               animate={{ rotate: [0, 6, 0] }}
               transition={{
                 duration: 5.5,
@@ -102,7 +102,7 @@ const FullSystemControlPreview = () => {
           </div>
 
           {/* line chart */}
-          <div className="relative overflow-hidden rounded-xl bg-[linear-gradient(to_bottom,rgba(55,125,255,0.04),transparent)]">
+          <div className="relative overflow-hidden rounded-xl bg-[linear-gradient(to_bottom,rgba(var(--brand-rgb),0.06),transparent)]">
             <div className="absolute inset-0 grid grid-cols-5">
               {[...Array(5)].map((_, i) => (
                 <div
@@ -129,8 +129,8 @@ const FullSystemControlPreview = () => {
             >
               <defs>
                 <linearGradient id="usageFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(93,156,255,0.34)" />
-                  <stop offset="100%" stopColor="rgba(93,156,255,0.06)" />
+                  <stop offset="0%" stopColor="rgba(var(--brand-rgb),0.34)" />
+                  <stop offset="100%" stopColor="rgba(var(--brand-rgb),0.06)" />
                 </linearGradient>
               </defs>
 
@@ -330,7 +330,7 @@ const MiniCard = ({
         className={`rounded-[18px] border border-[var(--border)] bg-[var(--surface)] p-[7%] transition-shadow duration-300 ${
           isActive
             ? "shadow-surface-lg"
-            : "shadow-[0_10px_28px_rgba(55,125,255,0.16)]"
+            : "shadow-[0_10px_28px_rgba(var(--brand-rgb),0.14)]"
         }`}
       >
         <div className="mb-2.5 flex items-center gap-2">

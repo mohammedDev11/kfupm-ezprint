@@ -103,7 +103,7 @@
 //       products={products}
 //       title={
 //         <LayoutTextFlip
-//           text="Welcome to Alpha,"
+//           text="Welcome to EzPrint,"
 //           words={["Simple", "Built for KFUPM", "Secure", "Smart"]}
 //         />
 //       }
@@ -155,7 +155,7 @@
 //       products={products}
 //       title={
 //         <LayoutTextFlip
-//           text="Welcome to Alpha,"
+//           text="Welcome to EzPrint,"
 //           words={["Simple", "Built for KFUPM", "Secure", "Smart"]}
 //         />
 //       }
@@ -188,7 +188,7 @@ const Hero = () => {
       products={heroProducts}
       title={
         <LayoutTextFlip
-          text="Welcome to Alpha,"
+          text="Welcome to EzPrint,"
           words={["Simple", "Built for KFUPM", "Secure", "Smart"]}
         />
       }

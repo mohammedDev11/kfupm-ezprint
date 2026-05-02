@@ -36,7 +36,7 @@
 //             }}
 //           >
 //             <IconSparkles size={16} />
-//             Why Alpha feels better
+//             Why EzPrint feels better
 //           </div>
 
 //           <h2 className="title-xl">
@@ -69,7 +69,7 @@ const Features = () => {
   return (
     <section id="features" className="section space-y-10">
       <SectionHeader
-        title="Alpha Features"
+        title="EzPrint Features"
         description="Everything you need to manage printing securely, efficiently, and intelligently."
         align="center"
         size="lg"

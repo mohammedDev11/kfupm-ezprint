@@ -45,7 +45,7 @@ const SecurePrintQueuePreview = () => {
         animate={{ y: [0, -4, 0] }}
         transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }}
       >
-        <div className="relative flex h-[56%] items-center justify-center overflow-hidden rounded-[20px] border border-[var(--border)] bg-[linear-gradient(to_bottom,rgba(55,125,255,0.06),rgba(55,125,255,0.02))]">
+        <div className="relative flex h-[56%] items-center justify-center overflow-hidden rounded-[20px] border border-[var(--border)] bg-[linear-gradient(to_bottom,rgba(var(--brand-rgb),0.08),rgba(var(--brand-rgb),0.02))]">
           <motion.div
             className="absolute h-[64%] w-[64%] rounded-full border border-brand-200/60"
             animate={{ scale: [0.92, 1.08, 0.92], opacity: [0.4, 0.9, 0.4] }}
@@ -233,7 +233,7 @@ const MiniCard = ({
         className={`rounded-[18px] border border-[var(--border)] bg-[var(--surface)] p-[7%] transition-shadow duration-300 ${
           isActive
             ? "shadow-surface-lg"
-            : "shadow-[0_10px_28px_rgba(55,125,255,0.16)]"
+            : "shadow-[0_10px_28px_rgba(var(--brand-rgb),0.14)]"
         }`}
       >
         <div className="mb-2.5 flex items-center gap-2">

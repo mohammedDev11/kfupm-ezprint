@@ -1,8 +1,6 @@
 import { ProgressSteps } from "@/components/shared/features/ProgressSteps";
 import SectionHeader from "../../components/SectionHeader";
-import ConversationThread, {
-  type ConversationMessage,
-} from "../../components/ConversationThread.tsx";
+import ConversationThread from "../../components/ConversationThread.tsx";
 import favicon from "@/app/favicon.ico";
 
 const HowItWorks = () => {
@@ -135,7 +133,7 @@ const HowItWorks = () => {
   return (
     <div id="how-it-works" className="section relative w-full overflow-hidden">
       <SectionHeader
-        title="How Alpha Works"
+        title="How EzPrint Works"
         description="A simple conversation-based flow that shows how users upload, secure, release, and track their print jobs."
         align="center"
       />

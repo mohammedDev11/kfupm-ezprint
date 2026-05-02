@@ -160,8 +160,8 @@ export function MainNavbar() {
           <NavbarLogo />
           <NavItems items={navItems} />
 
-          <div className="relative z-[70] flex items-center gap-1">
-            <ThemeToggle className="text-[var(--foreground)] -mr-3" />
+          <div className="relative z-[70] flex items-center gap-3">
+            <ThemeToggle className="text-[var(--foreground)]" />
 
             <IconLabelButton
               icon={<FaRegUser size={20} />}

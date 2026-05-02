@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import {
   motion,
   useScroll,
@@ -15,6 +16,8 @@ type Product = {
   title: string;
   link: string;
   thumbnail: string;
+  lightThumbnail?: string;
+  darkThumbnail?: string;
 };
 
 type HeroParallaxProps = {
@@ -33,7 +36,7 @@ type HeroParallaxProps = {
 
 export const HeroParallax = ({
   products,
-  title = <>Welcome to Alpha</>,
+  title = <>Welcome to EzPrint</>,
   description = "Manage your print jobs, upload files easily, and print with a modern experience designed to be simple, secure, and efficient.",
   primaryAction,
   secondaryAction,
@@ -209,6 +212,12 @@ const ProductCard = ({
   product: Product;
   translate: MotionValue<number>;
 }) => {
+  const { resolvedTheme, theme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark" || theme === "dark";
+  const thumbnail = isDarkMode
+    ? product.darkThumbnail || product.thumbnail
+    : product.lightThumbnail || product.thumbnail;
+
   return (
     <motion.div
       style={{ x: translate }}
@@ -218,7 +227,7 @@ const ProductCard = ({
     >
       <a href={product.link} className="block h-full w-full">
         <img
-          src={product.thumbnail}
+          src={thumbnail}
           alt={product.title}
           className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
         />

@@ -100,9 +100,9 @@ const FaqItem = ({ id, title, children, className = "" }: FaqItemProps) => {
             className={clsx(
               "grid h-10 w-10 shrink-0 place-items-center rounded-md text-white transition-all duration-300",
               "bg-gradient-to-b from-brand-300 via-brand-500 to-brand-700",
-              "shadow-[0_6px_16px_rgba(55,125,255,0.35)]",
-              "group-hover:shadow-[0_10px_24px_rgba(55,125,255,0.5)]",
-              isOpen && "scale-[1.05] shadow-[0_12px_30px_rgba(55,125,255,0.6)]"
+              "shadow-[0_6px_16px_rgba(var(--brand-rgb),0.28)]",
+              "group-hover:shadow-[0_10px_24px_rgba(var(--brand-rgb),0.38)]",
+              isOpen && "scale-[1.05] shadow-[0_12px_30px_rgba(var(--brand-rgb),0.46)]"
             )}
           >
             <span

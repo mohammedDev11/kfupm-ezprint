@@ -165,7 +165,7 @@ export function HoverFolderBadge({
             background:
               "linear-gradient(180deg, var(--color-brand-400) 0%, var(--color-brand-600) 100%)",
             boxShadow:
-              "0 12px 28px rgba(55, 125, 255, 0.22), 0 6px 14px rgba(var(--shadow-color), 0.12)",
+              "0 12px 28px rgba(var(--brand-rgb), 0.22), 0 6px 14px rgba(var(--shadow-color), 0.12)",
           }}
         >
           {/* folder tab */}
@@ -177,7 +177,7 @@ export function HoverFolderBadge({
               height: tabHeight,
               background:
                 "linear-gradient(180deg, var(--color-brand-300) 0%, var(--color-brand-500) 100%)",
-              boxShadow: "0 6px 14px rgba(55, 125, 255, 0.16)",
+              boxShadow: "0 6px 14px rgba(var(--brand-rgb), 0.16)",
             }}
           />
         </div>
@@ -252,7 +252,7 @@ export function HoverFolderBadge({
                   background: "var(--surface)",
                   borderColor: "var(--border)",
                   boxShadow:
-                    "0 10px 25px rgba(var(--shadow-color), 0.16), 0 4px 10px rgba(55, 125, 255, 0.08)",
+                    "0 10px 25px rgba(var(--shadow-color), 0.16), 0 4px 10px rgba(var(--brand-rgb), 0.08)",
                 }}
               >
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2">
@@ -300,7 +300,7 @@ export function HoverFolderBadge({
             background:
               "linear-gradient(180deg, var(--color-brand-300) 0%, var(--color-brand-500) 100%)",
             boxShadow:
-              "0 14px 34px rgba(55, 125, 255, 0.32), inset 0 1px 0 rgba(255,255,255,0.18)",
+              "0 14px 34px rgba(var(--brand-rgb), 0.32), inset 0 1px 0 rgba(255,255,255,0.18)",
           }}
         >
           <div

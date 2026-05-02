@@ -42,6 +42,20 @@ type ThemePreference = ThemeMode;
 type NavbarModePreference = "left" | "right" | "bottom" | "top";
 type PrintSidePreference = "Simplex" | "Duplex";
 
+const NAVBAR_MODE_STORAGE_KEY = "ezprint-navbar-mode";
+
+const isNavbarModePreference = (value: unknown): value is NavbarModePreference =>
+  value === "left" || value === "right" || value === "bottom" || value === "top";
+
+const readStoredNavbarMode = (): NavbarModePreference | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const storedValue = window.localStorage.getItem(NAVBAR_MODE_STORAGE_KEY);
+  return isNavbarModePreference(storedValue) ? storedValue : null;
+};
+
 type SettingsProfile = {
   id: string;
   displayName: string;
@@ -526,7 +540,7 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
         return;
       }
 
-      window.localStorage.setItem("ezprint-navbar-mode", preferences.ui.navbarMode);
+      window.localStorage.setItem(NAVBAR_MODE_STORAGE_KEY, preferences.ui.navbarMode);
       window.dispatchEvent(
         new CustomEvent("ezprint-navbar-mode-apply", {
           detail: preferences.ui.navbarMode,
@@ -544,15 +558,18 @@ export default function SettingsWorkspace({ scope }: { scope: Scope }) {
       const data = await apiGet<SettingsResponse>(getSettingsPath(scope), scope);
       const storedThemeMode = readStoredThemeMode();
       const currentThemeMode = storedThemeMode;
+      const storedNavbarMode = readStoredNavbarMode();
       const normalizedData =
-        currentThemeMode && currentThemeMode !== data.preferences.ui.theme
+        (currentThemeMode && currentThemeMode !== data.preferences.ui.theme) ||
+        (storedNavbarMode && storedNavbarMode !== data.preferences.ui.navbarMode)
           ? {
               ...data,
               preferences: {
                 ...data.preferences,
                 ui: {
                   ...data.preferences.ui,
-                  theme: currentThemeMode,
+                  ...(currentThemeMode ? { theme: currentThemeMode } : {}),
+                  ...(storedNavbarMode ? { navbarMode: storedNavbarMode } : {}),
                 },
               },
             }
