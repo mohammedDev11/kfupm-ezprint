@@ -1,4 +1,4 @@
-# Alpha Queue Page / Function Inventory
+# kfupm-ezprint Page / Function Inventory
 
 Generated from code inspection on 2026-04-22.
 
@@ -98,7 +98,7 @@ Current route-to-model coverage is partial:
 - ROUTE: `/`
 - FILE PATH: `frontend/app/page.tsx`
 - ACCESS LEVEL: Public
-- PURPOSE: Marketing and entry page for Alpha Queue, with navigation into the user and admin experiences.
+- PURPOSE: Marketing and entry page for kfupm-ezprint, with navigation into the user and admin experiences.
 - UI COMPONENTS USED:
   - `MainNavbar`
   - `Content`
