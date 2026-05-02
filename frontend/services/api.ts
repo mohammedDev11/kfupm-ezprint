@@ -44,7 +44,18 @@ type UploadBatchOptions = {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5001/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+
+const API_VERSION_PREFIX = "/api/v1";
+const normalizedApiBaseUrl = API_BASE_URL.replace(/\/+$/, "");
+const API_V1_BASE_URL = normalizedApiBaseUrl.endsWith(API_VERSION_PREFIX)
+  ? normalizedApiBaseUrl
+  : `${normalizedApiBaseUrl}${API_VERSION_PREFIX}`;
+
+const getApiUrl = (path: string) => {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_V1_BASE_URL}${normalizedPath}`;
+};
 
 const TOKEN_STORAGE_KEYS: Record<Scope, string> = {
   user: "alpha_queue_user_token",
@@ -172,7 +183,7 @@ const parseErrorMessage = async (response: Response) => {
 export const loginLocal = async (
   credentials: LoginCredentials,
 ): Promise<AuthSession> => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+  const response = await fetch(getApiUrl("/auth/login"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -231,7 +242,7 @@ const request = async <T>(
     requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+  const response = await fetch(getApiUrl(path), requestOptions);
 
   if (!response.ok) {
     const message = await parseErrorMessage(response);
@@ -272,7 +283,7 @@ export const apiDownload = async (path: string, scope: Scope): Promise<Blob> => 
     throw new Error("You are not logged in.");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(getApiUrl(path), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${session.token}`,
@@ -309,7 +320,7 @@ const publicRequest = async <T>(
     requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+  const response = await fetch(getApiUrl(path), requestOptions);
 
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
@@ -357,7 +368,7 @@ export const apiUpload = async <T>({
     headers.set(normalizedKey, String(value));
   });
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(getApiUrl(path), {
     method: "POST",
     headers,
     body: file,
@@ -416,7 +427,7 @@ export const apiUploadBatch = async <T>({
     ),
   };
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(getApiUrl(path), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${session.token}`,
