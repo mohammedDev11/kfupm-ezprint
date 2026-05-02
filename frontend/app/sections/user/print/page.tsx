@@ -5,6 +5,7 @@ import Button from "@/components/ui/button/Button";
 import { FileUpload } from "@/components/ui/button/file-upload";
 import Input from "@/components/ui/input/Input";
 import ListBox from "@/components/ui/listbox/ListBox";
+import ConfirmDialog from "@/components/ui/modal/ConfirmDialog";
 import {
   apiDelete,
   apiDownload,
@@ -14,14 +15,20 @@ import {
 } from "@/services/api";
 import {
   Archive,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  ClipboardCopy,
   Clock3,
   FileText,
-  KeyRound,
+  Layers3,
+  Loader2,
   MonitorUp,
-  PanelRightOpen,
+  Printer,
   RotateCcw,
   Trash2,
-  X,
+  UploadCloud,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -62,9 +69,6 @@ type UserSettingsForPrint = {
       defaultColorMode?: string;
       defaultSides?: string;
       preferredQueueId?: string;
-    };
-    drafts?: {
-      showSavedDrafts?: boolean;
     };
   };
 };
@@ -124,6 +128,9 @@ type PrintDraftSaveResponse = {
   draft: PrintDraftItem;
 };
 
+type WorkflowTab = "upload" | "drafts";
+type UploadStep = 1 | 2 | 3;
+
 const COLOR_OPTIONS = ["Black & White", "Color"];
 const DUPLEX_OPTIONS = [
   { value: "Simplex", label: "Single-sided" },
@@ -141,9 +148,7 @@ const isSecureReleaseQueue = (queue: PrintQueueOption) =>
 const getQueuePrinterTargets = (
   queue: PrintQueueOption | null,
 ): PrintQueuePrinterTarget[] => {
-  if (!queue) {
-    return [];
-  }
+  if (!queue) return [];
 
   if (queue.assignedPrinters?.length) {
     return queue.assignedPrinters;
@@ -176,23 +181,180 @@ const getDefaultJobName = (nextFiles: File[]) =>
   nextFiles.length > 1 ? "Multiple documents" : getFileBaseName(nextFiles[0]);
 
 const formatFileSize = (size: number) => {
-  if (!size) {
-    return "0 MB";
-  }
-
+  if (!size) return "0 MB";
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
 };
 
 const formatDraftDate = (value: string) => {
-  if (!value) {
-    return "Not saved yet";
-  }
-
+  if (!value) return "Not saved yet";
   return new Date(value).toLocaleString();
 };
 
+const formatPrintMode = (mode: string) =>
+  mode === "Duplex" ? "Double-sided" : "Single-sided";
+
+function WorkflowSegment({
+  activeTab,
+  draftCount,
+  onChange,
+}: {
+  activeTab: WorkflowTab;
+  draftCount: number;
+  onChange: (tab: WorkflowTab) => void;
+}) {
+  const options: Array<{
+    id: WorkflowTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    count?: number;
+  }> = [
+    { id: "upload", label: "Upload", icon: UploadCloud },
+    { id: "drafts", label: "Drafts", icon: Archive, count: draftCount },
+  ];
+
+  return (
+    <div
+      className="inline-flex w-full rounded-lg border bg-[var(--surface)] p-1 sm:w-auto"
+      style={{ borderColor: "var(--border)" }}
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const active = activeTab === option.id;
+
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition sm:min-w-36 ${
+              active
+                ? "bg-[color-mix(in_srgb,var(--color-brand-500)_13%,var(--surface-2))] text-[var(--color-brand-600)]"
+                : "text-[var(--paragraph)] hover:bg-[var(--surface-2)] hover:text-[var(--title)]"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            <span>{option.label}</span>
+            {option.count !== undefined ? (
+              <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[var(--muted)]">
+                {option.count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StepIndicator({ currentStep }: { currentStep: UploadStep }) {
+  const steps: Array<{ id: UploadStep; label: string }> = [
+    { id: 1, label: "Upload" },
+    { id: 2, label: "Configure" },
+    { id: 3, label: "Confirm" },
+  ];
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {steps.map((step) => {
+        const active = currentStep === step.id;
+        const complete = currentStep > step.id;
+
+        return (
+          <div
+            key={step.id}
+            className="flex items-center gap-3 rounded-lg border p-3"
+            style={{
+              borderColor:
+                active || complete
+                  ? "color-mix(in srgb, var(--color-brand-500) 32%, var(--border))"
+                  : "var(--border)",
+              background:
+                active || complete
+                  ? "color-mix(in srgb, var(--color-brand-500) 9%, var(--surface))"
+                  : "var(--surface)",
+            }}
+          >
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold"
+              style={{
+                background: complete
+                  ? "var(--color-brand-500)"
+                  : active
+                    ? "color-mix(in srgb, var(--color-brand-500) 18%, var(--surface-2))"
+                    : "var(--surface-2)",
+                color: complete
+                  ? "white"
+                  : active
+                    ? "var(--color-brand-600)"
+                    : "var(--muted)",
+              }}
+            >
+              {complete ? <Check className="h-4 w-4" /> : step.id}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                Step {step.id}
+              </p>
+              <p className="font-semibold text-[var(--title)]">{step.label}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SummaryTile({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-[var(--surface-2)] px-4 py-3" style={{ borderColor: "var(--border)" }}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {label}
+      </p>
+      <div className="mt-1 text-sm font-semibold text-[var(--title)]">{value}</div>
+    </div>
+  );
+}
+
+function AlertMessage({
+  tone,
+  children,
+}: {
+  tone: "danger" | "success";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-lg border px-4 py-3 text-sm font-medium"
+      style={{
+        borderColor:
+          tone === "danger"
+            ? "color-mix(in srgb, var(--color-danger-500) 28%, var(--border))"
+            : "color-mix(in srgb, var(--color-success-500) 28%, var(--border))",
+        background:
+          tone === "danger"
+            ? "color-mix(in srgb, var(--color-danger-500) 10%, var(--surface))"
+            : "color-mix(in srgb, var(--color-success-500) 10%, var(--surface))",
+        color:
+          tone === "danger"
+            ? "color-mix(in srgb, var(--color-danger-600) 82%, var(--foreground))"
+            : "color-mix(in srgb, var(--color-success-600) 82%, var(--foreground))",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const Page = () => {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<WorkflowTab>("upload");
+  const [uploadStep, setUploadStep] = useState<UploadStep>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [maxFiles, setMaxFiles] = useState(DEFAULT_MAX_FILES);
   const [jobName, setJobName] = useState("");
@@ -203,11 +365,10 @@ const Page = () => {
   const [printMode, setPrintMode] = useState("Simplex");
   const [paperSize, setPaperSize] = useState("A4");
   const [drafts, setDrafts] = useState<PrintDraftItem[]>([]);
-  const [draftPanelOpen, setDraftPanelOpen] = useState(false);
-  const [showSavedDrafts, setShowSavedDrafts] = useState(true);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftActionId, setDraftActionId] = useState("");
+  const [draftToDelete, setDraftToDelete] = useState<PrintDraftItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -215,13 +376,9 @@ const Page = () => {
   const [queuedJob, setQueuedJob] = useState<UploadedJobResponse["job"] | null>(null);
   const [dispatchSummary, setDispatchSummary] =
     useState<UploadedJobResponse["dispatch"] | null>(null);
+  const [copiedReleaseCode, setCopiedReleaseCode] = useState(false);
 
   const loadDrafts = useCallback(async () => {
-    if (!showSavedDrafts) {
-      setDrafts([]);
-      return;
-    }
-
     setDraftsLoading(true);
 
     try {
@@ -236,7 +393,7 @@ const Page = () => {
     } finally {
       setDraftsLoading(false);
     }
-  }, [showSavedDrafts]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -246,9 +403,7 @@ const Page = () => {
       apiGet<UserSettingsForPrint>("/user/settings", "user").catch(() => null),
     ])
       .then(([data, userSettings]) => {
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         const secureReleaseQueues = (data.queues || []).filter(isSecureReleaseQueue);
         const printPreferences = userSettings?.preferences?.printing;
@@ -268,7 +423,6 @@ const Page = () => {
         setPaperSize(printPreferences?.defaultPaperSize || "A4");
         setColorMode(printPreferences?.defaultColorMode || "Black & White");
         setPrintMode(printPreferences?.defaultSides || "Simplex");
-        setShowSavedDrafts(userSettings?.preferences?.drafts?.showSavedDrafts !== false);
 
         if (secureReleaseQueues.length === 0) {
           setError(
@@ -277,9 +431,7 @@ const Page = () => {
         }
       })
       .catch((requestError) => {
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         setError(
           requestError instanceof Error
@@ -288,9 +440,7 @@ const Page = () => {
         );
       })
       .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       });
 
     return () => {
@@ -299,25 +449,14 @@ const Page = () => {
   }, []);
 
   useEffect(() => {
-    if (!showSavedDrafts) {
-      const timer = window.setTimeout(() => {
-        setDrafts([]);
-        setDraftPanelOpen(false);
-      }, 0);
-
-      return () => {
-        window.clearTimeout(timer);
-      };
-    }
-
     const timer = window.setTimeout(() => {
-      loadDrafts();
+      void loadDrafts();
     }, 0);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [loadDrafts, showSavedDrafts]);
+  }, [loadDrafts]);
 
   const selectedQueue = useMemo(
     () => queues.find((queue) => queue.id === selectedQueueId) || null,
@@ -338,14 +477,41 @@ const Page = () => {
       })),
     [queues],
   );
+  const totalSelectedSize = useMemo(
+    () => files.reduce((sum, file) => sum + file.size, 0),
+    [files],
+  );
+
+  const resetUploadFlow = () => {
+    setFiles([]);
+    setJobName("");
+    setCopies(1);
+    setQueuedJob(null);
+    setDispatchSummary(null);
+    setCopiedReleaseCode(false);
+    setSuccess("");
+    setError("");
+    setUploadStep(1);
+  };
+
+  const handleTabChange = (tab: WorkflowTab) => {
+    setActiveTab(tab);
+    setError("");
+    setSuccess("");
+  };
 
   const handleFilesChange = (nextFiles: File[]) => {
     const pdfFiles = nextFiles.filter(isPdfFile).slice(0, maxFiles);
 
     if (pdfFiles.length !== nextFiles.length) {
       setError("Only PDF files can be uploaded. Unsupported files were removed.");
+    } else {
+      setError("");
     }
 
+    setQueuedJob(null);
+    setDispatchSummary(null);
+    setCopiedReleaseCode(false);
     setFiles(pdfFiles);
 
     if (pdfFiles.length) {
@@ -355,24 +521,58 @@ const Page = () => {
       }
     } else if (files.length && jobName === getDefaultJobName(files)) {
       setJobName("");
+      setUploadStep(1);
     }
+  };
+
+  const validateFiles = () => {
+    if (files.length === 0) {
+      setError("Choose at least one PDF file before continuing.");
+      setUploadStep(1);
+      return false;
+    }
+
+    if (files.some((file) => !isPdfFile(file))) {
+      setError(
+        "Only PDF files can be uploaded right now. Convert DOCX, PPTX, XLSX, or images to PDF before upload.",
+      );
+      setUploadStep(1);
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateSettings = () => {
+    if (!selectedQueueId) {
+      setError("Please choose the Secure Release queue before continuing.");
+      setUploadStep(2);
+      return false;
+    }
+
+    if (!selectedQueue || !isSecureReleaseQueue(selectedQueue)) {
+      setError("Please choose a valid Secure Release queue before continuing.");
+      setUploadStep(2);
+      return false;
+    }
+
+    return true;
+  };
+
+  const goToStep = (nextStep: UploadStep) => {
+    setError("");
+
+    if (nextStep >= 2 && !validateFiles()) return;
+    if (nextStep >= 3 && !validateSettings()) return;
+
+    setUploadStep(nextStep);
   };
 
   const handleSaveDraft = async () => {
     setError("");
     setSuccess("");
 
-    if (files.length === 0) {
-      setError("Choose a PDF file before saving a draft.");
-      return;
-    }
-
-    if (files.some((file) => !isPdfFile(file))) {
-      setError(
-        "Only PDF drafts can be saved right now. Convert DOCX, PPTX, XLSX, or images to PDF first.",
-      );
-      return;
-    }
+    if (!validateFiles()) return;
 
     setSavingDraft(true);
 
@@ -403,7 +603,6 @@ const Page = () => {
             });
 
       setSuccess(`Draft "${data.draft.name}" was saved.`);
-      setDraftPanelOpen(true);
       await loadDrafts();
     } catch (draftError) {
       setError(
@@ -426,7 +625,9 @@ const Page = () => {
         throw new Error("This draft does not include a stored file.");
       }
 
-      const lastSavedAt = draft.lastSavedAt ? new Date(draft.lastSavedAt).getTime() : 0;
+      const lastSavedAt = draft.lastSavedAt
+        ? new Date(draft.lastSavedAt).getTime()
+        : 0;
       const restoredFiles = await Promise.all(
         draft.files.map(async (draftFile) => {
           const blob = await apiDownload(
@@ -447,6 +648,9 @@ const Page = () => {
       setColorMode(draft.settings.colorMode || "Black & White");
       setPrintMode(draft.settings.mode || "Simplex");
       setPaperSize(draft.settings.paperSize || "A4");
+      setQueuedJob(null);
+      setDispatchSummary(null);
+      setCopiedReleaseCode(false);
 
       if (
         draft.settings.queueId &&
@@ -455,8 +659,9 @@ const Page = () => {
         setSelectedQueueId(draft.settings.queueId);
       }
 
-      setSuccess(`Draft "${draft.name}" was restored. Review it, then upload and queue when ready.`);
-      setDraftPanelOpen(false);
+      setActiveTab("upload");
+      setUploadStep(2);
+      setSuccess(`Draft "${draft.name}" was restored. Review it, then continue to confirmation.`);
     } catch (draftError) {
       setError(
         draftError instanceof Error
@@ -468,17 +673,20 @@ const Page = () => {
     }
   };
 
-  const handleDeleteDraft = async (draft: PrintDraftItem) => {
+  const confirmDeleteDraft = async () => {
+    if (!draftToDelete) return;
+
     setError("");
     setSuccess("");
-    setDraftActionId(draft.id);
+    setDraftActionId(draftToDelete.id);
 
     try {
-      await apiDelete(`/user/jobs/drafts/${draft.id}`, "user");
+      await apiDelete(`/user/jobs/drafts/${draftToDelete.id}`, "user");
       setDrafts((currentDrafts) =>
-        currentDrafts.filter((currentDraft) => currentDraft.id !== draft.id),
+        currentDrafts.filter((currentDraft) => currentDraft.id !== draftToDelete.id),
       );
-      setSuccess(`Draft "${draft.name}" was deleted.`);
+      setSuccess(`Draft "${draftToDelete.name}" was deleted.`);
+      setDraftToDelete(null);
     } catch (draftError) {
       setError(
         draftError instanceof Error
@@ -490,34 +698,14 @@ const Page = () => {
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async () => {
     setError("");
     setSuccess("");
     setQueuedJob(null);
     setDispatchSummary(null);
+    setCopiedReleaseCode(false);
 
-    if (files.length === 0) {
-      setError("Please choose at least one PDF file before printing.");
-      return;
-    }
-
-    if (!selectedQueueId) {
-      setError("Please choose the Secure Release queue before submitting the job.");
-      return;
-    }
-
-    if (!selectedQueue || !isSecureReleaseQueue(selectedQueue)) {
-      setError("Please choose a valid Secure Release queue before submitting the job.");
-      return;
-    }
-
-    if (files.some((file) => !isPdfFile(file))) {
-      setError(
-        "Only PDF files can be printed right now. Convert DOCX, PPTX, XLSX, or images to PDF before upload.",
-      );
-      return;
-    }
+    if (!validateFiles() || !validateSettings()) return;
 
     setSubmitting(true);
 
@@ -548,12 +736,11 @@ const Page = () => {
             });
 
       setSuccess(
-        `Print job ${data.job.jobId} was queued in ${data.job.queueName || selectedQueue?.name || "the selected queue"} with ${data.job.fileCount || files.length} file${(data.job.fileCount || files.length) === 1 ? "" : "s"}.`,
+        `Print job ${data.job.jobId} was queued in ${data.job.queueName || selectedQueue?.name || "the selected queue"}.`,
       );
       setQueuedJob(data.job);
       setDispatchSummary(data.dispatch || null);
-      setFiles([]);
-      setJobName("");
+      setUploadStep(3);
       router.refresh();
     } catch (submitError) {
       setError(
@@ -566,454 +753,652 @@ const Page = () => {
     }
   };
 
-  return (
-    <div className="relative space-y-6">
-      <PageIntro
-        title="Upload a Document"
-        description="Upload your document, choose a print queue, configure print settings, and submit it for secure release."
+  const copyReleaseCode = async () => {
+    if (!queuedJob?.releaseCode) return;
+
+    try {
+      await navigator.clipboard.writeText(queuedJob.releaseCode);
+      setCopiedReleaseCode(true);
+      window.setTimeout(() => setCopiedReleaseCode(false), 1600);
+    } catch {
+      setError("Unable to copy the release code from this browser.");
+    }
+  };
+
+  const renderAssignedPrinters = () => (
+    <div
+      className="rounded-lg border px-4 py-3 text-sm"
+      style={{
+        borderColor: "var(--border)",
+        background: "var(--surface-2)",
+        color: "var(--title)",
+      }}
+    >
+      {selectedQueuePrinterTargets.length > 0 ? (
+        <ul className="space-y-2">
+          {selectedQueuePrinterTargets.map((printer) => (
+            <li
+              key={printer.id || printer.name}
+              className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span className="font-medium">
+                {printer.name || "Assigned printer"}
+              </span>
+              <span className="text-xs text-[var(--muted)]">
+                {getPrinterTargetMeta(printer)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="font-medium">Assigned automatically from the queue</p>
+      )}
+      <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+        The backend targets every active, online printer assigned to the selected queue.
+      </p>
+    </div>
+  );
+
+  const renderUploadFilesStep = () => (
+    <section className="space-y-5">
+      <FileUpload
+        value={files}
+        onChange={handleFilesChange}
+        onReject={(message) => setError(message)}
+        multiple
+        maxFiles={maxFiles}
+        accept={PDF_ACCEPT}
+        title="Upload PDF files"
+        description="Drag and drop one or more PDF documents. Files are held securely until release."
+        emptyHelperText={`Upload up to ${maxFiles} PDF files. Office files need PDF conversion before upload.`}
+        showDraftActions={false}
+        className="lg:w-full xl:w-full 2xl:w-full"
       />
 
-      <form className="space-y-6" onSubmit={handleSubmit}>
-        <FileUpload
-          value={files}
-          onChange={handleFilesChange}
-          onReject={(message) => setError(message)}
-          multiple
-          maxFiles={maxFiles}
-          accept={PDF_ACCEPT}
-          title="Upload a Document"
-          description="Upload one or more PDF documents. They are stored securely until release. Office and image files need server-side PDF conversion before they can be queued."
-          emptyHelperText={`Upload up to ${maxFiles} PDF files. Convert DOCX, PPTX, XLSX, or images to PDF before upload.`}
-          showDraftActions={false}
-        />
-
-        {showSavedDrafts ? (
-          <section
-            className="rounded-2xl border px-5 py-4"
-            style={{
-              borderColor: "var(--border)",
-              background: "var(--surface)",
-            }}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-[var(--muted)]">
+          {files.length
+            ? `${files.length} file${files.length === 1 ? "" : "s"} selected, ${formatFileSize(totalSelectedSize)} total.`
+            : "No files selected yet."}
+        </p>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={files.length === 0 || savingDraft}
+            onClick={handleSaveDraft}
+            iconLeft={savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
           >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[var(--title)]">
-                  <Archive className="h-5 w-5 text-[var(--color-brand-500)]" />
-                  <h2 className="text-base font-semibold">Drafts</h2>
-                </div>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Save the current file and settings, restore them later, or remove drafts you no longer need.
-                </p>
-              </div>
+            {savingDraft ? "Saving..." : "Save draft"}
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={files.length === 0}
+            onClick={() => goToStep(2)}
+            iconRight={<ArrowRight className="h-4 w-4" />}
+          >
+            Configure
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
 
-              <div className="flex flex-wrap gap-2">
+  const renderConfigureStep = () => (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+      <div className="rounded-lg border bg-[var(--surface)] p-5" style={{ borderColor: "var(--border)" }}>
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--color-brand-500)_12%,var(--surface-2))] text-[var(--color-brand-500)]">
+            <FileText className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold text-[var(--title)]">Job details</h2>
+            <p className="text-sm text-[var(--paragraph)]">
+              Name the job and choose a secure release queue.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Job name
+            </label>
+            <Input
+              value={jobName}
+              onChange={(event) => setJobName(event.target.value)}
+              placeholder="Document name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Queue
+            </label>
+            <ListBox
+              value={selectedQueueId}
+              onValueChange={(value) => setSelectedQueueId(value)}
+              options={queueOptions}
+              placeholder={selectedQueue?.name || "Select queue"}
+              triggerClassName="h-12 w-full"
+              contentClassName="w-full"
+              ariaLabel="Select queue"
+              emptyText="No Secure Release queues available"
+              searchable
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-2">
+          <label className="text-sm font-medium text-[var(--muted)]">
+            Assigned printers
+          </label>
+          {renderAssignedPrinters()}
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-[var(--surface)] p-5" style={{ borderColor: "var(--border)" }}>
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--color-brand-500)_12%,var(--surface-2))] text-[var(--color-brand-500)]">
+            <Printer className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold text-[var(--title)]">Print settings</h2>
+            <p className="text-sm text-[var(--paragraph)]">
+              Defaults are loaded from your settings.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Copies
+            </label>
+            <Input
+              type="number"
+              min={1}
+              value={copies}
+              onChange={(event) =>
+                setCopies(Math.max(1, Number(event.target.value || 1)))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Color
+            </label>
+            <ListBox
+              value={colorMode}
+              onValueChange={(value) => setColorMode(value)}
+              options={COLOR_OPTIONS}
+              triggerClassName="h-12 w-full"
+              contentClassName="w-full"
+              ariaLabel="Select color mode"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Sides
+            </label>
+            <ListBox
+              value={printMode}
+              onValueChange={(value) => setPrintMode(value)}
+              options={DUPLEX_OPTIONS}
+              placeholder="Select mode"
+              triggerClassName="h-12 w-full"
+              contentClassName="w-full"
+              ariaLabel="Select print sides"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--muted)]">
+              Paper size
+            </label>
+            <ListBox
+              value={paperSize}
+              onValueChange={(value) => setPaperSize(value)}
+              options={PAPER_SIZE_OPTIONS}
+              placeholder="Select paper size"
+              triggerClassName="h-12 w-full"
+              contentClassName="w-full"
+              ariaLabel="Select paper size"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setUploadStep(1)}
+            iconLeft={<ArrowLeft className="h-4 w-4" />}
+          >
+            Back
+          </Button>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={files.length === 0 || savingDraft}
+              onClick={handleSaveDraft}
+              iconLeft={
+                savingDraft ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Archive className="h-4 w-4" />
+                )
+              }
+            >
+              {savingDraft ? "Saving..." : "Save draft"}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => goToStep(3)}
+              iconRight={<ArrowRight className="h-4 w-4" />}
+            >
+              Review
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderConfirmationStep = () => {
+    if (queuedJob) {
+      return (
+        <section
+          className="rounded-lg border bg-[var(--surface)] p-5 sm:p-7"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-success-500)_14%,var(--surface-2))] text-[var(--color-success-600)]">
+              <CheckCircle2 className="h-7 w-7" />
+            </span>
+            <h2 className="mt-4 text-2xl font-bold text-[var(--title)]">
+              Job queued successfully
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--paragraph)]">
+              Use this code at the printer screen to release your job.
+            </p>
+
+            <div
+              className="mt-6 rounded-lg border px-5 py-6"
+              style={{
+                borderColor: "color-mix(in srgb, var(--color-brand-500) 28%, var(--border))",
+                background:
+                  "linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 70%, transparent), var(--surface))",
+              }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                One-time release code
+              </p>
+              <p className="mt-3 break-all font-mono text-4xl font-bold tracking-[0.18em] text-[var(--title)] sm:text-6xl">
+                {queuedJob.releaseCode || "Unavailable"}
+              </p>
+              {queuedJob.releaseCode ? (
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={files.length === 0 || savingDraft}
-                  onClick={handleSaveDraft}
-                  iconLeft={<Archive className="h-4 w-4" />}
+                  className="mt-5"
+                  onClick={copyReleaseCode}
+                  iconLeft={
+                    copiedReleaseCode ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <ClipboardCopy className="h-4 w-4" />
+                    )
+                  }
                 >
-                  {savingDraft ? "Saving..." : "Save draft"}
+                  {copiedReleaseCode ? "Copied" : "Copy code"}
                 </Button>
+              ) : null}
+            </div>
+
+            <div className="mt-6 grid gap-3 text-left md:grid-cols-2">
+              <SummaryTile label="Job" value={queuedJob.documentName} />
+              <SummaryTile label="Queue" value={queuedJob.queueName || selectedQueue?.name || "Selected queue"} />
+              <SummaryTile label="Files" value={`${queuedJob.fileCount || files.length} file${(queuedJob.fileCount || files.length) === 1 ? "" : "s"}`} />
+              <SummaryTile
+                label="Dispatch"
+                value={
+                  dispatchSummary
+                    ? `${dispatchSummary.destinationCount || 1} printer${(dispatchSummary.destinationCount || 1) === 1 ? "" : "s"}`
+                    : "Ready for secure release"
+                }
+              />
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <Link href="/sections/user/pending-jobs">
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => setDraftPanelOpen(true)}
-                  iconLeft={<PanelRightOpen className="h-4 w-4" />}
+                  variant="primary"
+                  className="w-full sm:w-auto"
+                  iconLeft={<MonitorUp className="h-4 w-4" />}
                 >
-                  Drafts ({drafts.length})
+                  View Pending Jobs
                 </Button>
-              </div>
+              </Link>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={resetUploadFlow}
+                iconLeft={<UploadCloud className="h-4 w-4" />}
+              >
+                Upload another document
+              </Button>
             </div>
-          </section>
-        ) : null}
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          <section className="card rounded-2xl p-6">
-            <h2 className="title-md">Job Details</h2>
-            <div className="mt-5 space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Job name
-                </label>
-                <Input
-                  value={jobName}
-                  onChange={(event) => setJobName(event.target.value)}
-                  placeholder="Document name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Queue
-                </label>
-                <ListBox
-                  value={selectedQueueId}
-                  onValueChange={(value) => setSelectedQueueId(value)}
-                  options={queueOptions}
-                  placeholder={selectedQueue?.name || "Select queue"}
-                  triggerClassName="h-12 w-full"
-                  contentClassName="w-full"
-                  ariaLabel="Select queue"
-                  emptyText="No Secure Release queues available"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Assigned printers
-                </label>
-                <div
-                  className="rounded-xl border px-4 py-3 text-sm"
-                  style={{
-                    borderColor: "var(--border)",
-                    background: "var(--surface-2)",
-                    color: "var(--title)",
-                  }}
-                >
-                  {selectedQueuePrinterTargets.length > 0 ? (
-                    <ul className="space-y-2">
-                      {selectedQueuePrinterTargets.map((printer) => (
-                        <li
-                          key={printer.id || printer.name}
-                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <span className="font-medium">
-                            {printer.name || "Assigned printer"}
-                          </span>
-                          <span className="text-xs text-[var(--muted)]">
-                            {getPrinterTargetMeta(printer)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="font-medium">
-                      Assigned automatically from the queue
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    The dropdown selects a queue. The backend targets every active, online printer assigned to it.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="card rounded-2xl p-6">
-            <h2 className="title-md">Print Settings</h2>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Copies
-                </label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={copies}
-                  onChange={(event) =>
-                    setCopies(Math.max(1, Number(event.target.value || 1)))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Color
-                </label>
-                <ListBox
-                  value={colorMode}
-                  onValueChange={(value) => setColorMode(value)}
-                  options={COLOR_OPTIONS}
-                  triggerClassName="h-12 w-full"
-                  contentClassName="w-full"
-                  ariaLabel="Select color mode"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Sides
-                </label>
-                <ListBox
-                  value={printMode}
-                  onValueChange={(value) => setPrintMode(value)}
-                  options={DUPLEX_OPTIONS}
-                  placeholder="Select mode"
-                  triggerClassName="h-12 w-full"
-                  contentClassName="w-full"
-                  ariaLabel="Select print sides"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--muted)]">
-                  Paper Size
-                </label>
-                <ListBox
-                  value={paperSize}
-                  onValueChange={(value) => setPaperSize(value)}
-                  options={PAPER_SIZE_OPTIONS}
-                  placeholder="Select paper size"
-                  triggerClassName="h-12 w-full"
-                  contentClassName="w-full"
-                  ariaLabel="Select paper size"
-                />
-              </div>
-            </div>
-
-            <div
-              className="mt-6 rounded-2xl border px-4 py-4 text-sm"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              <p className="font-semibold text-[var(--title)]">
-                Selected destination
-              </p>
-              <p className="mt-2 text-[var(--paragraph)]">
-                {selectedQueuePrinterNames.length > 0 && selectedQueue
-                  ? `${selectedQueuePrinterNames.join(", ")} via ${selectedQueue.name}`
-                  : "The queue will resolve the assigned printer automatically."}
-              </p>
-              <p className="mt-1 text-[var(--muted)]">
-                {selectedQueue?.description ||
-                  "The backend stores this job first, then dispatches it when the queue is released."}
-              </p>
-            </div>
-          </section>
-        </div>
-
-        {loading ? (
-          <p className="text-sm text-[var(--muted)]">Loading queue options...</p>
-        ) : null}
-
-        {error ? (
-          <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
-          </p>
-        ) : null}
-
-        {success ? (
-          <div className="rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">
-            <p className="text-sm font-semibold">{success}</p>
-            {queuedJob ? (
-              <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-md bg-white text-green-700">
-                    <KeyRound className="h-6 w-6" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-green-700">
-                      Printer release code
-                    </p>
-                    <p className="font-mono text-3xl font-semibold tracking-[0.22em]">
-                      {queuedJob.releaseCode || "------"}
-                    </p>
-                    {dispatchSummary ? (
-                      <p className="mt-2 text-sm font-medium text-green-700">
-                        Sent to {dispatchSummary.destinationCount || 1} configured{" "}
-                        printer{(dispatchSummary.destinationCount || 1) === 1 ? "" : "s"}
-                        {dispatchSummary.failureCount
-                          ? `, ${dispatchSummary.failureCount} additional dispatch warning${dispatchSummary.failureCount === 1 ? "" : "s"} logged`
-                          : ""}
-                        .
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <Link href="/sections/printer">
-                  <Button
-                    variant="primary"
-                    iconLeft={<MonitorUp className="h-5 w-5" />}
-                    className="w-full lg:w-auto"
-                  >
-                    Open Printer Screen
-                  </Button>
-                </Link>
-              </div>
-            ) : null}
           </div>
-        ) : null}
+        </section>
+      );
+    }
 
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full lg:w-auto"
-            disabled={
-              loading ||
-              submitting ||
-              files.length === 0 ||
-              !selectedQueue ||
-              !isSecureReleaseQueue(selectedQueue)
-            }
-          >
-            {submitting ? "Queuing job..." : "Upload and Queue"}
-          </Button>
-        </div>
-      </form>
-
-      {showSavedDrafts && draftPanelOpen ? (
-        <aside
-          className="absolute right-0 top-0 z-30 flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] w-full max-w-md flex-col rounded-2xl border shadow-2xl"
-          style={{
-            borderColor: "var(--border)",
-            background: "var(--surface)",
-            color: "var(--foreground)",
-          }}
-          aria-label="Print drafts panel"
-        >
-          <div
-            className="flex items-start justify-between gap-4 border-b px-5 py-5"
-            style={{ borderColor: "var(--border)" }}
-          >
+    return (
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="rounded-lg border bg-[var(--surface)] p-5" style={{ borderColor: "var(--border)" }}>
+          <div className="mb-5 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--color-brand-500)_12%,var(--surface-2))] text-[var(--color-brand-500)]">
+              <Layers3 className="h-5 w-5" />
+            </span>
             <div>
-              <p className="flex items-center gap-2 text-lg font-semibold text-[var(--title)]">
-                <Archive className="h-5 w-5 text-[var(--color-brand-500)]" />
-                Print drafts
-              </p>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                Restore saved files and settings into this print form.
+              <h2 className="text-lg font-bold text-[var(--title)]">Review before upload</h2>
+              <p className="text-sm text-[var(--paragraph)]">
+                Confirm the job details before it enters the secure release queue.
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setDraftPanelOpen(false)}
-              className="flex h-9 w-9 items-center justify-center rounded-md border transition hover:bg-[var(--surface-2)]"
-              style={{ borderColor: "var(--border)" }}
-              aria-label="Close drafts panel"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
 
-          <div className="flex items-center justify-between gap-3 px-5 py-4">
-            <p className="text-sm text-[var(--muted)]">
-              {drafts.length} saved draft{drafts.length === 1 ? "" : "s"}
+          <div className="grid gap-3 md:grid-cols-2">
+            <SummaryTile label="Files selected" value={`${files.length} file${files.length === 1 ? "" : "s"} (${formatFileSize(totalSelectedSize)})`} />
+            <SummaryTile label="Queue" value={selectedQueue?.name || "Not selected"} />
+            <SummaryTile label="Assigned printers" value={selectedQueuePrinterNames.length ? selectedQueuePrinterNames.join(", ") : "Resolved by queue"} />
+            <SummaryTile label="Copies" value={copies} />
+            <SummaryTile label="Color" value={colorMode} />
+            <SummaryTile label="Sides" value={formatPrintMode(printMode)} />
+            <SummaryTile label="Paper size" value={paperSize || "A4"} />
+            <SummaryTile label="Estimated pages/cost" value="Calculated after upload" />
+          </div>
+
+          <div className="mt-5 rounded-lg border bg-[var(--surface-2)] p-4" style={{ borderColor: "var(--border)" }}>
+            <p className="text-sm font-semibold text-[var(--title)]">
+              Files
             </p>
+            <ul className="mt-3 space-y-2">
+              {files.map((file) => (
+                <li
+                  key={`${file.name}-${file.size}-${file.lastModified}`}
+                  className="flex flex-col gap-1 rounded-md bg-[var(--surface)] px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="truncate font-medium text-[var(--title)]">
+                    {file.name}
+                  </span>
+                  <span className="text-xs text-[var(--muted)]">
+                    {formatFileSize(file.size)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-[var(--surface)] p-5" style={{ borderColor: "var(--border)" }}>
+          <h3 className="text-base font-bold text-[var(--title)]">Ready to queue?</h3>
+          <p className="mt-2 text-sm leading-6 text-[var(--paragraph)]">
+            The backend stores PDFs only, queues the job, and returns the actual one-time release code after upload.
+          </p>
+          <div className="mt-5 space-y-3">
+            <Button
+              type="button"
+              variant="primary"
+              className="w-full"
+              disabled={loading || submitting || files.length === 0 || !selectedQueue}
+              onClick={() => void handleSubmit()}
+              iconLeft={submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+            >
+              {submitting ? "Queuing job..." : "Upload and Queue"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={files.length === 0 || savingDraft}
+              onClick={handleSaveDraft}
+              iconLeft={savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+            >
+              {savingDraft ? "Saving..." : "Save draft"}
+            </Button>
             <Button
               type="button"
               variant="outline"
-              size="sm"
-              onClick={loadDrafts}
-              disabled={draftsLoading}
-              iconLeft={<RotateCcw className="h-4 w-4" />}
+              className="w-full"
+              onClick={() => setUploadStep(2)}
+              iconLeft={<ArrowLeft className="h-4 w-4" />}
             >
-              Refresh
+              Back to settings
             </Button>
           </div>
+        </div>
+      </section>
+    );
+  };
 
-          <div className="flex-1 overflow-y-auto px-5 pb-5">
-            {draftsLoading ? (
-              <p className="rounded-xl border px-4 py-3 text-sm text-[var(--muted)]" style={{ borderColor: "var(--border)" }}>
-                Loading drafts...
-              </p>
-            ) : null}
+  const renderUploadTab = () => (
+    <div className="space-y-5">
+      <StepIndicator currentStep={uploadStep} />
+      {uploadStep === 1 ? renderUploadFilesStep() : null}
+      {uploadStep === 2 ? renderConfigureStep() : null}
+      {uploadStep === 3 ? renderConfirmationStep() : null}
+    </div>
+  );
 
-            {!draftsLoading && drafts.length === 0 ? (
-              <div
-                className="rounded-2xl border px-5 py-6 text-center"
-                style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+  const renderDraftsTab = () => (
+    <section className="space-y-5">
+      <div
+        className="flex flex-col gap-4 rounded-lg border bg-[var(--surface)] p-5 sm:flex-row sm:items-center sm:justify-between"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div>
+          <h2 className="text-lg font-bold text-[var(--title)]">Saved drafts</h2>
+          <p className="mt-1 text-sm text-[var(--paragraph)]">
+            Restore saved PDF jobs into the Upload flow or remove drafts you no longer need.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={loadDrafts}
+          disabled={draftsLoading}
+          iconLeft={
+            draftsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )
+          }
+        >
+          Refresh
+        </Button>
+      </div>
+
+      {draftsLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-52 animate-pulse rounded-lg border bg-[var(--surface)]"
+              style={{ borderColor: "var(--border)" }}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {!draftsLoading && drafts.length === 0 ? (
+        <div
+          className="rounded-lg border bg-[var(--surface)] px-5 py-12 text-center"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <FileText className="mx-auto h-10 w-10 text-[var(--muted)]" />
+          <p className="mt-4 text-lg font-bold text-[var(--title)]">No drafts yet</p>
+          <p className="mt-2 text-sm text-[var(--paragraph)]">
+            Upload a PDF, choose settings, then save it as a draft.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            className="mt-5"
+            onClick={() => setActiveTab("upload")}
+            iconLeft={<UploadCloud className="h-4 w-4" />}
+          >
+            Start upload
+          </Button>
+        </div>
+      ) : null}
+
+      {!draftsLoading && drafts.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {drafts.map((draft) => {
+            const firstFile = draft.files[0];
+            const actionInProgress = draftActionId === draft.id;
+
+            return (
+              <article
+                key={draft.id}
+                className="flex min-h-[260px] flex-col rounded-lg border bg-[var(--surface)] p-5"
+                style={{ borderColor: "var(--border)" }}
               >
-                <FileText className="mx-auto h-8 w-8 text-[var(--muted)]" />
-                <p className="mt-3 font-semibold text-[var(--title)]">
-                  No drafts yet
-                </p>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Upload a PDF, choose settings, then save it as a draft.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="space-y-3">
-              {drafts.map((draft) => {
-                const firstFile = draft.files[0];
-                const actionInProgress = draftActionId === draft.id;
-
-                return (
-                  <article
-                    key={draft.id}
-                    className="rounded-2xl border p-4"
+                <div className="flex items-start gap-3">
+                  <span
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border"
                     style={{
                       borderColor: "var(--border)",
                       background: "var(--surface-2)",
+                      color: "var(--color-brand-500)",
                     }}
                   >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border"
-                        style={{
-                          borderColor: "var(--border)",
-                          background: "var(--surface)",
-                          color: "var(--color-brand-500)",
-                        }}
-                      >
-                        <FileText className="h-5 w-5" />
-                      </span>
+                    <FileText className="h-5 w-5" />
+                  </span>
 
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-semibold text-[var(--title)]">
-                          {draft.name}
-                        </h3>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {draft.fileCount} file{draft.fileCount === 1 ? "" : "s"}
-                          {firstFile ? ` - ${formatFileSize(firstFile.size)}` : ""}
-                        </p>
-                        <p className="mt-2 flex items-center gap-1 text-xs text-[var(--muted)]">
-                          <Clock3 className="h-3.5 w-3.5" />
-                          {formatDraftDate(draft.lastSavedAt)}
-                        </p>
-                      </div>
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate font-bold text-[var(--title)]">
+                      {draft.name}
+                    </h3>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {draft.fileCount} file{draft.fileCount === 1 ? "" : "s"}
+                      {firstFile ? ` - ${formatFileSize(firstFile.size)}` : ""}
+                    </p>
+                    <p className="mt-2 flex items-center gap-1 text-xs text-[var(--muted)]">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {formatDraftDate(draft.lastSavedAt)}
+                    </p>
+                  </div>
+                </div>
 
-                    <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
-                        <dt className="text-[var(--muted)]">Queue</dt>
-                        <dd className="mt-1 truncate font-medium text-[var(--title)]">
-                          {draft.settings.queueName || "Not selected"}
-                        </dd>
-                      </div>
-                      <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
-                        <dt className="text-[var(--muted)]">Settings</dt>
-                        <dd className="mt-1 truncate font-medium text-[var(--title)]">
-                          {draft.settings.copies || 1}x, {draft.settings.colorMode}, {draft.settings.mode}, {draft.settings.paperSize || "A4"}
-                        </dd>
-                      </div>
-                    </dl>
+                <dl className="mt-5 grid gap-2 text-xs">
+                  <div className="rounded-md bg-[var(--surface-2)] px-3 py-2">
+                    <dt className="text-[var(--muted)]">Queue</dt>
+                    <dd className="mt-1 truncate font-semibold text-[var(--title)]">
+                      {draft.settings.queueName || "Not selected"}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-[var(--surface-2)] px-3 py-2">
+                    <dt className="text-[var(--muted)]">Settings</dt>
+                    <dd className="mt-1 truncate font-semibold text-[var(--title)]">
+                      {draft.settings.copies || 1}x, {draft.settings.colorMode},{" "}
+                      {formatPrintMode(draft.settings.mode)},{" "}
+                      {draft.settings.paperSize || "A4"}
+                    </dd>
+                  </div>
+                </dl>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        disabled={actionInProgress}
-                        onClick={() => handleRestoreDraft(draft)}
-                      >
-                        {actionInProgress ? "Restoring..." : "Restore"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={actionInProgress}
-                        onClick={() => handleDeleteDraft(draft)}
-                        iconLeft={<Trash2 className="h-4 w-4" />}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
+                <div className="mt-auto flex flex-wrap gap-2 pt-5">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={actionInProgress}
+                    onClick={() => void handleRestoreDraft(draft)}
+                    iconLeft={
+                      actionInProgress ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <UploadCloud className="h-4 w-4" />
+                      )
+                    }
+                  >
+                    {actionInProgress ? "Restoring..." : "Restore"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={actionInProgress}
+                    onClick={() => setDraftToDelete(draft)}
+                    iconLeft={<Trash2 className="h-4 w-4" />}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       ) : null}
+    </section>
+  );
+
+  return (
+    <div className="relative space-y-6">
+      <PageIntro
+        title="Web Print"
+        description="Upload PDFs into secure release, or restore saved draft jobs when you need to continue later."
+      />
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <WorkflowSegment
+          activeTab={activeTab}
+          draftCount={drafts.length}
+          onChange={handleTabChange}
+        />
+        <p className="text-sm text-[var(--muted)]">
+          PDF only for now. Office conversion remains disabled.
+        </p>
+      </div>
+
+      {loading ? (
+        <AlertMessage tone="success">Loading queue options...</AlertMessage>
+      ) : null}
+
+      {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+      {success && !queuedJob ? (
+        <AlertMessage tone="success">{success}</AlertMessage>
+      ) : null}
+
+      {activeTab === "upload" ? renderUploadTab() : renderDraftsTab()}
+
+      <ConfirmDialog
+        open={Boolean(draftToDelete)}
+        title="Delete draft?"
+        description={
+          <span>
+            This removes the saved draft and its stored PDF files. The action
+            cannot be undone.
+          </span>
+        }
+        confirmText="Delete draft"
+        loadingText="Deleting..."
+        variant="danger"
+        loading={Boolean(draftToDelete && draftActionId === draftToDelete.id)}
+        onConfirm={() => void confirmDeleteDraft()}
+        onClose={() => setDraftToDelete(null)}
+      />
     </div>
   );
 };
